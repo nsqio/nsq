@@ -119,9 +119,7 @@ type Channel struct {
 	consumeDisabled int32
 	// stat counters
 	EnableTrace int32
-	//finMsgs     map[MessageID]*Message
-	//finErrMsgs map[MessageID]string
-	Ext int32
+	Ext         int32
 
 	requireOrder           int32
 	needResetReader        int32
@@ -153,18 +151,16 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		exitSyncChan:       make(chan bool),
 		clients:            make(map[int64]Consumer),
 		confirmedMsgs:      NewIntervalTree(),
-		//finMsgs:            make(map[MessageID]*Message),
-		//finErrMsgs:     make(map[MessageID]string),
-		tryReadBackend:  make(chan bool, 1),
-		readerChanged:   make(chan resetChannelData, 10),
-		endUpdatedChan:  make(chan bool, 1),
-		deleteCallback:  deleteCallback,
-		option:          opt,
-		notifyCall:      notify,
-		consumeDisabled: consumeDisabled,
-		requeueMsgCb:    reqToEndCB,
-		delayedMsgs:     make(map[MessageID]Message, MaxWaitingDelayed),
-		Ext:             ext,
+		tryReadBackend:     make(chan bool, 1),
+		readerChanged:      make(chan resetChannelData, 10),
+		endUpdatedChan:     make(chan bool, 1),
+		deleteCallback:     deleteCallback,
+		option:             opt,
+		notifyCall:         notify,
+		consumeDisabled:    consumeDisabled,
+		requeueMsgCb:       reqToEndCB,
+		delayedMsgs:        make(map[MessageID]Message, MaxWaitingDelayed),
+		Ext:                ext,
 	}
 	if len(opt.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
@@ -735,12 +731,21 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 }
 
 func (c *Channel) IsConfirmed(msg *Message) bool {
+	if msg.DelayedOrigID > 0 && msg.DelayedType == ChannelDelayed && c.GetDelayedQueue() != nil {
+		return false
+	}
 	c.confirmMutex.Lock()
-	//c.finMsgs[msg.ID] = msg
 	ok := c.confirmedMsgs.IsOverlaps(&queueInterval{start: int64(msg.offset),
 		end:    int64(msg.offset) + int64(msg.rawMoveSize),
 		endCnt: uint64(msg.queueCntIndex)}, true)
 	c.confirmMutex.Unlock()
+
+	if ok {
+		if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+			nsqLog.LogDebugf("msg %v is already confirmed", msg)
+			nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "IGNORE_CONFIRMED", msg.TraceID, msg, "")
+		}
+	}
 	return ok
 }
 
@@ -1183,6 +1188,7 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *boo
 	if clearConfirmed {
 		c.confirmMutex.Lock()
 		c.confirmedMsgs = NewIntervalTree()
+		c.delayedMsgs = make(map[MessageID]Message, MaxWaitingDelayed)
 		atomic.StoreInt32(&c.waitingConfirm, 0)
 		c.confirmMutex.Unlock()
 	}

@@ -533,14 +533,14 @@ func startCheckData(msg []byte, batch [][]byte, testDelay bool) {
 			if prev == currentTmc && prevSub == totalSub && time.Since(startTime) > *runfor {
 				equalTimes++
 				if *benchCase == "benchdelaysub" {
-					if totalSub < atomic.LoadInt64(&totalMsgCount) {
-						equalTimes = 0
-					}
 					if totalSub >= atomic.LoadInt64(&totalMsgCount) && totalSub >= currentTmc && equalTimes > 3 {
 						close(quitChan)
 						return
 					}
 					if time.Now().Unix() <= atomic.LoadInt64(&maxDelayTs)+10 {
+						if totalSub < atomic.LoadInt64(&totalMsgCount) {
+							equalTimes = 0
+						}
 						continue
 					}
 				}

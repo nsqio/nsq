@@ -82,6 +82,10 @@ type ChannelStats struct {
 	Paused        bool          `json:"paused"`
 	Skipped       bool          `json:"skipped"`
 
+	DelayedQueueCount  int64  `json:"delayed_queue_count"`
+	DelayedQueueRecent string `json:"delayed_queue_recent"`
+	DelayedQueueMost   string `json:"delayed_queue_most"`
+
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
 
