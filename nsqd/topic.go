@@ -1340,7 +1340,7 @@ func (t *Topic) GetDelayedQueueConsumedState() (RecentKeyList, map[int]uint64, m
 		chList = append(chList, ch.GetName())
 	}
 	t.channelLock.RUnlock()
-	return dq.GetOldestConsumedState(chList)
+	return dq.GetOldestConsumedState(chList, true)
 }
 
 func (t *Topic) UpdateDelayedQueueConsumedState(keyList RecentKeyList, cntList map[int]uint64, channelCntList map[string]uint64) error {

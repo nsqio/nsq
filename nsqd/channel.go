@@ -1801,5 +1801,5 @@ func (c *Channel) GetDelayedQueueConsumedState() (RecentKeyList, map[int]uint64,
 		return nil, nil, nil
 	}
 
-	return dq.GetOldestConsumedState([]string{c.GetName()})
+	return dq.GetOldestConsumedState([]string{c.GetName()}, false)
 }

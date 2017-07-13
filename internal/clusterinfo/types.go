@@ -195,30 +195,32 @@ func (t *TopicStats) Add(a *TopicStats) {
 }
 
 type ChannelStats struct {
-	Node           string          `json:"node"`
-	Hostname       string          `json:"hostname"`
-	TopicName      string          `json:"topic_name"`
-	TopicPartition string          `json:"topic_partition"`
-	StatsdName     string          `json:"statsd_name"`
-	ChannelName    string          `json:"channel_name"`
-	Depth          int64           `json:"depth"`
-	DepthSize      int64           `json:"depth_size"`
-	DepthTimestamp string          `json:"depth_ts"`
-	MemoryDepth    int64           `json:"memory_depth"`
-	BackendDepth   int64           `json:"backend_depth"`
-	InFlightCount  int64           `json:"in_flight_count"`
-	DeferredCount  int64           `json:"deferred_count"`
-	RequeueCount   int64           `json:"requeue_count"`
-	TimeoutCount   int64           `json:"timeout_count"`
-	MessageCount   int64           `json:"message_count"`
-	ClientCount    int             `json:"-"`
-	Selected       bool            `json:"-"`
-	NodeStats      []*ChannelStats `json:"nodes"`
-	Clients        []*ClientStats  `json:"clients"`
-	Paused         bool            `json:"paused"`
-	Skipped        bool            `json:"skipped"`
-	IsMultiOrdered bool            `json:"is_multi_ordered"`
-	IsExt          bool            `json:"is_ext"`
+	Node               string          `json:"node"`
+	Hostname           string          `json:"hostname"`
+	TopicName          string          `json:"topic_name"`
+	TopicPartition     string          `json:"topic_partition"`
+	StatsdName         string          `json:"statsd_name"`
+	ChannelName        string          `json:"channel_name"`
+	Depth              int64           `json:"depth"`
+	DepthSize          int64           `json:"depth_size"`
+	DepthTimestamp     string          `json:"depth_ts"`
+	MemoryDepth        int64           `json:"memory_depth"`
+	BackendDepth       int64           `json:"backend_depth"`
+	InFlightCount      int64           `json:"in_flight_count"`
+	DeferredCount      int64           `json:"deferred_count"`
+	RequeueCount       int64           `json:"requeue_count"`
+	TimeoutCount       int64           `json:"timeout_count"`
+	MessageCount       int64           `json:"message_count"`
+	DelayedQueueCount  uint64          `json:"delayed_queue_count"`
+	DelayedQueueRecent string          `json:"delayed_queue_recent"`
+	ClientCount        int             `json:"-"`
+	Selected           bool            `json:"-"`
+	NodeStats          []*ChannelStats `json:"nodes"`
+	Clients            []*ClientStats  `json:"clients"`
+	Paused             bool            `json:"paused"`
+	Skipped            bool            `json:"skipped"`
+	IsMultiOrdered     bool            `json:"is_multi_ordered"`
+	IsExt              bool            `json:"is_ext"`
 
 	E2eProcessingLatency *quantile.E2eProcessingLatencyAggregate `json:"e2e_processing_latency"`
 }
@@ -232,7 +234,11 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 	}
 	c.Depth += a.Depth
 	c.DepthSize += a.DepthSize
-	c.DepthTimestamp = a.DepthTimestamp
+	if c.DepthTimestamp == "" {
+		c.DepthTimestamp = a.DepthTimestamp
+	} else if a.DepthTimestamp < c.DepthTimestamp {
+		c.DepthTimestamp = a.DepthTimestamp
+	}
 	c.MemoryDepth += a.MemoryDepth
 	c.BackendDepth += a.BackendDepth
 	c.InFlightCount += a.InFlightCount
@@ -240,6 +246,13 @@ func (c *ChannelStats) Add(a *ChannelStats) {
 	c.RequeueCount += a.RequeueCount
 	c.TimeoutCount += a.TimeoutCount
 	c.MessageCount += a.MessageCount
+	c.DelayedQueueCount += a.DelayedQueueCount
+	if c.DelayedQueueRecent == "" {
+		c.DelayedQueueRecent = a.DelayedQueueRecent
+	} else if a.DelayedQueueRecent < c.DelayedQueueRecent {
+		c.DelayedQueueRecent = a.DelayedQueueRecent
+	}
+
 	c.ClientCount += a.ClientCount
 	if a.Paused {
 		c.Paused = a.Paused
@@ -285,7 +298,7 @@ type ClientStats struct {
 	AuthIdentity      string        `json:"auth_identity"`
 	AuthIdentityURL   string        `json:"auth_identity_url"`
 
-	DesiredTag	  string 	`json:"desired_tag"`
+	DesiredTag string `json:"desired_tag"`
 
 	TLS                           bool   `json:"tls"`
 	CipherSuite                   string `json:"tls_cipher_suite"`

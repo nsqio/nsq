@@ -65,10 +65,10 @@
             <th>NSQd Host</th>
             <th>Partition</th>
             <th>Depth</th>
-            <th>DepthTimestamp</th>
+            <th>DepthTimestamp + RecentDelayed</th>
             <th>Memory + DiskSize</th>
             <th>In-Flight</th>
-            <th>Deferred</th>
+            <th>Deferred + DelayedQueue</th>
             <th>Requeued</th>
             <th>Timed Out</th>
             <th>Messages</th>
@@ -91,10 +91,10 @@
             </td>
             <td>{{topic_partition}}</td>
             <td>{{commafy depth}}</td>
-            <td>{{depth_ts}}</td>
+            <td>{{depth_ts}} + {{delayed_queue_recent}}</td>
             <td>{{commafy memory_depth}} + {{commafy depth_size}}</td>
             <td>{{commafy in_flight_count}}</td>
-            <td>{{commafy deferred_count}}</td>
+            <td>{{commafy deferred_count}} + {{commafy delayed_queue_count}}</td>
             <td>{{commafy requeue_count}}</td>
             <td>{{commafy timeout_count}}</td>
             <td>{{commafy message_count}}</td>

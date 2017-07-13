@@ -82,9 +82,8 @@ type ChannelStats struct {
 	Paused        bool          `json:"paused"`
 	Skipped       bool          `json:"skipped"`
 
-	DelayedQueueCount  int64  `json:"delayed_queue_count"`
+	DelayedQueueCount  uint64 `json:"delayed_queue_count"`
 	DelayedQueueRecent string `json:"delayed_queue_recent"`
-	DelayedQueueMost   string `json:"delayed_queue_most"`
 
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
@@ -93,6 +92,22 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 	c.inFlightMutex.Lock()
 	inflightCnt := len(c.inFlightMessages)
 	c.inFlightMutex.Unlock()
+	recentList, _, chCntList := c.GetDelayedQueueConsumedState()
+	var recentTs int64
+	if len(recentList) > 0 {
+		for _, k := range recentList {
+			_, ts, _, ch, err := decodeDelayedMsgDBKey(k)
+			if err != nil || ch != c.GetName() {
+				continue
+			}
+			recentTs = ts
+			break
+		}
+	}
+	dqCnt := uint64(0)
+	if len(chCntList) > 0 {
+		dqCnt, _ = chCntList[c.GetName()]
+	}
 	return ChannelStats{
 		ChannelName:    c.name,
 		Depth:          c.Depth(),
@@ -103,13 +118,15 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		InFlightCount: inflightCnt,
 		// this is total message count need consume.
 		// may diff with topic total size since some is in buffer.
-		MessageCount:  uint64(c.backend.GetQueueReadEnd().TotalMsgCnt()),
-		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
-		DeferredCount: int(atomic.LoadInt64(&c.deferredCount)),
-		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
-		Clients:       clients,
-		Paused:        c.IsPaused(),
-		Skipped:       c.IsSkipped(),
+		MessageCount:       uint64(c.backend.GetQueueReadEnd().TotalMsgCnt()),
+		RequeueCount:       atomic.LoadUint64(&c.requeueCount),
+		DeferredCount:      int(atomic.LoadInt64(&c.deferredCount)),
+		TimeoutCount:       atomic.LoadUint64(&c.timeoutCount),
+		Clients:            clients,
+		Paused:             c.IsPaused(),
+		Skipped:            c.IsSkipped(),
+		DelayedQueueCount:  dqCnt,
+		DelayedQueueRecent: time.Unix(0, recentTs).String(),
 
 		E2eProcessingLatency: c.e2eProcessingLatencyStream.Result(),
 	}

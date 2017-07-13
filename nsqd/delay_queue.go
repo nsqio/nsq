@@ -732,20 +732,22 @@ func (q *DelayQueue) ConfirmedMessage(msg *Message) error {
 	return err
 }
 
-func (q *DelayQueue) GetOldestConsumedState(chList []string) (RecentKeyList, map[int]uint64, map[string]uint64) {
+func (q *DelayQueue) GetOldestConsumedState(chList []string, includeOthers bool) (RecentKeyList, map[int]uint64, map[string]uint64) {
 	db := q.getStore()
 	prefixList := make([][]byte, 0, len(chList)+2)
 	cntList := make(map[int]uint64)
 	channelCntList := make(map[string]uint64)
 	var err error
-	for filterType := MinDelayedType; filterType < MaxDelayedType; filterType++ {
-		if filterType == ChannelDelayed {
-			continue
-		}
-		prefixList = append(prefixList, getDelayedMsgDBPrefixKey(filterType, ""))
-		cntList[filterType], err = q.GetCurrentDelayedCnt(filterType, "")
-		if err != nil {
-			return nil, nil, nil
+	if includeOthers {
+		for filterType := MinDelayedType; filterType < MaxDelayedType; filterType++ {
+			if filterType == ChannelDelayed {
+				continue
+			}
+			prefixList = append(prefixList, getDelayedMsgDBPrefixKey(filterType, ""))
+			cntList[filterType], err = q.GetCurrentDelayedCnt(filterType, "")
+			if err != nil {
+				return nil, nil, nil
+			}
 		}
 	}
 	chIndex := len(prefixList)
