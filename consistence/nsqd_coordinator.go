@@ -1391,8 +1391,37 @@ func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 	} else {
 		// need sync the commit log segment start info and the topic diskqueue start info
 		// we should clean local data, since the local start info maybe different with leader start info
-		coordLog.Infof("local topic %v should do full sync", localTopic.GetFullName())
-		localTopic.PrintCurrentStats()
+		if fromDelayedQueue {
+			coordLog.Infof("local topic %v delayed queue should do full sync", localTopic.GetFullName())
+			ninfo, err := c.GetNodeInfo(topicInfo.Leader)
+			if err != nil {
+				if strings.Contains(err.Error(), "unknown service name") {
+					return logIndex, offset, ErrRpcMethodUnknown
+				}
+				return logIndex, offset, &CoordErr{err.Error(), RpcCommonErr, CoordNetErr}
+			}
+			ep := fmt.Sprintf("http://%s%s?topic=%s&partition=%v", net.JoinHostPort(ninfo.NodeIP, ninfo.HttpPort),
+				API_BACKUP_DELAYED_QUEUE_DB, localTopic.GetTopicName(),
+				localTopic.GetTopicPart())
+			// get the boltdb full file
+			coordLog.Infof("begin pull topic %v delayed db file ", localTopic.GetFullName())
+			rsp, err := http.Get(ep)
+			if err != nil {
+				coordLog.Warningf("pull topic %v delayed db file failed: %v", localTopic.GetFullName(), err)
+				return logIndex, offset, &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
+			}
+			defer rsp.Body.Close()
+			err = localLogQ.(*nsqd.DelayQueue).RestoreKVStoreFrom(rsp.Body)
+			if err != nil {
+				coordLog.Warningf("topic %v delayed db file restore failed: %v", localTopic.GetFullName(), err)
+				return logIndex, offset, &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
+			}
+			coordLog.Infof("finished pull topic %v delayed db file ", localTopic.GetFullName())
+		} else {
+			coordLog.Infof("local topic %v should do full sync", localTopic.GetFullName())
+			localTopic.PrintCurrentStats()
+		}
+
 		if compatibleMethod {
 			localTopic.Lock()
 			localErr = localLogQ.ResetBackendEndNoLock(nsqd.BackendOffset(0), 0)
@@ -1420,32 +1449,6 @@ func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 			}
 			coordLog.Infof("topic %v full sync with start: %v, %v", localTopic.GetFullName(), leaderCommitStartInfo, firstLogData)
 
-			if fromDelayedQueue {
-				ninfo, err := c.GetNodeInfo(topicInfo.Leader)
-				if err != nil {
-					if strings.Contains(err.Error(), "unknown service name") {
-						return logIndex, offset, ErrRpcMethodUnknown
-					}
-					return logIndex, offset, &CoordErr{err.Error(), RpcCommonErr, CoordNetErr}
-				}
-				ep := fmt.Sprintf("http://%s%s?topic=%s&partition=%v", net.JoinHostPort(ninfo.NodeIP, ninfo.HttpPort),
-					API_BACKUP_DELAYED_QUEUE_DB, localTopic.GetTopicName(),
-					localTopic.GetTopicPart())
-				// get the boltdb full file
-				coordLog.Infof("begin pull topic %v delayed db file ", localTopic.GetFullName())
-				rsp, err := http.Get(ep)
-				if err != nil {
-					coordLog.Warningf("pull topic %v delayed db file failed: %v", localTopic.GetFullName(), err)
-					return logIndex, offset, &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
-				}
-				defer rsp.Body.Close()
-				err = localLogQ.(*nsqd.DelayQueue).RestoreKVStoreFrom(rsp.Body)
-				if err != nil {
-					coordLog.Warningf("topic %v delayed db file restore failed: %v", localTopic.GetFullName(), err)
-					return logIndex, offset, &CoordErr{err.Error(), RpcNoErr, CoordLocalErr}
-				}
-				coordLog.Infof("finished pull topic %v delayed db file ", localTopic.GetFullName())
-			}
 			localErr = logMgr.ResetLogWithStart(*leaderCommitStartInfo)
 			if localErr != nil {
 				coordLog.Warningf("reset commit log with start %v failed: %v", leaderCommitStartInfo, localErr)
