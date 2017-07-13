@@ -2177,7 +2177,7 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData, syncDelayed
 						continue
 					}
 					rpcErr = c.UpdateDelayedQueueState(&tcData.topicLeaderSession, &tcData.topicInfo,
-						"", keyList, cntList, channelCntList)
+						"", keyList, cntList, channelCntList, true)
 					if rpcErr != nil {
 						coordLog.Infof("node %v update delayed queue state %v failed %v.", nodeID,
 							tcData.topicInfo.GetTopicDesp(), rpcErr)

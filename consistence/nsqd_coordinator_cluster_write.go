@@ -979,7 +979,7 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 			if delayedMsg != nil {
 				cursorList, cntList, channelCntList := channel.GetDelayedQueueConsumedState()
 				rpcErr = c.UpdateDelayedQueueState(&tcData.topicLeaderSession, &tcData.topicInfo,
-					channel.GetName(), cursorList, cntList, channelCntList)
+					channel.GetName(), cursorList, cntList, channelCntList, false)
 			} else {
 				c.NotifyUpdateChannelOffset(&tcData.topicLeaderSession, &tcData.topicInfo, channel.GetName(), syncOffset)
 			}
@@ -1246,7 +1246,7 @@ func (self *NsqdCoordinator) EmptyChannelDelayedStateToCluster(channel *nsqd.Cha
 		var rpcErr *CoordErr
 		cursorList, cntList, channelCntList := channel.GetDelayedQueueConsumedState()
 		rpcErr = c.UpdateDelayedQueueState(&tcData.topicLeaderSession, &tcData.topicInfo,
-			channel.GetName(), cursorList, cntList, channelCntList)
+			channel.GetName(), cursorList, cntList, channelCntList, true)
 		if rpcErr != nil {
 			coordLog.Infof("sync channel(%v) delayed queue state to replica %v failed: %v", channel.GetName(),
 				nodeID, rpcErr)
