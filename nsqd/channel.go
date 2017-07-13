@@ -1721,7 +1721,8 @@ exit:
 	c.confirmMutex.Lock()
 	waitingDelayCnt := len(c.delayedMsgs)
 	c.confirmMutex.Unlock()
-	if !c.IsConsumeDisabled() && !c.IsOrdered() && delayedQueue != nil && waitingDelayCnt < MaxWaitingDelayed {
+	if !c.IsConsumeDisabled() && !c.IsOrdered() && delayedQueue != nil &&
+		waitingDelayCnt < MaxWaitingDelayed && clientNum > 0 {
 		dmsgs := make([]Message, MaxWaitingDelayed)
 		cnt, err := delayedQueue.PeekRecentChannelTimeout(dmsgs, c.GetName())
 		if err == nil {
