@@ -408,15 +408,8 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 	// the client before we requeue and update in the flight
 	ch.Pause()
 	defer ch.UnPause()
-	var newMsg *nsqd.Message
-	if topic.IsExt() {
-		newMsg = nsqd.NewMessageWithExt(0, oldMsg.Body, oldMsg.ExtVer, oldMsg.ExtBytes)
-	} else {
-		newMsg = nsqd.NewMessage(0, oldMsg.Body)
-	}
-	newMsg.Timestamp = oldMsg.Timestamp
-	newMsg.TraceID = oldMsg.TraceID
-	newMsg.Attempts = oldMsg.Attempts
+	newMsg := oldMsg.GetCopy()
+	newMsg.ID = 0
 	newMsg.DelayedType = nsqd.ChannelDelayed
 	if timeoutDuration > c.nsqd.GetOpts().MaxReqTimeout {
 		timeoutDuration = c.nsqd.GetOpts().MaxReqTimeout

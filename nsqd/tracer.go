@@ -51,7 +51,7 @@ func (self *LogMsgTracer) TracePub(topic string, part int, pubMethod string, tra
 func (self *LogMsgTracer) TraceSub(topic string, channel string, state string, traceID uint64, msg *Message, clientID string) {
 	nsqLog.Logf("[TRACE] topic %v channel %v trace id %v: message %v (offset: %v) consume state %v from client %v(%v) at time: %v, attempt: %v",
 		topic, channel, msg.TraceID,
-		msg.ID, msg.offset, state, clientID, msg.GetClientID(), time.Now().UnixNano(), msg.Attempts)
+		msg.ID, msg.Offset, state, clientID, msg.GetClientID(), time.Now().UnixNano(), msg.Attempts)
 }
 
 // this tracer will send the trace info to remote server for each seconds
@@ -112,7 +112,7 @@ func (self *RemoteMsgTracer) TraceSub(topic string, channel string, state string
 	detail.SetExtraInfo(traceItem[:])
 
 	l := fmt.Sprintf("[TRACE] topic %v channel %v trace id %v: message %v (offset: %v) consume state %v from client %v(%v) at time: %v, attempt: %v",
-		topic, channel, msg.TraceID, msg.ID, msg.offset, state, clientID, msg.GetClientID(), time.Now().UnixNano(), msg.Attempts)
+		topic, channel, msg.TraceID, msg.ID, msg.Offset, state, clientID, msg.GetClientID(), time.Now().UnixNano(), msg.Attempts)
 	err := self.remoteLogger.Info(l, detail)
 	if err != nil || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		if err != nil {

@@ -516,7 +516,7 @@ func TestTopicResetWithQueueStart(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		msg := <-channel.clientMsgChan
 		channel.ConfirmBackendQueue(msg)
-		test.Equal(t, msg.offset+msg.rawMoveSize, channel.GetConfirmed().Offset())
+		test.Equal(t, msg.Offset+msg.RawMoveSize, channel.GetConfirmed().Offset())
 	}
 
 	// reset with old start
@@ -544,7 +544,7 @@ func TestTopicResetWithQueueStart(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		msg := <-channel.clientMsgChan
 		channel.ConfirmBackendQueue(msg)
-		test.Equal(t, msg.offset+msg.rawMoveSize, channel.GetConfirmed().Offset())
+		test.Equal(t, msg.Offset+msg.RawMoveSize, channel.GetConfirmed().Offset())
 	}
 }
 

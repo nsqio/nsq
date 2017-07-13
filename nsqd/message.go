@@ -32,7 +32,7 @@ func GetTraceIDFromFullMsgID(id FullMessageID) uint64 {
 func PrintMessage(m *Message) string {
 	return fmt.Sprintf("%v %v %s %v %v %v %v %v %v %v %v %v",
 		m.ID, m.TraceID, string(m.Body), m.Timestamp, m.Attempts, m.deliveryTS,
-		m.pri, m.index, m.deferredCnt, m.offset, m.rawMoveSize, m.queueCntIndex)
+		m.pri, m.index, m.deferredCnt, m.Offset, m.RawMoveSize, m.queueCntIndex)
 }
 
 type Message struct {
@@ -52,8 +52,8 @@ type Message struct {
 	index            int
 	deferredCnt      int32
 	//for backend queue
-	offset        BackendOffset
-	rawMoveSize   BackendOffset
+	Offset        BackendOffset
+	RawMoveSize   BackendOffset
 	queueCntIndex int64
 	// for delayed queue message
 	// 1 - delayed message by channel
@@ -180,8 +180,8 @@ func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeDetail bool) 
 	}
 
 	if writeDetail {
-		binary.BigEndian.PutUint64(buf[:8], uint64(m.offset))
-		binary.BigEndian.PutUint32(buf[8:8+4], uint32(m.rawMoveSize))
+		binary.BigEndian.PutUint64(buf[:8], uint64(m.Offset))
+		binary.BigEndian.PutUint32(buf[8:8+4], uint32(m.RawMoveSize))
 		n, err = w.Write(buf[:8+4])
 		total += int64(n)
 		if err != nil {
@@ -265,8 +265,8 @@ func (m *Message) WriteDelayedTo(w io.Writer, writeExt bool) (int64, error) {
 
 	if m.DelayedType == ChannelDelayed {
 		// some data with original queue info
-		binary.BigEndian.PutUint64(buf[:8], uint64(m.offset))
-		binary.BigEndian.PutUint32(buf[8:8+4], uint32(m.rawMoveSize))
+		binary.BigEndian.PutUint64(buf[:8], uint64(m.Offset))
+		binary.BigEndian.PutUint32(buf[8:8+4], uint32(m.RawMoveSize))
 		n, err = w.Write(buf[:8+4])
 		total += int64(n)
 		if err != nil {
@@ -395,9 +395,9 @@ func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 			return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
 		}
 		// some data with original queue info
-		msg.offset = BackendOffset(binary.BigEndian.Uint64(b[pos : pos+8]))
+		msg.Offset = BackendOffset(binary.BigEndian.Uint64(b[pos : pos+8]))
 		pos += 8
-		msg.rawMoveSize = BackendOffset(binary.BigEndian.Uint32(b[pos : pos+4]))
+		msg.RawMoveSize = BackendOffset(binary.BigEndian.Uint32(b[pos : pos+4]))
 		pos += 4
 	}
 	msg.Body = b[pos:]

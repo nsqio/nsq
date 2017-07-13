@@ -654,34 +654,18 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 		return 0, 0, true
 	}
 	curConfirm := c.GetConfirmed()
-	if msg.offset < curConfirm.Offset() {
-		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.offset, curConfirm)
+	if msg.Offset < curConfirm.Offset() {
+		nsqLog.LogDebugf("confirmed msg is less than current confirmed offset: %v-%v, %v", msg.ID, msg.Offset, curConfirm)
 		return curConfirm.Offset(), curConfirm.TotalMsgCnt(), false
 	}
 	//c.confirmedMsgs[int64(msg.offset)] = msg
-	mergedInterval := c.confirmedMsgs.AddOrMerge(&queueInterval{start: int64(msg.offset),
-		end:    int64(msg.offset) + int64(msg.rawMoveSize),
+	mergedInterval := c.confirmedMsgs.AddOrMerge(&queueInterval{start: int64(msg.Offset),
+		end:    int64(msg.Offset) + int64(msg.RawMoveSize),
 		endCnt: uint64(msg.queueCntIndex),
 	})
 	reduced := false
 	newConfirmed := curConfirm.Offset()
 	confirmedCnt := curConfirm.TotalMsgCnt()
-	//defer func() {
-	//	c.tmpRemovedConfirmed = c.tmpRemovedConfirmed[:0]
-	//}()
-	//for {
-	//	if m, ok := c.confirmedMsgs[int64(newConfirmed)]; ok {
-	//		//nsqLog.LogDebugf("move confirm: %v to %v, msg: %v",
-	//		//	newConfirmed, newConfirmed+m.rawMoveSize, m.ID)
-	//		newConfirmed += m.rawMoveSize
-	//		confirmedCnt = m.queueCntIndex
-	//		delete(c.confirmedMsgs, int64(m.offset))
-	//		c.tmpRemovedConfirmed = append(c.tmpRemovedConfirmed, m)
-	//		reduced = true
-	//	} else {
-	//		break
-	//	}
-	//}
 	if mergedInterval.End() <= int64(newConfirmed) {
 		c.confirmedMsgs.DeleteLower(int64(newConfirmed))
 	} else if mergedInterval.Start() <= int64(newConfirmed) {
@@ -735,8 +719,8 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 		return false
 	}
 	c.confirmMutex.Lock()
-	ok := c.confirmedMsgs.IsOverlaps(&queueInterval{start: int64(msg.offset),
-		end:    int64(msg.offset) + int64(msg.rawMoveSize),
+	ok := c.confirmedMsgs.IsOverlaps(&queueInterval{start: int64(msg.Offset),
+		end:    int64(msg.Offset) + int64(msg.RawMoveSize),
 		endCnt: uint64(msg.queueCntIndex)}, true)
 	c.confirmMutex.Unlock()
 
@@ -1163,7 +1147,7 @@ func (c *Channel) DisableConsume(disable bool) {
 						done = true
 						break
 					}
-					nsqLog.Logf("ignored a read message %v at offset %v while enable consume", m.ID, m.offset)
+					nsqLog.Logf("ignored a read message %v at offset %v while enable consume", m.ID, m.Offset)
 				case <-c.requeuedMsgChan:
 				default:
 					done = true
@@ -1207,7 +1191,7 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *boo
 				clientMsgChan = nil
 				continue
 			}
-			nsqLog.Logf("ignored a read message %v at offset %v while drain channel", m.ID, m.offset)
+			nsqLog.Logf("ignored a read message %v at Offset %v while drain channel", m.ID, m.Offset)
 		case <-c.requeuedMsgChan:
 		default:
 			done = true
@@ -1367,7 +1351,7 @@ LOOP:
 			needReadBackend = false
 			nsqLog.Logf("channel consume is disabled : %v", c.name)
 			if lastMsg.ID > 0 {
-				nsqLog.Logf("consume disabled at last read message: %v:%v", lastMsg.ID, lastMsg.offset)
+				nsqLog.Logf("consume disabled at last read message: %v:%v", lastMsg.ID, lastMsg.Offset)
 				lastMsg = Message{}
 			}
 		}
@@ -1438,8 +1422,8 @@ LOOP:
 				nsqLog.LogErrorf("channel (%v): failed to decode message - %s - %v", c.GetName(), err, data)
 				continue LOOP
 			}
-			msg.offset = data.Offset
-			msg.rawMoveSize = data.MovedSize
+			msg.Offset = data.Offset
+			msg.RawMoveSize = data.MovedSize
 			msg.queueCntIndex = data.CurCnt
 			if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DETAIL {
 				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "READ_QUEUE", msg.TraceID, msg, "0")
@@ -1463,11 +1447,12 @@ LOOP:
 			lastDataResult = data
 			if isSkipped {
 				// TODO: store the skipped info to retry error if possible.
-				nsqLog.LogWarningf("channel (%v): skipped message from %v:%v to the : %v:%v", c.GetName(), lastMsg.ID, lastMsg.offset, msg.ID, msg.offset)
+				nsqLog.LogWarningf("channel (%v): skipped message from %v:%v to the : %v:%v",
+					c.GetName(), lastMsg.ID, lastMsg.Offset, msg.ID, msg.Offset)
 			}
 			if resumedFirst {
 				if nsqLog.Level() >= levellogger.LOG_DEBUG {
-					nsqLog.LogDebugf("resumed first messsage %v at offset: %v", msg.ID, msg.offset)
+					nsqLog.LogDebugf("resumed first messsage %v at Offset: %v", msg.ID, msg.Offset)
 				}
 				resumedFirst = false
 			}
@@ -1495,8 +1480,8 @@ LOOP:
 		}
 		if c.IsOrdered() {
 			curConfirm := c.GetConfirmed()
-			if msg.offset != curConfirm.Offset() {
-				nsqLog.Infof("read a message not in ordered: %v, %v", msg.offset, curConfirm)
+			if msg.Offset != curConfirm.Offset() {
+				nsqLog.Infof("read a message not in ordered: %v, %v", msg.Offset, curConfirm)
 				atomic.StoreInt32(&c.needResetReader, 1)
 				continue
 			}
@@ -1575,7 +1560,7 @@ func (c *Channel) GetChannelDebugStats() string {
 	debugStr += fmt.Sprintf("inflight %v messages : ", inFlightCount)
 	if nsqLog.Level() >= levellogger.LOG_DEBUG {
 		for _, msg := range c.inFlightMessages {
-			debugStr += fmt.Sprintf("%v(%v, %v),", msg.ID, msg.offset, msg.DelayedType)
+			debugStr += fmt.Sprintf("%v(%v, %v),", msg.ID, msg.Offset, msg.DelayedType)
 		}
 	}
 	c.inFlightMutex.Unlock()
@@ -1618,7 +1603,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 					confirmed := c.GetConfirmed().Offset()
 					var blockingMsg *Message
 					for _, m := range c.inFlightMessages {
-						if m.offset != confirmed {
+						if m.Offset != confirmed {
 							continue
 						}
 						threshold := time.Minute
