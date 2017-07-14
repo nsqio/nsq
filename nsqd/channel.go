@@ -917,6 +917,17 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 		nsqLog.Logf("too long timeout %v, %v, %v, should req message: %v to delayed queue",
 			newTimeout, msg.deliveryTS, timeout, id)
 	}
+	deCnt := atomic.LoadInt64(&c.deferredCount)
+	if deCnt > c.option.MaxConfirmWin*10 {
+		// if requeued by deferred is more than half of the all messages handled,
+		// it may be a bug in client which can not handle any more, so we just wait
+		// timeout not requeue to defer
+		cnt := c.GetChannelWaitingConfirmCnt()
+		if cnt > c.option.MaxConfirmWin*10 && float64(deCnt) >= float64(cnt)*0.8 {
+			nsqLog.Logf("failed requeue msg %v for two much delayed in memory: %v vs %v", id, deCnt, cnt)
+			return fmt.Errorf("failed requeue msg since two much delayed in memory")
+		}
+	}
 
 	atomic.AddInt64(&c.deferredCount, 1)
 	msg.pri = newTimeout.UnixNano()
@@ -1050,6 +1061,14 @@ func (c *Channel) GetConfirmed() BackendQueueEnd {
 
 func (c *Channel) GetChannelEnd() BackendQueueEnd {
 	return c.backend.GetQueueReadEnd()
+}
+
+func (c *Channel) GetChannelWaitingConfirmCnt() int64 {
+	d, ok := c.backend.(*diskQueueReader)
+	if ok {
+		return d.GetQueueCurrentRead().TotalMsgCnt() - d.GetQueueConfirmed().TotalMsgCnt()
+	}
+	return 0
 }
 
 // doRequeue performs the low level operations to requeue a message
@@ -1574,12 +1593,12 @@ func (c *Channel) GetChannelDebugStats() string {
 	return debugStr
 }
 
-func (c *Channel) processInFlightQueue(tnow int64) bool {
+func (c *Channel) processInFlightQueue(tnow int64) (bool, bool) {
 	c.exitMutex.RLock()
 	defer c.exitMutex.RUnlock()
 
 	if c.Exiting() {
-		return false
+		return false, false
 	}
 
 	dirty := false
@@ -1706,12 +1725,17 @@ exit:
 	c.confirmMutex.Lock()
 	waitingDelayCnt := len(c.delayedMsgs)
 	c.confirmMutex.Unlock()
+	checkFast := false
 	if !c.IsConsumeDisabled() && !c.IsOrdered() && delayedQueue != nil &&
 		waitingDelayCnt < MaxWaitingDelayed && clientNum > 0 {
 		dmsgs := make([]Message, MaxWaitingDelayed)
 		peekStart := time.Now()
 		cnt, err := delayedQueue.PeekRecentChannelTimeout(tnow, dmsgs, c.GetName())
 		if err == nil {
+			if cnt >= len(dmsgs) {
+				checkFast = true
+			}
+
 			for _, tmpMsg := range dmsgs[:cnt] {
 				m := tmpMsg
 				c.inFlightMutex.Lock()
@@ -1746,6 +1770,7 @@ exit:
 							m.belongedConsumer = nil
 						}
 						c.delayedMsgs[m.DelayedOrigID] = m
+						waitingDelayCnt = len(c.delayedMsgs)
 
 						atomic.StoreInt32(&m.deferredCnt, 0)
 						c.doRequeue(&m, "")
@@ -1754,6 +1779,18 @@ exit:
 				c.confirmMutex.Unlock()
 				c.inFlightMutex.Unlock()
 			}
+		}
+		if waitingDelayCnt >= MaxWaitingDelayed {
+			checkFast = true
+		}
+	} else if waitingDelayCnt >= MaxWaitingDelayed {
+		if nsqLog.Level() >= levellogger.LOG_DETAIL {
+			c.confirmMutex.Lock()
+			nsqLog.LogDebugf("delayed waiting : ")
+			for id, m := range c.delayedMsgs {
+				nsqLog.LogDebugf("delayed waiting : %v, %v", id, m)
+			}
+			c.confirmMutex.Unlock()
 		}
 	}
 
@@ -1780,7 +1817,7 @@ exit:
 		atomic.StoreInt64(&c.processResetReaderTime, time.Now().Unix())
 	}
 
-	return dirty
+	return dirty, checkFast
 }
 
 func (c *Channel) GetDelayedQueueConsumedState() (RecentKeyList, map[int]uint64, map[string]uint64) {

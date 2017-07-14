@@ -641,6 +641,10 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 			if err != nil {
 				continue
 			}
+			if nsqLog.Level() >= levellogger.LOG_DETAIL {
+				nsqLog.LogDebugf("peek delayed message %v: %v", k, delayedTs)
+			}
+
 			if delayedTs > peekTs || idx >= len(results) {
 				break
 			}
