@@ -92,7 +92,7 @@ func TestDelayQueueWithExtPutChannelDelayed(t *testing.T) {
 
 	time.Sleep(time.Second)
 	ret := make([]Message, cnt)
-	n, err := dq.PeekRecentChannelTimeout(ret, "test")
+	n, err := dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test")
 	test.Nil(t, err)
 	test.Equal(t, cnt, n)
 	for _, m := range ret {
@@ -206,14 +206,14 @@ func TestDelayQueuePeekRecent(t *testing.T) {
 
 	ret := make([]Message, cnt)
 	for {
-		n, err := dq.PeekRecentChannelTimeout(ret, "test")
+		n, err := dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test")
 		test.Nil(t, err)
 		for _, m := range ret[:n] {
 			test.Equal(t, "test", m.DelayedChannel)
 			test.Equal(t, true, m.DelayedTs <= time.Now().UnixNano())
 		}
 
-		n, err = dq.PeekRecentChannelTimeout(ret, "test2")
+		n, err = dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test2")
 		test.Nil(t, err)
 		for _, m := range ret[:n] {
 			test.Equal(t, "test2", m.DelayedChannel)
@@ -263,7 +263,7 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 
 	ret := make([]Message, cnt)
 	for {
-		n, err := dq.PeekRecentChannelTimeout(ret, "test")
+		n, err := dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test")
 		test.Nil(t, err)
 		for _, m := range ret[:n] {
 			test.Equal(t, "test", m.DelayedChannel)
@@ -293,7 +293,7 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 			}
 		}
 
-		n, err = dq.PeekRecentChannelTimeout(ret, "test2")
+		n, err = dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test2")
 		test.Nil(t, err)
 		for _, m := range ret[:n] {
 			test.Equal(t, "test2", m.DelayedChannel)
@@ -396,13 +396,13 @@ func TestDelayQueueBackupRestore(t *testing.T) {
 
 	ret := make([]Message, cnt)
 	for {
-		n, err := dq.PeekRecentChannelTimeout(ret, "test")
+		n, err := dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test")
 		test.Nil(t, err)
 		for _, m := range ret[:n] {
 			test.Equal(t, "test", m.DelayedChannel)
 			test.Equal(t, "body", string(m.Body))
 		}
-		n2, err := dq.PeekRecentChannelTimeout(ret, "test2")
+		n2, err := dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test2")
 		test.Nil(t, err)
 		for _, m := range ret[:n2] {
 			test.Equal(t, "test2", m.DelayedChannel)
@@ -465,7 +465,7 @@ func TestDelayQueueCompactStore(t *testing.T) {
 	ret := make([]Message, 100)
 	done := false
 	for !done {
-		n, err := dq.PeekRecentChannelTimeout(ret, "test")
+		n, err := dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test")
 		test.Nil(t, err)
 		for _, m := range ret[:n] {
 			m.DelayedOrigID = m.ID
@@ -494,7 +494,7 @@ func TestDelayQueueCompactStore(t *testing.T) {
 
 	ret = make([]Message, beforeCompact)
 	for {
-		n, err := dq.PeekRecentChannelTimeout(ret, "test")
+		n, err := dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test")
 		test.Nil(t, err)
 		for _, m := range ret[:n] {
 			test.Equal(t, "test", m.DelayedChannel)

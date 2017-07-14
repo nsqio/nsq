@@ -1574,7 +1574,7 @@ func (c *Channel) GetChannelDebugStats() string {
 	return debugStr
 }
 
-func (c *Channel) processInFlightQueue(t int64) bool {
+func (c *Channel) processInFlightQueue(tnow int64) bool {
 	c.exitMutex.RLock()
 	defer c.exitMutex.RUnlock()
 
@@ -1592,7 +1592,7 @@ func (c *Channel) processInFlightQueue(t int64) bool {
 			goto exit
 		}
 
-		msg, _ := c.inFlightPQ.PeekAndShift(t)
+		msg, _ := c.inFlightPQ.PeekAndShift(tnow)
 		flightCnt = len(c.inFlightMessages)
 		if msg == nil {
 			if atomic.LoadInt32(&c.waitingConfirm) > 1 || flightCnt > 1 {
@@ -1709,47 +1709,49 @@ exit:
 	if !c.IsConsumeDisabled() && !c.IsOrdered() && delayedQueue != nil &&
 		waitingDelayCnt < MaxWaitingDelayed && clientNum > 0 {
 		dmsgs := make([]Message, MaxWaitingDelayed)
-		cnt, err := delayedQueue.PeekRecentChannelTimeout(dmsgs, c.GetName())
+		peekStart := time.Now()
+		cnt, err := delayedQueue.PeekRecentChannelTimeout(tnow, dmsgs, c.GetName())
 		if err == nil {
 			for _, tmpMsg := range dmsgs[:cnt] {
 				m := tmpMsg
+				c.inFlightMutex.Lock()
 				c.confirmMutex.Lock()
 				oldMsg, ok := c.delayedMsgs[m.DelayedOrigID]
-				if !ok {
-					c.delayedMsgs[m.DelayedOrigID] = m
-				}
-				c.confirmMutex.Unlock()
 				if ok {
 					if m.DelayedTs != oldMsg.DelayedTs {
 						nsqLog.LogWarningf("delay queue peek msg %v not match with waiting msg %v ",
 							m, oldMsg)
 					}
-					continue
-				}
-				c.inFlightMutex.Lock()
-				oldMsg2, ok := c.inFlightMessages[m.DelayedOrigID]
-				if ok {
-					if oldMsg2.ID != m.ID || oldMsg2.DelayedTs != m.DelayedTs {
-						nsqLog.Logf("old msg %v in flight mismatch peek from delayed queue, new %v ",
-							oldMsg2, m)
-					}
 				} else {
-					tmpID := m.ID
-					m.ID = m.DelayedOrigID
-					m.DelayedOrigID = tmpID
+					oldMsg2, ok2 := c.inFlightMessages[m.DelayedOrigID]
+					if ok2 {
+						if oldMsg2.ID != m.ID || oldMsg2.DelayedTs != m.DelayedTs {
+							nsqLog.Logf("old msg %v in flight mismatch peek from delayed queue, new %v ",
+								oldMsg2, m)
+						}
+					} else {
+						tmpID := m.ID
+						m.ID = m.DelayedOrigID
+						m.DelayedOrigID = tmpID
 
-					if m.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
-						nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DELAY_QUEUE_TIMEOUT", m.TraceID, &m, "")
+						if tnow > m.DelayedTs+3 {
+							nsqLog.LogDebugf("delayed is too late now %v for message: %v, peeking time: %v", tnow, m, peekStart)
+						}
+						if m.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+							nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DELAY_QUEUE_TIMEOUT", m.TraceID, &m, "")
+						}
+
+						if m.belongedConsumer != nil {
+							m.belongedConsumer.RequeuedMessage()
+							m.belongedConsumer = nil
+						}
+						c.delayedMsgs[m.DelayedOrigID] = m
+
+						atomic.StoreInt32(&m.deferredCnt, 0)
+						c.doRequeue(&m, "")
 					}
-
-					if m.belongedConsumer != nil {
-						m.belongedConsumer.RequeuedMessage()
-						m.belongedConsumer = nil
-					}
-
-					atomic.StoreInt32(&m.deferredCnt, 0)
-					c.doRequeue(&m, "")
 				}
+				c.confirmMutex.Unlock()
 				c.inFlightMutex.Unlock()
 			}
 		}

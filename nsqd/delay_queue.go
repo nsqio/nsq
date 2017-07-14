@@ -674,12 +674,12 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 	return idx, err
 }
 
-func (q *DelayQueue) PeekRecentChannelTimeout(results []Message, ch string) (int, error) {
-	return q.PeekRecentTimeoutWithFilter(results, time.Now().UnixNano(), ChannelDelayed, ch)
+func (q *DelayQueue) PeekRecentChannelTimeout(now int64, results []Message, ch string) (int, error) {
+	return q.PeekRecentTimeoutWithFilter(results, now, ChannelDelayed, ch)
 }
 
-func (q *DelayQueue) PeekRecentDelayedPub(results []Message) (int, error) {
-	return q.PeekRecentTimeoutWithFilter(results, time.Now().UnixNano(), PubDelayed, "")
+func (q *DelayQueue) PeekRecentDelayedPub(now int64, results []Message) (int, error) {
+	return q.PeekRecentTimeoutWithFilter(results, now, PubDelayed, "")
 }
 
 func (q *DelayQueue) PeekAll(results []Message) (int, error) {
