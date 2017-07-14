@@ -924,7 +924,7 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 		// timeout not requeue to defer
 		cnt := c.GetChannelWaitingConfirmCnt()
 		if cnt > c.option.MaxConfirmWin*10 && float64(deCnt) >= float64(cnt)*0.8 {
-			nsqLog.LogDebugf("failed requeue msg %v for two much delayed in memory: %v vs %v", id, deCnt, cnt)
+			nsqLog.Logf("failed requeue msg %v for two much delayed in memory: %v vs %v", id, deCnt, cnt)
 			return fmt.Errorf("failed requeue msg since two much delayed in memory")
 		}
 	}
@@ -1732,7 +1732,7 @@ exit:
 		peekStart := time.Now()
 		cnt, err := delayedQueue.PeekRecentChannelTimeout(tnow, dmsgs, c.GetName())
 		if err == nil {
-			if cnt > MaxWaitingDelayed {
+			if cnt >= len(dmsgs) {
 				checkFast = true
 			}
 
@@ -1782,6 +1782,15 @@ exit:
 		}
 		if waitingDelayCnt >= MaxWaitingDelayed {
 			checkFast = true
+		}
+	} else if waitingDelayCnt >= MaxWaitingDelayed {
+		if nsqLog.Level() >= levellogger.LOG_DETAIL {
+			c.confirmMutex.Lock()
+			nsqLog.LogDebugf("delayed waiting : ")
+			for id, m := range c.delayedMsgs {
+				nsqLog.LogDebugf("delayed waiting : %v, %v", id, m)
+			}
+			c.confirmMutex.Unlock()
 		}
 	}
 
