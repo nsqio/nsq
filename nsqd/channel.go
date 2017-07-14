@@ -19,7 +19,7 @@ import (
 const (
 	resetReaderTimeoutSec = 10
 	MAX_MEM_REQ_TIMES     = 10
-	MaxWaitingDelayed     = 10
+	MaxWaitingDelayed     = 100
 )
 
 var (
