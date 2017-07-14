@@ -404,10 +404,6 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 	if ch.Exiting() {
 		return nsqd.ErrExiting
 	}
-	// pause to avoid the put to end message to be send to
-	// the client before we requeue and update in the flight
-	ch.Pause()
-	defer ch.UnPause()
 	newMsg := oldMsg.GetCopy()
 	newMsg.ID = 0
 	newMsg.DelayedType = nsqd.ChannelDelayed

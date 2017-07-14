@@ -1242,6 +1242,9 @@ func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 	needFullSync := false
 	localLogSegStart, _, _ := logMgr.GetLogStartInfo()
 	countNumIndex, _ := logMgr.ConvertToCountIndex(logIndex, offset)
+
+	coordLog.Infof("topic %v catchup commit log begin :%v at: %v:%v:%v", topicInfo.GetTopicDesp(),
+		localLogSegStart, logIndex, offset, countNumIndex)
 	for offset > localLogSegStart.SegmentStartOffset || logIndex > localLogSegStart.SegmentStartIndex {
 		// if leader changed we abort and wait next time
 		if tc.GetData().GetLeader() != topicInfo.Leader {
@@ -1316,6 +1319,8 @@ func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 				coordLog.Infof("topic %v local commit log match leader %v at: %v", topicInfo.GetTopicDesp(), topicInfo.Leader, leaderLogData)
 				break
 			}
+			coordLog.Infof("topic %v local commit log %v mismatch leader %v with: %v",
+				topicInfo.GetTopicDesp(), *localLogData, topicInfo.Leader, leaderLogData)
 			offset -= int64(GetLogDataSize())
 			if offset < 0 && logIndex > localLogSegStart.SegmentStartIndex {
 				logIndex--

@@ -649,7 +649,9 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 				continue
 			}
 
-			m, err := DecodeDelayedMessage(v, q.isExt)
+			buf := make([]byte, len(v))
+			copy(buf, v)
+			m, err := DecodeDelayedMessage(buf, q.isExt)
 			if err != nil {
 				nsqLog.LogErrorf("failed to decode delayed message: %v, %v", m, err)
 				continue
@@ -777,7 +779,9 @@ func (q *DelayQueue) GetOldestConsumedState(chList []string, includeOthers bool)
 				if delayedCh != origCh {
 					continue
 				}
-				keyList = append(keyList, k)
+				ck := make([]byte, len(k))
+				copy(ck, k)
+				keyList = append(keyList, ck)
 				break
 			}
 			return nil
