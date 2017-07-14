@@ -726,11 +726,16 @@ func (n *NSQD) channels() []*Channel {
 	return channels
 }
 
+type responseData struct {
+	isDirty       bool
+	needCheckFast bool
+}
+
 // resizePool adjusts the size of the pool of queueScanWorker goroutines
 //
 // 	1 <= pool <= min(num * 0.25, QueueScanWorkerPoolMax)
 //
-func (n *NSQD) resizePool(num int, workCh chan *Channel, responseCh chan bool, closeCh chan int) {
+func (n *NSQD) resizePool(num int, workCh chan *Channel, responseCh chan responseData, closeCh chan int) {
 	idealPoolSize := int(float64(num) * 0.25)
 	if idealPoolSize < 1 {
 		idealPoolSize = 1
@@ -756,16 +761,13 @@ func (n *NSQD) resizePool(num int, workCh chan *Channel, responseCh chan bool, c
 
 // queueScanWorker receives work (in the form of a channel) from queueScanLoop
 // and processes the in-flight queues
-func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, closeCh chan int) {
+func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan responseData, closeCh chan int) {
 	for {
 		select {
 		case c := <-workCh:
 			now := time.Now().UnixNano()
-			dirty := false
-			if c.processInFlightQueue(now) {
-				dirty = true
-			}
-			responseCh <- dirty
+			dirty, checkFast := c.processInFlightQueue(now)
+			responseCh <- responseData{isDirty: dirty, needCheckFast: checkFast}
 		case <-closeCh:
 			return
 		}
@@ -787,19 +789,34 @@ func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, close
 // the loop continues without sleep.
 func (n *NSQD) queueScanLoop() {
 	workCh := make(chan *Channel, n.GetOpts().QueueScanSelectionCount)
-	responseCh := make(chan bool, n.GetOpts().QueueScanSelectionCount)
+	responseCh := make(chan responseData, n.GetOpts().QueueScanSelectionCount)
 	closeCh := make(chan int)
 
 	workTicker := time.NewTicker(n.GetOpts().QueueScanInterval)
 	refreshTicker := time.NewTicker(n.GetOpts().QueueScanRefreshInterval)
 	flushTicker := time.NewTicker(n.GetOpts().SyncTimeout)
 
+	fastTimer := time.NewTimer(n.GetOpts().QueueScanInterval)
+
 	channels := n.channels()
 	n.resizePool(len(channels), workCh, responseCh, closeCh)
 	flushCnt := 0
+	var fastCh <-chan time.Time
+	checkFast := false
 
 	for {
+		if checkFast {
+			fastTimer.Reset(n.GetOpts().QueueScanInterval / 100)
+			fastCh = fastTimer.C
+			checkFast = false
+		} else {
+			fastCh = nil
+		}
 		select {
+		case <-fastCh:
+			if len(channels) == 0 {
+				continue
+			}
 		case <-workTicker.C:
 			if len(channels) == 0 {
 				continue
@@ -827,14 +844,23 @@ func (n *NSQD) queueScanLoop() {
 		}
 
 		numDirty := 0
+		numFast := 0
 		for i := 0; i < num; i++ {
-			if <-responseCh {
+			r := <-responseCh
+			if r.isDirty {
 				numDirty++
+			}
+			if r.needCheckFast {
+				numFast++
 			}
 		}
 
 		if float64(numDirty)/float64(num) > n.GetOpts().QueueScanDirtyPercent {
 			goto loop
+		}
+
+		if numFast > 0 {
+			checkFast = true
 		}
 	}
 
@@ -843,6 +869,7 @@ exit:
 	close(closeCh)
 	workTicker.Stop()
 	refreshTicker.Stop()
+	fastTimer.Stop()
 }
 func (n *NSQD) IsAuthEnabled() bool {
 	return len(n.GetOpts().AuthHTTPAddresses) != 0
