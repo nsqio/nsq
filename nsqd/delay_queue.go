@@ -649,7 +649,9 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 				continue
 			}
 
-			m, err := DecodeDelayedMessage(v, q.isExt)
+			buf := make([]byte, len(v))
+			copy(buf, v)
+			m, err := DecodeDelayedMessage(buf, q.isExt)
 			if err != nil {
 				nsqLog.LogErrorf("failed to decode delayed message: %v, %v", m, err)
 				continue
@@ -672,12 +674,12 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 	return idx, err
 }
 
-func (q *DelayQueue) PeekRecentChannelTimeout(results []Message, ch string) (int, error) {
-	return q.PeekRecentTimeoutWithFilter(results, time.Now().UnixNano(), ChannelDelayed, ch)
+func (q *DelayQueue) PeekRecentChannelTimeout(now int64, results []Message, ch string) (int, error) {
+	return q.PeekRecentTimeoutWithFilter(results, now, ChannelDelayed, ch)
 }
 
-func (q *DelayQueue) PeekRecentDelayedPub(results []Message) (int, error) {
-	return q.PeekRecentTimeoutWithFilter(results, time.Now().UnixNano(), PubDelayed, "")
+func (q *DelayQueue) PeekRecentDelayedPub(now int64, results []Message) (int, error) {
+	return q.PeekRecentTimeoutWithFilter(results, now, PubDelayed, "")
 }
 
 func (q *DelayQueue) PeekAll(results []Message) (int, error) {
@@ -777,7 +779,9 @@ func (q *DelayQueue) GetOldestConsumedState(chList []string, includeOthers bool)
 				if delayedCh != origCh {
 					continue
 				}
-				keyList = append(keyList, k)
+				ck := make([]byte, len(k))
+				copy(ck, k)
+				keyList = append(keyList, ck)
 				break
 			}
 			return nil
