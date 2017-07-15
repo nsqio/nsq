@@ -44,14 +44,14 @@ func (self *LogMsgTracer) Start() {
 }
 
 func (self *LogMsgTracer) TracePub(topic string, part int, pubMethod string, traceID uint64, msg *Message, diskOffset BackendOffset, currentCnt int64) {
-	nsqLog.Logf("[TRACE] topic %v-%v trace id %v: message %v put %v at offset: %v, current count: %v at time %v, delayed: %v", topic, part, msg.TraceID,
-		msg.ID, pubMethod, diskOffset, currentCnt, time.Now().UnixNano(), msg.DelayedTs)
+	nsqLog.Logf("[TRACE] topic %v-%v trace id %v: message %v( %v) put %v at offset: %v, current count: %v at time %v, delayed: %v", topic, part, msg.TraceID,
+		msg.ID, msg.DelayedOrigID, pubMethod, diskOffset, currentCnt, time.Now().UnixNano(), msg.DelayedTs)
 }
 
 func (self *LogMsgTracer) TraceSub(topic string, channel string, state string, traceID uint64, msg *Message, clientID string) {
-	nsqLog.Logf("[TRACE] topic %v channel %v trace id %v: message %v (offset: %v) consume state %v from client %v(%v) at time: %v, attempt: %v",
+	nsqLog.Logf("[TRACE] topic %v channel %v trace id %v: message %v (offset: %v, pri:%v) consume state %v from client %v(%v) at time: %v, attempt: %v",
 		topic, channel, msg.TraceID,
-		msg.ID, msg.Offset, state, clientID, msg.GetClientID(), time.Now().UnixNano(), msg.Attempts)
+		msg.ID, msg.Offset, msg.pri, state, clientID, msg.GetClientID(), time.Now().UnixNano(), msg.Attempts)
 }
 
 // this tracer will send the trace info to remote server for each seconds
@@ -88,8 +88,8 @@ func (self *RemoteMsgTracer) TracePub(topic string, part int, pubMethod string, 
 	traceItem[0].Action = pubMethod
 	detail.SetExtraInfo(traceItem[:])
 
-	l := fmt.Sprintf("[TRACE] topic %v-%v trace id %v: message %v put at offset: %v, current count: %v at time %v, delayed to %v", topic, part, msg.TraceID,
-		msg.ID, diskOffset, currentCnt, now, msg.DelayedTs)
+	l := fmt.Sprintf("[TRACE] topic %v-%v trace id %v: message %v( %v) put %v at offset: %v, current count: %v at time %v, delayed to %v", topic, part, msg.TraceID,
+		msg.ID, msg.DelayedOrigID, pubMethod, diskOffset, currentCnt, now, msg.DelayedTs)
 	err := self.remoteLogger.Info(l, detail)
 	if err != nil || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		if err != nil {
@@ -111,8 +111,8 @@ func (self *RemoteMsgTracer) TraceSub(topic string, channel string, state string
 	detail := flume_log.NewDetailInfo(traceModule)
 	detail.SetExtraInfo(traceItem[:])
 
-	l := fmt.Sprintf("[TRACE] topic %v channel %v trace id %v: message %v (offset: %v) consume state %v from client %v(%v) at time: %v, attempt: %v",
-		topic, channel, msg.TraceID, msg.ID, msg.Offset, state, clientID, msg.GetClientID(), time.Now().UnixNano(), msg.Attempts)
+	l := fmt.Sprintf("[TRACE] topic %v channel %v trace id %v: message %v (offset: %v, pri:%v) consume state %v from client %v(%v) at time: %v, attempt: %v",
+		topic, channel, msg.TraceID, msg.ID, msg.Offset, msg.pri, state, clientID, msg.GetClientID(), time.Now().UnixNano(), msg.Attempts)
 	err := self.remoteLogger.Info(l, detail)
 	if err != nil || nsqLog.Level() >= levellogger.LOG_DEBUG {
 		if err != nil {

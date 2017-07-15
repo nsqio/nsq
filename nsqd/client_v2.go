@@ -131,6 +131,9 @@ func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *Clien
 	if conn != nil {
 		identifier = conn.RemoteAddr().String()
 	}
+	if tcpC, ok := conn.(*net.TCPConn); ok {
+		tcpC.SetNoDelay(true)
+	}
 
 	c := &ClientV2{
 		ID:      id,
@@ -163,6 +166,9 @@ func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *Clien
 		HeartbeatInterval: opts.ClientTimeout / 2,
 		tlsConfig:         tls,
 		PubTimeout:        time.NewTimer(time.Second * 5),
+	}
+	if c.OutputBufferTimeout > opts.MaxOutputBufferTimeout {
+		c.OutputBufferTimeout = opts.MaxOutputBufferTimeout
 	}
 	c.LenSlice = c.lenBuf[:]
 	c.remoteAddr = identifier

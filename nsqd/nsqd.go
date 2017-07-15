@@ -17,6 +17,7 @@ import (
 	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/dirlock"
 	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/statsd"
 	"github.com/absolute8511/nsq/internal/util"
@@ -806,7 +807,7 @@ func (n *NSQD) queueScanLoop() {
 
 	for {
 		if checkFast {
-			fastTimer.Reset(n.GetOpts().QueueScanInterval / 100)
+			fastTimer.Reset(n.GetOpts().QueueScanInterval/100 + time.Millisecond)
 			fastCh = fastTimer.C
 			checkFast = false
 		} else {
@@ -816,6 +817,9 @@ func (n *NSQD) queueScanLoop() {
 		case <-fastCh:
 			if len(channels) == 0 {
 				continue
+			}
+			if nsqLog.Level() >= levellogger.LOG_DETAIL {
+				nsqLog.Logf("QUEUESCAN wakeup fast")
 			}
 		case <-workTicker.C:
 			if len(channels) == 0 {

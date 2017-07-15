@@ -138,11 +138,12 @@ func (c *context) PutMessageObj(topic *nsqd.Topic,
 		if msg.DelayedType >= nsqd.MinDelayedType {
 			topic.Lock()
 			dq, err := topic.GetOrCreateDelayedQueueNoLock(nil)
-			topic.Unlock()
 			if err == nil {
 				id, offset, writeBytes, dend, err := dq.PutDelayMessage(msg)
+				topic.Unlock()
 				return id, offset, writeBytes, dend, err
 			}
+			topic.Unlock()
 			return 0, 0, 0, nil, err
 		}
 		return topic.PutMessage(msg)
@@ -415,6 +416,8 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 
 	newMsg.DelayedOrigID = oldMsg.ID
 	newMsg.DelayedChannel = ch.GetName()
+
+	nsqd.NsqLogger().LogDebugf("requeue to end with delayed %v message: %v", timeoutDuration, oldMsg.ID)
 	_, _, _, _, putErr := c.PutMessageObj(topic, newMsg)
 	if putErr != nil {
 		nsqd.NsqLogger().Logf("req message %v to end failed, channel %v, put error: %v ",

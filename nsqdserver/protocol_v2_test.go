@@ -214,6 +214,9 @@ func recvNextMsgAndCheckExt(t *testing.T, conn io.ReadWriter,
 		resp, err := nsq.ReadResponse(conn)
 		if err != nil {
 			t.Logf("read response err: %v", err.Error())
+			if strings.Contains(err.Error(), "closed") || strings.Contains(err.Error(), "EOF") {
+				break
+			}
 		}
 		test.Nil(t, err)
 		frameType, data, err := nsq.UnpackResponse(resp)
@@ -245,6 +248,7 @@ func recvNextMsgAndCheckExt(t *testing.T, conn io.ReadWriter,
 		}
 		return msgOut
 	}
+	return nil
 }
 
 func recvNextMsgAndCheckWithCloseChan(t *testing.T, conn io.ReadWriter,
@@ -2165,6 +2169,136 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	test.Equal(t, true, putCnt <= finCnt)
 	test.Equal(t, true, recvCnt-finCnt > 10)
 	time.Sleep(time.Second)
+}
+
+func TestDelayManyMessagesToQueueEnd(t *testing.T) {
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	opts.LogLevel = 1
+	if testing.Verbose() {
+		opts.LogLevel = 4
+		nsqdNs.SetLogger(opts.Logger)
+	}
+	opts.SyncEvery = 1
+	opts.QueueScanInterval = time.Millisecond * 10
+	opts.MsgTimeout = time.Second * 2
+	opts.MaxConfirmWin = 50
+	opts.ReqToEndThreshold = nsqdNs.MaxWaitingDelayed*time.Millisecond*100 + time.Millisecond*800
+	opts.MaxReqTimeout = time.Second*30 + opts.ReqToEndThreshold*3
+	opts.MaxOutputBufferTimeout = time.Millisecond
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	topicName := "test_requeue_delay" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topic.GetChannel("ch")
+
+	putCnt := nsqdNs.MaxWaitingDelayed + 100
+	recvCnt := int32(0)
+	reqCnt := int32(0)
+	finCnt := int32(0)
+	myRand := rand.New(rand.NewSource(time.Now().Unix()))
+	allmsgs := make(map[int]bool)
+	for i := 0; i < putCnt; i++ {
+		if i%3 == 0 {
+			dms := opts.ReqToEndThreshold/2 + time.Duration(myRand.Intn(int(opts.ReqToEndThreshold*2)))
+			delayTs := int(time.Now().Add(dms).UnixNano())
+			delayBody := []byte(strconv.Itoa(delayTs))
+			msg := nsqdNs.NewMessage(0, delayBody)
+			topic.PutMessage(msg)
+			allmsgs[int(msg.ID)] = true
+		} else {
+			msg := nsqdNs.NewMessage(0, []byte("nodelay"))
+			topic.PutMessage(msg)
+			allmsgs[int(msg.ID)] = true
+		}
+	}
+	topic.ForceFlush()
+
+	gcnt := 5
+	msgChan := make(chan nsqdNs.Message, 10)
+	for i := 0; i < gcnt; i++ {
+		go func() {
+			conn, err := mustConnectNSQD(tcpAddr)
+			test.Equal(t, err, nil)
+			defer conn.Close()
+			conn.(*net.TCPConn).SetNoDelay(true)
+			identify(t, conn, map[string]interface{}{
+				"output_buffer_timeout": opts.MaxOutputBufferTimeout / time.Millisecond,
+			}, frameTypeResponse)
+			sub(t, conn, topicName, "ch")
+			_, err = nsq.Ready(10).WriteTo(conn)
+			test.Equal(t, err, nil)
+
+			for {
+				msgOut := recvNextMsgAndCheck(t, conn, 0, 0, false)
+				if msgOut == nil {
+					if atomic.LoadInt32(&finCnt) < int32(putCnt) {
+						t.Errorf("\033error recv: %v, %v, %v", atomic.LoadInt32(&recvCnt),
+							atomic.LoadInt32(&reqCnt), atomic.LoadInt32(&finCnt))
+						test.NotNil(t, msgOut)
+					}
+					break
+				}
+				if atomic.AddInt32(&recvCnt, 1) >= int32(putCnt) {
+					t.Logf("recving: %v, %v, %v", recvCnt, reqCnt, finCnt)
+				}
+				if len(msgOut.Body) >= 10 {
+					delayTs, err := strconv.Atoi(string(msgOut.Body))
+					test.Nil(t, err)
+					now := int(time.Now().UnixNano())
+					if delayTs > now+int(time.Millisecond) {
+						if msgOut.Attempts > 1 {
+							t.Errorf("\033[31m got delayed message early: %v (id %v), now: %v\033[39m\n\n", string(msgOut.Body), msgOut.ID, now)
+						}
+						nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), time.Duration(delayTs-now)).WriteTo(conn)
+						atomic.AddInt32(&reqCnt, 1)
+						continue
+					} else if now-delayTs > int(opts.QueueScanInterval*2+20*time.Millisecond) {
+						if msgOut.Attempts > 1 {
+							t.Errorf("\033[31m got delayed message too late: %v (id %v), now: %v\033[39m\n\n", string(msgOut.Body), msgOut.ID, now)
+						} else if now-delayTs > int(opts.QueueScanInterval*2+time.Second) {
+							t.Errorf("\033[31m got delayed message too late: %v (id %v), now: %v\033[39m\n\n", string(msgOut.Body), msgOut.ID, now)
+						}
+					}
+				} else {
+					test.Equal(t, "nodelay", string(msgOut.Body))
+				}
+				nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
+				newCnt := atomic.AddInt32(&finCnt, 1)
+				msgChan <- *msgOut
+				if newCnt >= int32(putCnt) {
+					break
+				}
+			}
+		}()
+	}
+	done := false
+	for !done {
+		select {
+		case m := <-msgChan:
+			delete(allmsgs, int(m.ID))
+			if len(allmsgs) == 0 {
+				t.Logf("done since all msgs is finished")
+				done = true
+				break
+			}
+			if atomic.LoadInt32(&finCnt) >= int32(putCnt) {
+				done = true
+				break
+			}
+		case <-time.After(time.Second*10 + opts.ReqToEndThreshold*3):
+			t.Errorf("\033[31m timeout recv: %v, %v, %v\033[39m\n\n", atomic.LoadInt32(&recvCnt),
+				atomic.LoadInt32(&reqCnt), atomic.LoadInt32(&finCnt))
+			done = true
+			break
+		}
+	}
+	t.Logf("final: %v, %v, %v", recvCnt, reqCnt, finCnt)
+	test.Equal(t, recvCnt, finCnt+reqCnt)
+	test.Equal(t, 0, len(allmsgs))
 }
 
 func TestTouch(t *testing.T) {

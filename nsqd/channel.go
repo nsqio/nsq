@@ -924,14 +924,19 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 		// timeout not requeue to defer
 		cnt := c.GetChannelWaitingConfirmCnt()
 		if cnt > c.option.MaxConfirmWin*10 && float64(deCnt) >= float64(cnt)*0.8 {
-			nsqLog.Logf("failed requeue msg %v for two much delayed in memory: %v vs %v", id, deCnt, cnt)
-			return fmt.Errorf("failed requeue msg since two much delayed in memory")
+			nsqLog.Logf("failed requeue msg %v for too much delayed in memory: %v vs %v", id, deCnt, cnt)
+			return fmt.Errorf("failed requeue msg since too much delayed in memory")
 		}
 	}
 
 	atomic.AddInt64(&c.deferredCount, 1)
 	msg.pri = newTimeout.UnixNano()
 	atomic.AddInt32(&msg.deferredCnt, 1)
+
+	if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+		nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "REQ_DEFER", msg.TraceID, msg, clientAddr)
+	}
+
 	// defered message do not belong to any client
 	if msg.belongedConsumer != nil {
 		msg.belongedConsumer.RequeuedMessage()
@@ -1754,12 +1759,18 @@ exit:
 								oldMsg2, m)
 						}
 					} else {
+						c.delayedMsgs[m.DelayedOrigID] = m
+						waitingDelayCnt = len(c.delayedMsgs)
+
 						tmpID := m.ID
 						m.ID = m.DelayedOrigID
 						m.DelayedOrigID = tmpID
 
-						if tnow > m.DelayedTs+3 {
+						if tnow > m.DelayedTs+int64(time.Millisecond*3) {
 							nsqLog.LogDebugf("delayed is too late now %v for message: %v, peeking time: %v", tnow, m, peekStart)
+						}
+						if tnow < m.DelayedTs {
+							nsqLog.LogDebugf("delayed is too early now %v for message: %v, peeking time: %v", tnow, m, peekStart)
 						}
 						if m.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
 							nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DELAY_QUEUE_TIMEOUT", m.TraceID, &m, "")
@@ -1769,8 +1780,6 @@ exit:
 							m.belongedConsumer.RequeuedMessage()
 							m.belongedConsumer = nil
 						}
-						c.delayedMsgs[m.DelayedOrigID] = m
-						waitingDelayCnt = len(c.delayedMsgs)
 
 						atomic.StoreInt32(&m.deferredCnt, 0)
 						c.doRequeue(&m, "")
