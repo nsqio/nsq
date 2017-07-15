@@ -1195,10 +1195,13 @@ func (p *protocolV2) internalCreateTopic(client *nsqd.ClientV2, params [][]byte)
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION", "partition should not less than 0")
 	}
 
-	ext, err := strconv.ParseBool(string(params[3]))
-	if err != nil {
-		return nil, protocol.NewFatalClientErr(nil, "E_BAD_EXT",
-			fmt.Sprintf("topic ext is not valid: %v", err))
+	var ext bool
+	if len(params) >= 4 {
+		ext, err = strconv.ParseBool(string(params[3]))
+		if err != nil {
+			return nil, protocol.NewFatalClientErr(nil, "E_BAD_EXT",
+				fmt.Sprintf("topic ext is not valid: %v", err))
+		}
 	}
 
 	if p.ctx.nsqdCoord != nil {
