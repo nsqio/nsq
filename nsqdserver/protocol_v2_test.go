@@ -2256,10 +2256,10 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 						nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), time.Duration(delayTs-now)).WriteTo(conn)
 						atomic.AddInt32(&reqCnt, 1)
 						continue
-					} else if now-delayTs > int(opts.QueueScanInterval*2+20*time.Millisecond) {
+					} else if now-delayTs > int(opts.QueueScanInterval*3+20*time.Millisecond) {
 						if msgOut.Attempts > 1 {
 							t.Errorf("\033[31m got delayed message too late: %v (id %v), now: %v\033[39m\n\n", string(msgOut.Body), msgOut.ID, now)
-						} else if now-delayTs > int(opts.QueueScanInterval*2+time.Second) {
+						} else if now-delayTs > int(opts.QueueScanInterval*3+time.Second) {
 							t.Errorf("\033[31m got delayed message too late: %v (id %v), now: %v\033[39m\n\n", string(msgOut.Body), msgOut.ID, now)
 						}
 					}

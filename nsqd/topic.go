@@ -84,11 +84,10 @@ type Topic struct {
 	flushChan   chan int
 	exitFlag    int32
 
-	ephemeral      bool
-	deleteCallback func(*Topic)
-	deleter        sync.Once
+	ephemeral bool
+	deleter   sync.Once
 
-	notifyCall      func(v interface{})
+	nsqdNotify      INsqdNotify
 	option          *Options
 	msgIDCursor     MsgIDGenerator
 	defaultIDSeq    uint64
@@ -107,7 +106,6 @@ type Topic struct {
 	pubWaitingChan  PubInfoChan
 	quitChan        chan struct{}
 	pubLoopFunc     func(v *Topic)
-	reqToEndCB      ReqToEndFunc
 	wg              sync.WaitGroup
 
 	delayedQueue atomic.Value
@@ -128,17 +126,15 @@ func GetTopicFullName(topic string, part int) string {
 }
 
 func NewTopic(topicName string, part int, opt *Options,
-	deleteCallback func(*Topic), writeDisabled int32,
-	notify func(v interface{}), loopFunc func(v *Topic),
-	reqToEnd ReqToEndFunc) *Topic {
-	return NewTopicWithExt(topicName, part, false, opt, deleteCallback, writeDisabled, notify, loopFunc, reqToEnd)
+	writeDisabled int32,
+	notify INsqdNotify, loopFunc func(v *Topic)) *Topic {
+	return NewTopicWithExt(topicName, part, false, opt, writeDisabled, notify, loopFunc)
 }
 
 // Topic constructor
 func NewTopicWithExt(topicName string, part int, ext bool, opt *Options,
-	deleteCallback func(*Topic), writeDisabled int32,
-	notify func(v interface{}), loopFunc func(v *Topic),
-	reqToEnd ReqToEndFunc) *Topic {
+	writeDisabled int32,
+	notify INsqdNotify, loopFunc func(v *Topic)) *Topic {
 	if part > MAX_TOPIC_PARTITION {
 		return nil
 	}
@@ -148,15 +144,13 @@ func NewTopicWithExt(topicName string, part int, ext bool, opt *Options,
 		channelMap:     make(map[string]*Channel),
 		flushChan:      make(chan int, 10),
 		option:         opt,
-		deleteCallback: deleteCallback,
 		dynamicConf:    &TopicDynamicConf{SyncEvery: opt.SyncEvery, AutoCommit: 1},
 		putBuffer:      bytes.Buffer{},
-		notifyCall:     notify,
+		nsqdNotify:     notify,
 		writeDisabled:  writeDisabled,
 		pubWaitingChan: make(PubInfoChan, 200),
 		quitChan:       make(chan struct{}),
 		pubLoopFunc:    loopFunc,
-		reqToEndCB:     reqToEnd,
 	}
 	if ext {
 		t.setExt()
@@ -202,7 +196,7 @@ func NewTopicWithExt(topicName string, part int, ext bool, opt *Options,
 		return nil
 	}
 	t.detailStats = NewDetailStatsInfo(t.TotalDataSize(), t.getHistoryStatsFileName())
-	t.notifyCall(t)
+	t.nsqdNotify.NotifyStateChanged(t)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	if t.pubLoopFunc != nil {
@@ -337,7 +331,7 @@ func (t *Topic) MarkAsRemoved() (string, error) {
 	nsqLog.Logf("TOPIC(%s): deleting", t.GetFullName())
 	// since we are explicitly deleting a topic (not just at system exit time)
 	// de-register this from the lookupd
-	t.notifyCall(t)
+	t.nsqdNotify.NotifyStateChanged(t)
 
 	t.channelLock.Lock()
 	for _, channel := range t.channelMap {
@@ -703,7 +697,7 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		}
 		channel = NewChannel(t.GetTopicName(), t.GetTopicPart(), channelName, readEnd,
 			t.option, deleteCallback, atomic.LoadInt32(&t.writeDisabled),
-			t.notifyCall, t.reqToEndCB, ext)
+			t.nsqdNotify, ext)
 
 		channel.UpdateQueueEnd(readEnd, false)
 		channel.SetDelayedQueue(t.GetDelayedQueue())
@@ -751,7 +745,7 @@ func (t *Topic) CloseExistingChannel(channelName string, deleteData bool) error 
 	}
 
 	if numChannels == 0 && t.ephemeral == true {
-		go t.deleter.Do(func() { t.deleteCallback(t) })
+		go t.deleter.Do(func() { t.nsqdNotify.NotifyDeleteTopic(t) })
 	}
 
 	return nil
@@ -1023,7 +1017,7 @@ func (t *Topic) exit(deleted bool) error {
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
-		t.notifyCall(t)
+		t.nsqdNotify.NotifyStateChanged(t)
 	} else {
 		nsqLog.Logf("TOPIC(%s): closing", t.GetFullName())
 	}
@@ -1093,7 +1087,7 @@ func (t *Topic) DisableForSlave() {
 	}
 	t.channelLock.RUnlock()
 	// notify de-register from lookup
-	t.notifyCall(t)
+	t.nsqdNotify.NotifyStateChanged(t)
 }
 
 func (t *Topic) EnableForMaster() {
@@ -1112,7 +1106,7 @@ func (t *Topic) EnableForMaster() {
 	t.channelLock.RUnlock()
 	atomic.StoreInt32(&t.writeDisabled, 0)
 	// notify re-register to lookup
-	t.notifyCall(t)
+	t.nsqdNotify.NotifyStateChanged(t)
 }
 
 func (t *Topic) Empty() error {

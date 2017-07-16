@@ -48,7 +48,15 @@ const (
 	FLUSH_DISTANCE = 4
 )
 
+type INsqdNotify interface {
+	NotifyDeleteTopic(*Topic)
+	NotifyStateChanged(v interface{})
+	ReqToEnd(*Channel, *Message, time.Duration) error
+	NotifyScanDelayed(*Channel)
+}
+
 type ReqToEndFunc func(*Channel, *Message, time.Duration) error
+
 type NSQD struct {
 	sync.RWMutex
 
@@ -69,11 +77,12 @@ type NSQD struct {
 	exitChan             chan int
 	waitGroup            util.WaitGroupWrapper
 
-	ci          *clusterinfo.ClusterInfo
-	exiting     bool
-	persisting  int32
-	pubLoopFunc func(t *Topic)
-	reqToEndCB  ReqToEndFunc
+	ci              *clusterinfo.ClusterInfo
+	exiting         bool
+	persisting      int32
+	pubLoopFunc     func(t *Topic)
+	reqToEndCB      ReqToEndFunc
+	scanTriggerChan chan *Channel
 }
 
 func New(opts *Options) *NSQD {
@@ -98,6 +107,7 @@ func New(opts *Options) *NSQD {
 		OptsNotificationChan: make(chan struct{}, 1),
 		ci:                   clusterinfo.New(opts.Logger, http_api.NewClient(nil)),
 		dl:                   dirlock.New(dataPath),
+		scanTriggerChan:      make(chan *Channel, 1),
 	}
 	n.SwapOpts(opts)
 
@@ -509,16 +519,13 @@ func (n *NSQD) internalGetTopic(topicName string, part int, ext bool, disabled i
 	if part < 0 {
 		part = 0
 	}
-	deleteCallback := func(t *Topic) {
-		n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
-	}
 	var t *Topic
 	if !ext {
-		t = NewTopic(topicName, part, n.GetOpts(), deleteCallback, disabled, n.Notify,
-			n.pubLoopFunc, n.reqToEndCB)
+		t = NewTopic(topicName, part, n.GetOpts(), disabled, n,
+			n.pubLoopFunc)
 	} else {
-		t = NewTopicWithExt(topicName, part, true, n.GetOpts(), deleteCallback, disabled, n.Notify,
-			n.pubLoopFunc, n.reqToEndCB)
+		t = NewTopicWithExt(topicName, part, true, n.GetOpts(), disabled, n,
+			n.pubLoopFunc)
 	}
 	if t == nil {
 		nsqLog.Errorf("TOPIC(%s): create failed", topicName)
@@ -586,11 +593,8 @@ func (n *NSQD) ForceDeleteTopicData(name string, partition int) error {
 	if err != nil {
 		// not exist, create temp for check
 		n.Lock()
-		deleteCallback := func(t *Topic) {
-			// do nothing
-		}
-		topic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify,
-			n.pubLoopFunc, n.reqToEndCB)
+		topic = NewTopic(name, partition, n.GetOpts(), 1, n,
+			n.pubLoopFunc)
 		n.Unlock()
 		if topic == nil {
 			return errors.New("failed to init new topic")
@@ -606,10 +610,8 @@ func (n *NSQD) CheckMagicCode(name string, partition int, code int64, tryFix boo
 	if err != nil {
 		// not exist, create temp for check
 		n.Lock()
-		deleteCallback := func(t *Topic) {
-		}
-		localTopic = NewTopic(name, partition, n.GetOpts(), deleteCallback, 1, n.Notify,
-			n.pubLoopFunc, n.reqToEndCB)
+		localTopic = NewTopic(name, partition, n.GetOpts(), 1, n,
+			n.pubLoopFunc)
 		n.Unlock()
 		if localTopic == nil {
 			return "", errors.New("failed to init new topic")
@@ -688,7 +690,23 @@ func (n *NSQD) flushAll(all bool, flushCnt int) {
 	}
 }
 
-func (n *NSQD) Notify(v interface{}) {
+func (n *NSQD) ReqToEnd(ch *Channel, msg *Message, t time.Duration) error {
+	go n.reqToEndCB(ch, msg, t)
+	return nil
+}
+
+func (n *NSQD) NotifyDeleteTopic(t *Topic) {
+	n.DeleteExistingTopic(t.GetTopicName(), t.GetTopicPart())
+}
+
+func (n *NSQD) NotifyScanDelayed(ch *Channel) {
+	select {
+	case n.scanTriggerChan <- ch:
+	default:
+	}
+}
+
+func (n *NSQD) NotifyStateChanged(v interface{}) {
 	// since the in-memory metadata is incomplete,
 	// should not persist metadata while loading it.
 	// nsqd will call `PersistMetadata` it after loading
@@ -814,6 +832,21 @@ func (n *NSQD) queueScanLoop() {
 			fastCh = nil
 		}
 		select {
+		case triggedCh := <-n.scanTriggerChan:
+			if nsqLog.Level() >= levellogger.LOG_DETAIL {
+				nsqLog.Logf("QUEUESCAN wakeup by scan trigger: %v", triggedCh.GetName())
+			}
+			select {
+			case workCh <- triggedCh:
+			case <-n.exitChan:
+				goto exit
+			}
+			select {
+			case <-responseCh:
+			case <-n.exitChan:
+				goto exit
+			}
+			continue
 		case <-fastCh:
 			if len(channels) == 0 {
 				continue
@@ -844,18 +877,26 @@ func (n *NSQD) queueScanLoop() {
 
 	loop:
 		for _, i := range util.UniqRands(num, len(channels)) {
-			workCh <- channels[i]
+			select {
+			case workCh <- channels[i]:
+			case <-n.exitChan:
+				goto exit
+			}
 		}
 
 		numDirty := 0
 		numFast := 0
 		for i := 0; i < num; i++ {
-			r := <-responseCh
-			if r.isDirty {
-				numDirty++
-			}
-			if r.needCheckFast {
-				numFast++
+			select {
+			case r := <-responseCh:
+				if r.isDirty {
+					numDirty++
+				}
+				if r.needCheckFast {
+					numFast++
+				}
+			case <-n.exitChan:
+				goto exit
 			}
 		}
 
@@ -875,6 +916,7 @@ exit:
 	refreshTicker.Stop()
 	fastTimer.Stop()
 }
+
 func (n *NSQD) IsAuthEnabled() bool {
 	return len(n.GetOpts().AuthHTTPAddresses) != 0
 }

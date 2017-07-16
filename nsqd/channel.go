@@ -74,7 +74,7 @@ type Channel struct {
 	topicName  string
 	topicPart  int
 	name       string
-	notifyCall func(v interface{})
+	nsqdNotify INsqdNotify
 	option     *Options
 
 	backend BackendQueueReader
@@ -126,7 +126,6 @@ type Channel struct {
 	processResetReaderTime int64
 	waitingProcessMsgTs    int64
 	waitingDeliveryState   int32
-	requeueMsgCb           ReqToEndFunc
 	delayedLock            sync.RWMutex
 	delayedQueue           *DelayQueue
 	delayedMsgs            map[MessageID]Message
@@ -135,7 +134,7 @@ type Channel struct {
 // NewChannel creates a new instance of the Channel type and returns a pointer
 func NewChannel(topicName string, part int, channelName string, chEnd BackendQueueEnd, opt *Options,
 	deleteCallback func(*Channel), consumeDisabled int32,
-	notify func(v interface{}), reqToEndCB ReqToEndFunc, ext int32) *Channel {
+	notify INsqdNotify, ext int32) *Channel {
 
 	c := &Channel{
 		topicName:          topicName,
@@ -156,9 +155,8 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		endUpdatedChan:     make(chan bool, 1),
 		deleteCallback:     deleteCallback,
 		option:             opt,
-		notifyCall:         notify,
+		nsqdNotify:         notify,
 		consumeDisabled:    consumeDisabled,
-		requeueMsgCb:       reqToEndCB,
 		delayedMsgs:        make(map[MessageID]Message, MaxWaitingDelayed),
 		Ext:                ext,
 	}
@@ -194,7 +192,7 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 
 	go c.messagePump()
 
-	c.notifyCall(c)
+	c.nsqdNotify.NotifyStateChanged(c)
 
 	return c
 }
@@ -426,7 +424,7 @@ func (c *Channel) exit(deleted bool) error {
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
-		c.notifyCall(c)
+		c.nsqdNotify.NotifyStateChanged(c)
 	} else {
 		nsqLog.Logf("CHANNEL(%s): closing", c.name)
 	}
@@ -651,6 +649,9 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 	if msg.DelayedOrigID > 0 && msg.DelayedType == ChannelDelayed && c.GetDelayedQueue() != nil {
 		delete(c.delayedMsgs, msg.ID)
 		c.GetDelayedQueue().ConfirmedMessage(msg)
+		if len(c.delayedMsgs) < MaxWaitingDelayed/2 {
+			c.nsqdNotify.NotifyScanDelayed(c)
+		}
 		return 0, 0, true
 	}
 	curConfirm := c.GetConfirmed()
@@ -1183,7 +1184,7 @@ func (c *Channel) DisableConsume(disable bool) {
 			}
 		}
 	}
-	c.notifyCall(c)
+	c.nsqdNotify.NotifyStateChanged(c)
 }
 
 func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *bool, origReadChan chan ReadResult) error {
@@ -1647,9 +1648,7 @@ func (c *Channel) processInFlightQueue(tnow int64) (bool, bool) {
 							flightCnt, atomic.LoadInt32(&c.waitingConfirm), confirmed)
 
 						copyMsg := blockingMsg.GetCopy()
-						go func() {
-							c.requeueMsgCb(c, copyMsg, time.Duration(copyMsg.pri-time.Now().UnixNano()))
-						}()
+						c.nsqdNotify.ReqToEnd(c, copyMsg, time.Duration(copyMsg.pri-time.Now().UnixNano()))
 					}
 				}
 			}
@@ -1766,7 +1765,7 @@ exit:
 						m.ID = m.DelayedOrigID
 						m.DelayedOrigID = tmpID
 
-						if tnow > m.DelayedTs+int64(time.Millisecond*3) {
+						if tnow > m.DelayedTs+int64(time.Millisecond*3+c.option.QueueScanInterval) {
 							nsqLog.LogDebugf("delayed is too late now %v for message: %v, peeking time: %v", tnow, m, peekStart)
 						}
 						if tnow < m.DelayedTs {
