@@ -301,7 +301,7 @@ func (q *DelayQueue) ResetBackendWithQueueStartNoLock(queueStartOffset int64, qu
 func (q *DelayQueue) GetDiskQueueSnapshot() *DiskQueueSnapshot {
 	e := q.backend.GetQueueReadEnd()
 	start := q.backend.GetQueueReadStart()
-	d := NewDiskQueueSnapshot(getBackendName(q.tname, q.partition), q.dataPath, e)
+	d := NewDiskQueueSnapshot(getDelayQueueBackendName(q.tname, q.partition), q.dataPath, e)
 	d.SetQueueStart(start)
 	return d
 }
@@ -836,7 +836,7 @@ func (q *DelayQueue) TryCleanOldData(retentionSize int64, noRealClean bool, maxC
 	if oldestPos.Offset() < maxCleanOffset || maxCleanOffset == BackendOffset(0) {
 		maxCleanOffset = oldestPos.Offset()
 	}
-	snapReader := NewDiskQueueSnapshot(getBackendName(q.tname, q.partition), q.dataPath, oldestPos)
+	snapReader := NewDiskQueueSnapshot(getDelayQueueBackendName(q.tname, q.partition), q.dataPath, oldestPos)
 	snapReader.SetQueueStart(cleanStart)
 	err := snapReader.SeekTo(cleanStart.Offset())
 	if err != nil {
