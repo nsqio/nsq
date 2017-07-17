@@ -32,3 +32,14 @@ func TestEnabledFalseWhenAddressAbsent(t *testing.T) {
 	}
 	test.Equal(t, dd.Enabled(), false)
 }
+
+func TestFlagsParsedSuccess(t *testing.T) {
+	t.Fail()
+}
+
+// Tests that no opts are parsed when the - prefix is missing from the module
+// opts.  The - is required because the optional module opts list is passed directly
+// back to flags.Parse()
+func TestFlagsMissingDashPrefix(t *testing.T) {
+	t.Fail()
+}

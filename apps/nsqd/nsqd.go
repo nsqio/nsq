@@ -204,7 +204,6 @@ func (p *program) Start() error {
 	opts := nsqd.NewOptions()
 
 	flagSet := nsqdFlagSet(opts)
-
 	flagSet.Parse(os.Args[1:])
 
 	rand.Seed(time.Now().UTC().UnixNano())
@@ -225,7 +224,6 @@ func (p *program) Start() error {
 	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
-
 	nsqd := nsqd.New(opts)
 
 	err := nsqd.LoadMetadata()
