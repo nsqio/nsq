@@ -116,16 +116,23 @@ func (dd *NSQDDogStatsd) Loop() {
 				}
 				diff := topic.MessageCount - lastTopic.MessageCount
 
+				// can topics/channels have commas in their names?
 				client.Incr("message_count", int64(diff), &DataDogTags{
-					tags: map[string]string{"topic_name": topic.TopicName},
+					tags: []*DataDogTag{
+						{k: "topic_name", v: topic.TopicName},
+					},
 				})
 
 				client.Gauge("topic.depth", topic.Depth, &DataDogTags{
-					tags: map[string]string{"topic_name": topic.TopicName},
+					tags: []*DataDogTag{
+						{k: "topic_name", v: topic.TopicName},
+					},
 				})
 
 				client.Gauge("topic.backend_depth", topic.BackendDepth, &DataDogTags{
-					tags: map[string]string{"topic_name": topic.TopicName},
+					tags: []*DataDogTag{
+						{k: "topic_name", v: topic.TopicName},
+					},
 				})
 
 				for _, item := range topic.E2eProcessingLatency.Percentiles {
@@ -134,7 +141,9 @@ func (dd *NSQDDogStatsd) Loop() {
 					// minimum resolution we will have, so there is no loss of
 					// accuracy
 					client.Gauge(stat, int64(item["value"]), &DataDogTags{
-						tags: map[string]string{"topic_name": topic.TopicName},
+						tags: []*DataDogTag{
+							{k: "topic_name", v: topic.TopicName},
+						},
 					})
 				}
 
@@ -149,74 +158,74 @@ func (dd *NSQDDogStatsd) Loop() {
 					}
 					diff := channel.MessageCount - lastChannel.MessageCount
 					client.Incr("channel.message_count", int64(diff), &DataDogTags{
-						tags: map[string]string{
-							"topic_name":   topic.TopicName,
-							"channel_name": channel.ChannelName,
+						tags: []*DataDogTag{
+							{k: "topic_name", v: topic.TopicName},
+							{k: "channel_name", v: channel.ChannelName},
 						},
 					})
 
 					client.Gauge("channel.depth", channel.Depth, &DataDogTags{
-						tags: map[string]string{
-							"topic_name":   topic.TopicName,
-							"channel_name": channel.ChannelName,
+						tags: []*DataDogTag{
+							{k: "topic_name", v: topic.TopicName},
+							{k: "channel_name", v: channel.ChannelName},
 						},
 					})
 
 					client.Gauge("channel.backend_depth", channel.BackendDepth, &DataDogTags{
-						tags: map[string]string{
-							"topic_name":   topic.TopicName,
-							"channel_name": channel.ChannelName,
+						tags: []*DataDogTag{
+							{k: "topic_name", v: topic.TopicName},
+							{k: "channel_name", v: channel.ChannelName},
 						},
 					})
 
 					// stat = fmt.Sprintf("topic.%s.channel.%s.in_flight_count", topic.TopicName, channel.ChannelName)
 					client.Gauge("channel.in_flight_count", int64(channel.InFlightCount), &DataDogTags{
-						tags: map[string]string{
-							"topic_name":   topic.TopicName,
-							"channel_name": channel.ChannelName,
+						tags: []*DataDogTag{
+							{k: "topic_name", v: topic.TopicName},
+							{k: "channel_name", v: channel.ChannelName},
 						},
 					})
 
 					// stat = fmt.Sprintf("topic.%s.channel.%s.deferred_count", topic.TopicName, channel.ChannelName)
 					client.Gauge("channel.deferred_count", int64(channel.DeferredCount), &DataDogTags{
-						tags: map[string]string{
-							"topic_name":   topic.TopicName,
-							"channel_name": channel.ChannelName,
+						tags: []*DataDogTag{
+							{k: "topic_name", v: topic.TopicName},
+							{k: "channel_name", v: channel.ChannelName},
 						},
 					})
 
 					diff = channel.RequeueCount - lastChannel.RequeueCount
 					// stat = fmt.Sprintf("topic.%s.channel.%s.requeue_count", topic.TopicName, channel.ChannelName)
 					client.Incr("channel.requeue_count", int64(diff), &DataDogTags{
-						tags: map[string]string{
-							"topic_name":   topic.TopicName,
-							"channel_name": channel.ChannelName,
+						tags: []*DataDogTag{
+							{k: "topic_name", v: topic.TopicName},
+							{k: "channel_name", v: channel.ChannelName},
 						},
 					})
 
 					diff = channel.TimeoutCount - lastChannel.TimeoutCount
 					// stat = fmt.Sprintf("topic.%s.channel.%s.timeout_count", topic.TopicName, channel.ChannelName)
 					client.Incr("channel.timeout_count", int64(diff), &DataDogTags{
-						tags: map[string]string{
-							"topic_name":   topic.TopicName,
-							"channel_name": channel.ChannelName,
+						tags: []*DataDogTag{
+							{k: "topic_name", v: topic.TopicName},
+							{k: "channel_name", v: channel.ChannelName},
 						},
 					})
 
 					// stat = fmt.Sprintf("topic.%s.channel.%s.clients", topic.TopicName, channel.ChannelName)
 					client.Gauge("channel.clients", int64(len(channel.Clients)), &DataDogTags{
-						tags: map[string]string{
-							"topic_name":   topic.TopicName,
-							"channel_name": channel.ChannelName,
+						tags: []*DataDogTag{
+							{k: "topic_name", v: topic.TopicName},
+							{k: "channel_name", v: channel.ChannelName},
 						},
 					})
 
 					for _, item := range channel.E2eProcessingLatency.Percentiles {
 						stat = fmt.Sprintf("channel.e2e_processing_latency_%.0f", item["quantile"]*100.0)
 						client.Gauge(stat, int64(item["value"]), &DataDogTags{
-							tags: map[string]string{
-								"topic_name":   topic.TopicName,
-								"channel_name": channel.ChannelName,
+							tags: []*DataDogTag{
+								{k: "topic_name", v: topic.TopicName},
+								{k: "channel_name", v: channel.ChannelName},
 							},
 						})
 					}

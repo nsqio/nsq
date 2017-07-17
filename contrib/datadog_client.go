@@ -14,16 +14,21 @@ type DataDogClient struct {
 	prefix string
 }
 
+type DataDogTag struct {
+	k string
+	v string
+}
+
 type DataDogTags struct {
-	tags map[string]string
+	tags []*DataDogTag
 }
 
 // returns dogstatd compatible string
 // "#tag1:value1,tag2:value2
 func (ddt *DataDogTags) String() string {
 	ts := []string{}
-	for k, v := range ddt.tags {
-		ts = append(ts, fmt.Sprintf("%s:%s", k, v))
+	for _, tag := range ddt.tags {
+		ts = append(ts, fmt.Sprintf("%s:%s", tag.k, tag.v))
 	}
 	return "#" + strings.Join(ts, ",")
 }
