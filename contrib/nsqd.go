@@ -2,7 +2,6 @@ package contrib
 
 import (
 	"github.com/nsqio/nsq/nsqd"
-	"github.com/nsqio/nsq/internal/lg"
 )
 
 
@@ -13,7 +12,6 @@ type INSQDAddon interface {
 
 type NSQDAddons struct {
 	addons []INSQDAddon
-	logf lg.AppLogFunc
 }
 
 // Starts all addons that are active
@@ -25,19 +23,18 @@ func (as *NSQDAddons) Start() {
 }
 
 // Initializes addons that have options set
-func NewEnabledNSQDAddons(contribOpts []string, n *nsqd.NSQD, logf lg.AppLogFunc) *NSQDAddons {
+func NewEnabledNSQDAddons(contribOpts []string, n *nsqd.NSQD) *NSQDAddons {
 	var activeAddons []INSQDAddon
 
-	logf(nsqd.LOG_INFO, "Addons Initializing")
+	n.Logf(nsqd.LOG_INFO, "Addons Initializing")
 
 	// ask each addon if it should be initialize
-	dogStats := NewNSQDDogStatsd(contribOpts, n, logf)
+	dogStats := NewNSQDDogStatsd(contribOpts, n)
 	if dogStats.Enabled() {
 		activeAddons = append(activeAddons, dogStats)
 	}
 
 	return &NSQDAddons{
 		addons: activeAddons,
-		logf: logf,
 	}
 }
