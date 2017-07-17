@@ -145,6 +145,10 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int("max-deflate-level", opts.MaxDeflateLevel, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 
+
+	optModulesOptions := app.StringArray{}
+	flagSet.Var(&optModulesOptions, "mod-opt", "optional module options, of form: --mod-opt={{moduleName}}={{moduleOpt}}={{moduleOptValue}}")
+
 	return flagSet
 }
 
@@ -202,12 +206,6 @@ func (p *program) Start() error {
 
 	flagSet := nsqdFlagSet(opts)
 
-	// add the contrib options to these
-	contribOpts := contrib.NewContribOptions()
-	// add the flags for each of contrib
-	contrib.AddNSQDContribFlags(contribOpts, flagSet)
-
-	// add the contrib flags to these
 	flagSet.Parse(os.Args[1:])
 
 	rand.Seed(time.Now().UTC().UnixNano())
@@ -228,7 +226,6 @@ func (p *program) Start() error {
 	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
-	options.Resolve(contribOpts, flagSet, cfg)
 
 	nsqd := nsqd.New(opts)
 
@@ -243,7 +240,7 @@ func (p *program) Start() error {
 	nsqd.Main()
 
 	// hook into addons
-	addons := contrib.NewNSQDAddons(contribOpts, nsqd)
+	addons := contrib.NewEnabledNSQDAddons(opts.ModOpt, nsqd)
 	addons.Start()
 
 	p.nsqd = nsqd

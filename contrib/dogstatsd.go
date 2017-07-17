@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/nsqio/nsq/nsqd"
 	"time"
+	"flag"
+	"github.com/nsqio/nsq/internal/lg"
 )
 
 type NSQDDogStatsdOptions struct {
@@ -12,20 +14,60 @@ type NSQDDogStatsdOptions struct {
 	DogStatsdInterval time.Duration `flag:"dogstatsd-interval"`
 }
 
-func NewNSQDDogStatsdDefaultOptions() *NSQDDogStatsdOptions {
-	return &NSQDDogStatsdOptions{
-		DogStatsdPrefix:   "nsq.",
-		DogStatsdInterval: 10 * time.Second,
+func NewNSQDDogStatsdContribFlags(opts *NSQDDogStatsdOptions) *flag.FlagSet {
+	flagSet := flag.NewFlagSet("dogstatsd", flag.ExitOnError)
+	flagSet.StringVar(
+		&opts.DogStatsdAddress,
+		"dogstatsd-address",
+		"",
+		"UDP <addr>:<port> of a statsd daemon for pushing stats",
+	)
+	flagSet.DurationVar(
+		&opts.DogStatsdInterval,
+		"dogstatsd-interval",
+		10 * time.Second,
+		"duration between pushing to dogstatsd",
+	)
+	// flagSet.Bool("statsd-mem-stats", opts.StatsdMemStats, "toggle sending memory and GC stats to statsd")
+	flagSet.StringVar(
+		&opts.DogStatsdPrefix,
+		"dogstatsd-prefix",
+		"nsq.",
+		"prefix used for keys sent to statsd (%s for host replacement)",
+	)
+	return flagSet
+}
+
+func NewNSQDDogStatsd(contribOpts []string, n *nsqd.NSQD) INSQDAddon {
+	n.Logf(nsqd.LOG_INFO, "Received options: %+v", contribOpts)
+
+	dogStatsdOpts := &NSQDDogStatsdOptions{}
+	flagSet := NewNSQDDogStatsdContribFlags(dogStatsdOpts)
+
+	flagSet.Parse(contribOpts)
+	n.Logf(nsqd.LOG_INFO, "Parsed Options: %+v", dogStatsdOpts)
+
+	// pass the dogstats specific opts on
+	return &NSQDDogStatsd{
+		opts: dogStatsdOpts,
+		nsqd:        n,
 	}
 }
 
 type NSQDDogStatsd struct {
 	nsqd        *nsqd.NSQD
-	contribOpts *NSQDContribOptions
+	opts *NSQDDogStatsdOptions
 }
 
-func (dd *NSQDDogStatsd) Active() bool {
-	if dd.contribOpts.DogStatsdAddress != "" {
+
+// DD specific logger.  Currently delegates to nsqd, but will change shortly...
+func (dd *NSQDDogStatsd) logf(level lg.LogLevel, f string, args ...interface{}) {
+	dd.nsqd.Logf(level, f, args...)
+}
+
+func (dd *NSQDDogStatsd) Enabled() bool {
+	dd.logf(nsqd.LOG_INFO, "%+v", dd.opts)
+	if dd.opts.DogStatsdAddress != "" {
 		return true
 	} else {
 		return false
@@ -43,9 +85,9 @@ func (dd *NSQDDogStatsd) Loop() {
 	var lastStats []nsqd.TopicStats
 	var stat string
 
-	ticker := time.NewTicker(dd.contribOpts.DogStatsdInterval)
+	ticker := time.NewTicker(dd.opts.DogStatsdInterval)
 
-	dd.nsqd.Logf(nsqd.LOG_DEBUG, "Loop started")
+	dd.logf(nsqd.LOG_DEBUG, "Loop started")
 	exitChan := *dd.nsqd.ExitChan()
 
 	for {
@@ -53,19 +95,19 @@ func (dd *NSQDDogStatsd) Loop() {
 		case <-exitChan:
 			goto exit
 		case <-ticker.C:
-			dd.nsqd.Logf(nsqd.LOG_DEBUG, "LOOPING")
+			dd.logf(nsqd.LOG_DEBUG, "LOOPING")
 
 			client := NewDataDogClient(
-				dd.contribOpts.DogStatsdAddress,
-				dd.contribOpts.DogStatsdPrefix,
+				dd.opts.DogStatsdAddress,
+				dd.opts.DogStatsdPrefix,
 			)
 			err := client.CreateSocket()
 			if err != nil {
-				dd.nsqd.Logf(nsqd.LOG_ERROR, "failed to create UDP socket to dogstatsd(%s)", client)
+				dd.logf(nsqd.LOG_ERROR, "failed to create UDP socket to dogstatsd(%s)", client)
 				continue
 			}
 
-			dd.nsqd.Logf(nsqd.LOG_INFO, "DOGSTATSD: pushing stats to %s", client)
+			dd.logf(nsqd.LOG_INFO, "DOGSTATSD: pushing stats to %s", client)
 
 			stats := dd.nsqd.GetStats()
 			for _, topic := range stats {
