@@ -120,9 +120,7 @@ func NewTopicCoordinator(name string, partition int, basepath string,
 }
 
 func (self *TopicCoordinator) GetDelayedQueueLogMgr() (*TopicCommitLogMgr, error) {
-	self.dataMutex.Lock()
-	logMgr := self.delayedLogMgr
-	self.dataMutex.Unlock()
+	logMgr := self.GetData().delayedLogMgr
 	if logMgr == nil {
 		return nil, ErrTopicMissingDelayedLog.ToErrorType()
 	}

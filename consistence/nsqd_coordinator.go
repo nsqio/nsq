@@ -128,7 +128,7 @@ func getOrCreateCommitLogAndLocalLogQ(tcData *coordData, localTopic *nsqd.Topic,
 		if tcData.topicInfo.OrderedMulti {
 			return nil, nil, ErrLocalDelayedQueueMissing
 		}
-		dq, _ := localTopic.GetOrCreateDelayedQueueNoLock(logMgr)
+		dq, _ := localTopic.GetOrCreateDelayedQueueNoLock(tcData.delayedLogMgr)
 		if dq == nil {
 			return nil, nil, ErrLocalDelayedQueueMissing
 		}
@@ -1686,7 +1686,6 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		coordLog.Warningf("catchup exit since the topic is exited")
 		return ErrTopicExitingOnSlave
 	}
-	logMgr := tc.GetData().logMgr
 	c, coordErr := self.acquireRpcClient(topicInfo.Leader)
 	if coordErr != nil {
 		coordLog.Warningf("failed to get rpc client while catchup: %v", coordErr)
@@ -1711,9 +1710,9 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		Ext:          topicInfo.Ext,
 	}
 	tc.GetData().updateBufferSize(int(dyConf.SyncEvery - 1))
-	localTopic.SetDynamicInfo(*dyConf, logMgr)
+	localTopic.SetDynamicInfo(*dyConf, tc.GetData().logMgr)
 
-	syncErr := self.pullCatchupDataFromLeader(tc, topicInfo, localTopic, logMgr, false, logIndex, offset)
+	syncErr := self.pullCatchupDataFromLeader(tc, topicInfo, localTopic, tc.GetData().logMgr, false, logIndex, offset)
 	if syncErr != nil {
 		coordLog.Infof("pull topic %v catchup data failed:%v", topicInfo.GetTopicDesp(), syncErr)
 		return syncErr
@@ -1728,8 +1727,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 			}
 			// ignore error if delayed queue is not enabled
 		} else {
-			logMgr = tc.GetData().delayedLogMgr
-			syncErr = self.pullCatchupDataFromLeader(tc, topicInfo, localTopic, logMgr, true, logIndex, offset)
+			syncErr = self.pullCatchupDataFromLeader(tc, topicInfo, localTopic, tc.GetData().delayedLogMgr, true, logIndex, offset)
 			if syncErr != nil {
 				coordLog.Infof("pull topic %v catchup delayed queue data failed:%v", topicInfo.GetTopicDesp(), syncErr)
 				if atomic.LoadInt32(&nsqd.EnableDelayedQueue) == 1 {
