@@ -16,10 +16,10 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
+	"github.com/nsqio/nsq/contrib"
 	"github.com/nsqio/nsq/internal/app"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqd"
-	"github.com/nsqio/nsq/contrib"
 )
 
 type tlsRequiredOption int
@@ -145,7 +145,6 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int("max-deflate-level", opts.MaxDeflateLevel, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 
-
 	optModulesOptions := app.StringArray{}
 	flagSet.Var(&optModulesOptions, "mod-opt", "optional module options, of form: --mod-opt={{moduleName}}={{moduleOpt}}={{moduleOptValue}}")
 
@@ -240,7 +239,7 @@ func (p *program) Start() error {
 	nsqd.Main()
 
 	// hook into addons
-	addons := contrib.NewEnabledNSQDAddons(opts.ModOpt, nsqd)
+	addons := contrib.NewEnabledNSQDAddons(opts.ModOpt, nsqd, nsqd.Logf)
 	addons.Start()
 
 	p.nsqd = nsqd

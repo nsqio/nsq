@@ -38,31 +38,27 @@ func NewNSQDDogStatsdContribFlags(opts *NSQDDogStatsdOptions) *flag.FlagSet {
 	return flagSet
 }
 
-func NewNSQDDogStatsd(contribOpts []string, n *nsqd.NSQD) INSQDAddon {
-	n.Logf(nsqd.LOG_INFO, "Received options: %+v", contribOpts)
+func NewNSQDDogStatsd(contribOpts []string, n *nsqd.NSQD, logf lg.AppLogFunc) INSQDAddon {
+	logf(nsqd.LOG_INFO, "Received options: %+v", contribOpts)
 
 	dogStatsdOpts := &NSQDDogStatsdOptions{}
 	flagSet := NewNSQDDogStatsdContribFlags(dogStatsdOpts)
 
 	flagSet.Parse(contribOpts)
-	n.Logf(nsqd.LOG_INFO, "Parsed Options: %+v", dogStatsdOpts)
+	logf(nsqd.LOG_INFO, "Parsed Options: %+v", dogStatsdOpts)
 
 	// pass the dogstats specific opts on
 	return &NSQDDogStatsd{
 		opts: dogStatsdOpts,
 		nsqd:        n,
+		logf: logf,
 	}
 }
 
 type NSQDDogStatsd struct {
 	nsqd        *nsqd.NSQD
 	opts *NSQDDogStatsdOptions
-}
-
-
-// DD specific logger.  Currently delegates to nsqd, but will change shortly...
-func (dd *NSQDDogStatsd) logf(level lg.LogLevel, f string, args ...interface{}) {
-	dd.nsqd.Logf(level, f, args...)
+	logf lg.AppLogFunc
 }
 
 func (dd *NSQDDogStatsd) Enabled() bool {
@@ -75,8 +71,7 @@ func (dd *NSQDDogStatsd) Enabled() bool {
 }
 
 func (dd *NSQDDogStatsd) Start() {
-	logger.Println("Starting nsqd datadog")
-
+	dd.logf(nsqd.LOG_INFO, "Starting Datadog NSQD Monitor")
 	dd.nsqd.RegisterAddon(dd.Loop)
 }
 
