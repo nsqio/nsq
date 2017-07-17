@@ -3,6 +3,7 @@ package contrib
 import (
 	"testing"
 	"github.com/nsqio/nsq/internal/test"
+	"net"
 )
 
 func TestDDTagsStringNoTags(t *testing.T) {
@@ -36,4 +37,22 @@ func TestDDTagsStringMultipleStrings(t *testing.T) {
 		}).String(),
 		"#topic_name:test_topic,channel_name:test_channel",
 	)
+}
+
+func TestDDCSend(t *testing.T) {
+	r, w := net.Pipe()
+	b := make([]byte, len("nsq.topic.depth:100|t|#"))
+
+	go func() {
+		ddc := &DataDogClient{
+			conn: w,
+			addr: "test",
+			prefix: "nsq.",
+		}
+		testValue := int64(100)
+		ddc.send("topic.depth", "%d|t", testValue, &DataDogTags{})
+	}()
+
+	r.Read(b)
+	test.Equal(t, string(b), "nsq.topic.depth:100|t|#")
 }
