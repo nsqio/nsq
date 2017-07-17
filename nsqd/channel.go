@@ -647,8 +647,8 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
 	if msg.DelayedOrigID > 0 && msg.DelayedType == ChannelDelayed && c.GetDelayedQueue() != nil {
-		delete(c.delayedMsgs, msg.ID)
 		c.GetDelayedQueue().ConfirmedMessage(msg)
+		delete(c.delayedMsgs, msg.ID)
 		if len(c.delayedMsgs) < MaxWaitingDelayed/2 {
 			c.nsqdNotify.NotifyScanDelayed(c)
 		}
@@ -1765,7 +1765,7 @@ exit:
 						m.ID = m.DelayedOrigID
 						m.DelayedOrigID = tmpID
 
-						if tnow > m.DelayedTs+int64(time.Millisecond*3+c.option.QueueScanInterval) {
+						if tnow > m.DelayedTs+int64(c.option.QueueScanInterval*2) {
 							nsqLog.LogDebugf("delayed is too late now %v for message: %v, peeking time: %v", tnow, m, peekStart)
 						}
 						if tnow < m.DelayedTs {

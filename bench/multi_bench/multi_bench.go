@@ -55,13 +55,18 @@ type pubResp struct {
 	rawSize uint32
 }
 
+type dumpStat struct {
+	msg     *nsq.Message
+	recvCnt int64
+}
+
 var totalMsgCount int64
 var totalSubMsgCount int64
 var totalDumpCount int64
 var currentMsgCount int64
 var totalErrCount int64
 var config *nsq.Config
-var dumpCheck map[string]map[uint64]*nsq.Message
+var dumpCheck map[string]map[uint64]dumpStat
 var orderCheck map[string]pubResp
 var pubRespCheck map[string]map[uint64]pubResp
 var mutex sync.Mutex
@@ -570,9 +575,41 @@ func startCheckData(msg []byte, batch [][]byte, testDelay bool) {
 	for topicName, tdump := range dumpCheck {
 		log.Printf("topic %v count: %v \n", topicName, len(tdump))
 		topicMsgs := make([]*nsq.Message, 0, len(tdump))
-		for _, msg := range tdump {
-			topicMsgs = append(topicMsgs, msg)
+		dump2List := make([]dumpStat, 0, 10)
+		dump3List := make([]dumpStat, 0, 10)
+		dump4MoreList := make([]dumpStat, 0, 10)
+		for _, d := range tdump {
+			topicMsgs = append(topicMsgs, d.msg)
+			if d.recvCnt == 2 {
+				if len(dump2List) < 10 {
+					dump2List = append(dump2List, d)
+				}
+			} else if d.recvCnt == 3 {
+				if len(dump3List) < 10 {
+					dump3List = append(dump3List, d)
+				}
+			} else if d.recvCnt > 3 {
+				if len(dump4MoreList) < 10 {
+					dump4MoreList = append(dump4MoreList, d)
+				}
+			}
 		}
+		log.Printf("topic %v dump 2 msgs: ")
+		for _, d := range dump2List {
+			log.Printf("%v (%v, %v), ", d.msg.ID, d.msg.Offset, d.msg.Attempts)
+		}
+		log.Printf("\n")
+		log.Printf("topic %v dump 3 msgs: ")
+		for _, d := range dump3List {
+			log.Printf("%v (%v, %v), ", d.msg.ID, d.msg.Offset, d.msg.Attempts)
+		}
+		log.Printf("\n")
+		log.Printf("topic %v dump 2 msgs: ")
+		for _, d := range dump4MoreList {
+			log.Printf("%v (%v, %v vs %v), ", d.msg.ID, d.msg.Offset, d.msg.Attempts, d.recvCnt)
+		}
+		log.Printf("\n")
+
 		sort.Sort(ByMsgOffset(topicMsgs))
 		receivedOffsets := make([]uint64, 0)
 		fragmentNum := 1
@@ -890,7 +927,7 @@ func main() {
 	log.Printf("check test flag: order: %v, pub strategy: %v, config: %v", *ordered, config.PubStrategy, config)
 
 	log.SetPrefix("[bench_writer] ")
-	dumpCheck = make(map[string]map[uint64]*nsq.Message, 5)
+	dumpCheck = make(map[string]map[uint64]dumpStat, 5)
 	pubRespCheck = make(map[string]map[uint64]pubResp, 5)
 	orderCheck = make(map[string]pubResp)
 	traceIDWaitingList = make(map[string]map[uint64]*nsq.Message, 5)
@@ -1051,7 +1088,7 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 		defer mutex.Unlock()
 		topicCheck, ok := dumpCheck[c.topic+pidStr]
 		if !ok {
-			topicCheck = make(map[uint64]*nsq.Message)
+			topicCheck = make(map[uint64]dumpStat)
 			dumpCheck[c.topic+pidStr] = topicCheck
 		}
 		if c.checkDelay {
@@ -1089,15 +1126,17 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 			lastResp.rawSize = message.RawSize
 			orderCheck[c.topic+pidStr] = lastResp
 		}
-		if msg, ok := topicCheck[mid]; ok {
+		if dup, ok := topicCheck[mid]; ok {
 			atomic.AddInt64(&totalDumpCount, 1)
-			if msg.Offset != message.Offset || msg.RawSize != message.RawSize {
-				log.Printf("got dump message with mismatch data: %v, %v\n", msg, message)
+			if dup.msg.Offset != message.Offset || dup.msg.RawSize != message.RawSize {
+				log.Printf("got dump message with mismatch data: %v, %v\n", dup.msg, message)
 			}
-			topicCheck[mid] = message
+			atomic.AddInt64(&dup.recvCnt, 1)
+			dup.msg = message
+			topicCheck[mid] = dup
 			return nil
 		}
-		topicCheck[mid] = message
+		topicCheck[mid] = dumpStat{msg: message, recvCnt: 1}
 	}
 	if len(message.Body) <= 0 {
 		log.Printf("got empty message %v\n", message)
