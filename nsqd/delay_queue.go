@@ -273,6 +273,9 @@ func (q *DelayQueue) RollbackNoLock(vend BackendOffset, diffCnt uint64) error {
 
 func (q *DelayQueue) ResetBackendEndNoLock(vend BackendOffset, totalCnt int64) error {
 	old := q.backend.GetQueueWriteEnd()
+	if old.Offset() == vend && old.TotalMsgCnt() == totalCnt {
+		return nil
+	}
 	nsqLog.Logf("topic %v reset the backend from %v to : %v, %v", q.GetFullName(), old, vend, totalCnt)
 	_, err := q.backend.ResetWriteEndV2(vend, totalCnt)
 	if err != nil {

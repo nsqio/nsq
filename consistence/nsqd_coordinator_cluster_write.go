@@ -58,6 +58,7 @@ func (self *NsqdCoordinator) internalPutMessageToCluster(topic *nsqd.Topic,
 	}
 
 	var logMgr *TopicCommitLogMgr
+	var delayQ *nsqd.DelayQueue
 	doLocalWrite := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr
 		if putDelayed {
@@ -74,11 +75,9 @@ func (self *NsqdCoordinator) internalPutMessageToCluster(topic *nsqd.Topic,
 		var localErr error
 		topic.Lock()
 		if putDelayed {
-			delayQ, err := topic.GetOrCreateDelayedQueueNoLock(logMgr)
-			if err == nil {
+			delayQ, localErr = topic.GetOrCreateDelayedQueueNoLock(logMgr)
+			if localErr == nil {
 				id, offset, writeBytes, qe, localErr = delayQ.PutDelayMessage(msg)
-			} else {
-				localErr = err
 			}
 		} else {
 			id, offset, writeBytes, qe, localErr = topic.PutMessageNoLock(msg)
@@ -126,11 +125,13 @@ func (self *NsqdCoordinator) internalPutMessageToCluster(topic *nsqd.Topic,
 	}
 	doLocalRollback := func() {
 		coordLog.Warningf("failed write begin rollback : %v, %v", topic.GetFullName(), commitLog)
+		topic.Lock()
 		if !putDelayed {
-			topic.Lock()
 			topic.RollbackNoLock(nsqd.BackendOffset(commitLog.MsgOffset), 1)
-			topic.Unlock()
+		} else {
+			delayQ.RollbackNoLock(nsqd.BackendOffset(commitLog.MsgOffset), 1)
 		}
+		topic.Unlock()
 	}
 	doRefresh := func(d *coordData) *CoordErr {
 		logMgr = d.logMgr

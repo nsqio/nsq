@@ -708,7 +708,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 			// TODO: check the last commit log data logid is equal with the disk queue message
 			// this can avoid data corrupt, if not equal we need rollback and find backward for the right data.
 			// check the first log commit log is valid on the disk queue, so that we can fix the wrong start of the commit log
-			localErr := self.checkAndFixLocalLogQueueData(tc.GetData(), topic, tc.GetData().logMgr)
+			localErr := checkAndFixLocalLogQueueData(tc.GetData(), topic, tc.GetData().logMgr)
 			if localErr != nil {
 				coordLog.Errorf("check local topic %v data need to be fixed:%v", topicInfo.GetTopicDesp(), localErr)
 				topic.SetDataFixState(true)
@@ -737,7 +737,34 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 	return nil
 }
 
-func (self *NsqdCoordinator) checkAndFixLocalLogQueueData(tc *coordData,
+func checkAndFixLocalLogQueueEnd(tc *coordData,
+	localLogQ ILocalLogQueue, logMgr *TopicCommitLogMgr, tryFixEnd bool) error {
+	if logMgr != nil && localLogQ != nil {
+		logIndex, logOffset, logData, err := logMgr.GetLastCommitLogOffsetV2()
+		if err != nil {
+			if err != ErrCommitLogEOF {
+				coordLog.Errorf("delayed commit log is corrupted: %v", err)
+				return err
+			} else {
+				coordLog.Infof("delayed no commit last log data : %v", err)
+			}
+		} else {
+			coordLog.Infof("current topic %v delayed log: %v:%v, %v",
+				tc.topicInfo.GetTopicDesp(), logIndex, logOffset, logData)
+			if tryFixEnd {
+				localErr := localLogQ.ResetBackendEndNoLock(nsqd.BackendOffset(logData.MsgOffset+int64(logData.MsgSize)),
+					logData.MsgCnt+int64(logData.MsgNum)-1)
+				if localErr != nil {
+					coordLog.Errorf("reset local delayed queue backend failed: %v", localErr)
+					return localErr
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func checkAndFixLocalLogQueueData(tc *coordData,
 	localLogQ ILocalLogQueue, logMgr *TopicCommitLogMgr) error {
 	if logMgr == nil || localLogQ == nil {
 		return nil
@@ -750,6 +777,8 @@ func (self *NsqdCoordinator) checkAndFixLocalLogQueueData(tc *coordData,
 		coordLog.Warningf("get log start failed: %v", err)
 		return err
 	}
+	endFixErr := checkAndFixLocalLogQueueEnd(tc, localLogQ, logMgr, true)
+
 	snap := localLogQ.GetDiskQueueSnapshot()
 	for {
 		err = snap.SeekTo(nsqd.BackendOffset(log.MsgOffset))
@@ -787,6 +816,10 @@ func (self *NsqdCoordinator) checkAndFixLocalLogQueueData(tc *coordData,
 		} else {
 			break
 		}
+	}
+	if endFixErr != nil {
+		coordLog.Errorf("check the local log queue end failed %v ", endFixErr)
+		return endFixErr
 	}
 	r := snap.ReadOne()
 	if r.Err != nil {
@@ -1356,7 +1389,7 @@ func (self *NsqdCoordinator) decideCatchupCommitLogInfo(tc *TopicCoordinator,
 		}
 		needFullSync = true
 	}
-	localErr := self.checkAndFixLocalLogQueueData(tc.GetData(), localLogQ, logMgr)
+	localErr := checkAndFixLocalLogQueueData(tc.GetData(), localLogQ, logMgr)
 	if localErr != nil {
 		coordLog.Errorf("check local topic %v data need to be fixed:%v", topicInfo.GetTopicDesp(), localErr)
 		localLogQ.SetDataFixState(true)
@@ -1920,23 +1953,10 @@ func (self *NsqdCoordinator) switchStateForMaster(topicCoord *TopicCoordinator,
 	if master {
 		isWriteDisabled := topicCoord.IsWriteDisabled()
 		localTopic.Lock()
-		logIndex, logOffset, logData, err := tcData.logMgr.GetLastCommitLogOffsetV2()
-		if err != nil {
-			if err != ErrCommitLogEOF {
-				coordLog.Errorf("commit log is corrupted: %v", err)
-			} else {
-				coordLog.Infof("no commit last log data : %v", err)
-			}
-		} else {
-			coordLog.Infof("current topic %v log: %v:%v, %v, pid: %v, %v",
-				tcData.topicInfo.GetTopicDesp(), logIndex, logOffset, logData, tcData.logMgr.pLogID, tcData.logMgr.nLogID)
-			if !isWriteDisabled && syncCommitDisk {
-				localErr := localTopic.ResetBackendEndNoLock(nsqd.BackendOffset(logData.MsgOffset+int64(logData.MsgSize)),
-					logData.MsgCnt+int64(logData.MsgNum)-1)
-				if localErr != nil {
-					coordLog.Errorf("reset local backend failed: %v", localErr)
-				}
-			}
+		checkAndFixLocalLogQueueEnd(tcData, localTopic, tcData.logMgr, !isWriteDisabled && syncCommitDisk)
+		if tcData.delayedLogMgr != nil && !tcData.topicInfo.OrderedMulti {
+			checkAndFixLocalLogQueueEnd(tcData, localTopic.GetDelayedQueue(), tcData.delayedLogMgr,
+				!isWriteDisabled && syncCommitDisk)
 		}
 		localTopic.Unlock()
 
