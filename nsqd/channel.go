@@ -129,6 +129,7 @@ type Channel struct {
 	delayedLock            sync.RWMutex
 	delayedQueue           *DelayQueue
 	delayedMsgs            map[MessageID]Message
+	delayedConfirmedMsgs   map[MessageID]Message
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -137,28 +138,29 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 	notify INsqdNotify, ext int32) *Channel {
 
 	c := &Channel{
-		topicName:          topicName,
-		topicPart:          part,
-		name:               channelName,
-		requeuedMsgChan:    make(chan *Message, opt.MaxRdyCount+1),
-		waitingRequeueMsgs: make(map[MessageID]*Message, 100),
-		clientMsgChan:      make(chan *Message),
-		tagMsgChans:        make(map[string]*MsgChanData),
-		tagChanInitChan:    make(chan string, 10),
-		tagChanRemovedChan: make(chan string, 10),
-		exitChan:           make(chan int),
-		exitSyncChan:       make(chan bool),
-		clients:            make(map[int64]Consumer),
-		confirmedMsgs:      NewIntervalTree(),
-		tryReadBackend:     make(chan bool, 1),
-		readerChanged:      make(chan resetChannelData, 10),
-		endUpdatedChan:     make(chan bool, 1),
-		deleteCallback:     deleteCallback,
-		option:             opt,
-		nsqdNotify:         notify,
-		consumeDisabled:    consumeDisabled,
-		delayedMsgs:        make(map[MessageID]Message, MaxWaitingDelayed),
-		Ext:                ext,
+		topicName:            topicName,
+		topicPart:            part,
+		name:                 channelName,
+		requeuedMsgChan:      make(chan *Message, opt.MaxRdyCount+1),
+		waitingRequeueMsgs:   make(map[MessageID]*Message, 100),
+		clientMsgChan:        make(chan *Message),
+		tagMsgChans:          make(map[string]*MsgChanData),
+		tagChanInitChan:      make(chan string, 10),
+		tagChanRemovedChan:   make(chan string, 10),
+		exitChan:             make(chan int),
+		exitSyncChan:         make(chan bool),
+		clients:              make(map[int64]Consumer),
+		confirmedMsgs:        NewIntervalTree(),
+		tryReadBackend:       make(chan bool, 1),
+		readerChanged:        make(chan resetChannelData, 10),
+		endUpdatedChan:       make(chan bool, 1),
+		deleteCallback:       deleteCallback,
+		option:               opt,
+		nsqdNotify:           notify,
+		consumeDisabled:      consumeDisabled,
+		delayedMsgs:          make(map[MessageID]Message, MaxWaitingDelayed),
+		delayedConfirmedMsgs: make(map[MessageID]Message, MaxWaitingDelayed),
+		Ext:                  ext,
 	}
 	if len(opt.E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
@@ -649,6 +651,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 	if msg.DelayedOrigID > 0 && msg.DelayedType == ChannelDelayed && c.GetDelayedQueue() != nil {
 		c.GetDelayedQueue().ConfirmedMessage(msg)
 		delete(c.delayedMsgs, msg.ID)
+		c.delayedConfirmedMsgs[msg.ID] = *msg
 		if len(c.delayedMsgs) < MaxWaitingDelayed/2 {
 			c.nsqdNotify.NotifyScanDelayed(c)
 		}
@@ -1745,8 +1748,9 @@ exit:
 				c.inFlightMutex.Lock()
 				c.confirmMutex.Lock()
 				oldMsg, ok := c.delayedMsgs[m.DelayedOrigID]
-				if ok {
-					if m.DelayedTs != oldMsg.DelayedTs {
+				_, cok := c.delayedConfirmedMsgs[m.DelayedOrigID]
+				if ok || cok {
+					if ok && m.DelayedTs != oldMsg.DelayedTs {
 						nsqLog.LogWarningf("delay queue peek msg %v not match with waiting msg %v ",
 							m, oldMsg)
 					}
@@ -1787,6 +1791,9 @@ exit:
 				c.confirmMutex.Unlock()
 				c.inFlightMutex.Unlock()
 			}
+			c.confirmMutex.Lock()
+			c.delayedConfirmedMsgs = make(map[MessageID]Message, MaxWaitingDelayed)
+			c.confirmMutex.Unlock()
 		}
 		if waitingDelayCnt >= MaxWaitingDelayed {
 			checkFast = true

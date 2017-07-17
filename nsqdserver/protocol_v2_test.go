@@ -2217,6 +2217,8 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 	}
 	topic.ForceFlush()
 
+	dumpCheck := make(map[uint64]*nsqdNs.Message)
+	var dumpLock sync.Mutex
 	gcnt := 5
 	msgChan := make(chan nsqdNs.Message, 10)
 	for i := 0; i < gcnt; i++ {
@@ -2266,6 +2268,13 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 				} else {
 					test.Equal(t, "nodelay", string(msgOut.Body))
 				}
+				dumpLock.Lock()
+				if dup, ok := dumpCheck[uint64(msgOut.ID)]; ok {
+					test.Assert(t, false, fmt.Sprintf("should no duplicate message fin %v", dup))
+				}
+				dumpCheck[uint64(msgOut.ID)] = msgOut
+				dumpLock.Unlock()
+				test.Assert(t, msgOut.Attempts < 3, "should never attempt more than 2")
 				nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
 				newCnt := atomic.AddInt32(&finCnt, 1)
 				msgChan <- *msgOut

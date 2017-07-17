@@ -594,17 +594,17 @@ func startCheckData(msg []byte, batch [][]byte, testDelay bool) {
 				}
 			}
 		}
-		log.Printf("topic %v dump 2 msgs: ")
+		log.Printf("topic %v dump 2 msgs: ", topicName)
 		for _, d := range dump2List {
 			log.Printf("%v (%v, %v), ", d.msg.ID, d.msg.Offset, d.msg.Attempts)
 		}
 		log.Printf("\n")
-		log.Printf("topic %v dump 3 msgs: ")
+		log.Printf("topic %v dump 3 msgs: ", topicName)
 		for _, d := range dump3List {
 			log.Printf("%v (%v, %v), ", d.msg.ID, d.msg.Offset, d.msg.Attempts)
 		}
 		log.Printf("\n")
-		log.Printf("topic %v dump 2 msgs: ")
+		log.Printf("topic %v dump 4 and more msgs: ", topicName)
 		for _, d := range dump4MoreList {
 			log.Printf("%v (%v, %v vs %v), ", d.msg.ID, d.msg.Offset, d.msg.Attempts, d.recvCnt)
 		}
