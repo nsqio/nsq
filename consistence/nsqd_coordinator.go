@@ -713,6 +713,14 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				coordLog.Errorf("check local topic %v data need to be fixed:%v", topicInfo.GetTopicDesp(), localErr)
 				topic.SetDataFixState(true)
 				go self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
+			} else if !topicInfo.OrderedMulti {
+				delayQ := topic.GetDelayedQueue()
+				localErr = checkAndFixLocalLogQueueData(tc.GetData(), delayQ, tc.GetData().delayedLogMgr)
+				if localErr != nil {
+					coordLog.Errorf("check local topic %v delayed queue data need to be fixed:%v", topicInfo.GetTopicDesp(), localErr)
+					delayQ.SetDataFixState(true)
+					go self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
+				}
 			}
 			if topicInfo.Leader == self.myNode.GetID() {
 				coordLog.Infof("topic %v starting as leader.", topicInfo.GetTopicDesp())
@@ -743,19 +751,19 @@ func checkAndFixLocalLogQueueEnd(tc *coordData,
 		logIndex, logOffset, logData, err := logMgr.GetLastCommitLogOffsetV2()
 		if err != nil {
 			if err != ErrCommitLogEOF {
-				coordLog.Errorf("delayed commit log is corrupted: %v", err)
+				coordLog.Errorf("commit log is corrupted: %v", err)
 				return err
 			} else {
-				coordLog.Infof("delayed no commit last log data : %v", err)
+				coordLog.Infof("no commit last log data : %v", err)
 			}
 		} else {
-			coordLog.Infof("current topic %v delayed log: %v:%v, %v",
+			coordLog.Infof("current topic %v log: %v:%v, %v",
 				tc.topicInfo.GetTopicDesp(), logIndex, logOffset, logData)
 			if tryFixEnd {
 				localErr := localLogQ.ResetBackendEndNoLock(nsqd.BackendOffset(logData.MsgOffset+int64(logData.MsgSize)),
 					logData.MsgCnt+int64(logData.MsgNum)-1)
 				if localErr != nil {
-					coordLog.Errorf("reset local delayed queue backend failed: %v", localErr)
+					coordLog.Errorf("reset local queue backend failed: %v", localErr)
 					return localErr
 				}
 			}
