@@ -721,6 +721,14 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 					delayQ.SetDataFixState(true)
 					go self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
 				}
+				if delayQ != nil {
+					localErr = delayQ.CheckConsistence()
+					if localErr != nil {
+						coordLog.Errorf("check local topic %v delayed queue data need to be fixed:%v", topicInfo.GetTopicDesp(), localErr)
+						delayQ.SetDataFixState(true)
+						go self.requestLeaveFromISR(topicInfo.Name, topicInfo.Partition)
+					}
+				}
 			}
 			if topicInfo.Leader == self.myNode.GetID() {
 				coordLog.Infof("topic %v starting as leader.", topicInfo.GetTopicDesp())

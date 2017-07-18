@@ -189,6 +189,7 @@ func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
 		nsqLog.LogErrorf("topic(%v) failed to init delayed db: %v , %v ", q.fullName, err, backendName)
 		return nil, err
 	}
+	q.kvStore.NoSync = true
 	err = q.kvStore.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists(bucketDelayedMsg)
 		if err != nil {
@@ -205,6 +206,32 @@ func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
 	return q, nil
 }
 
+func (q *DelayQueue) CheckConsistence() error {
+	// Perform consistency check.
+	return q.getStore().View(func(tx *bolt.Tx) error {
+		var count int
+		ch := tx.Check()
+		done := false
+		for !done {
+			select {
+			case err, ok := <-ch:
+				if !ok {
+					done = true
+					break
+				}
+				nsqLog.LogErrorf("topic(%v) failed to check delayed db: %v ", q.fullName, err)
+				count++
+			}
+		}
+
+		if count > 0 {
+			nsqLog.LogErrorf("topic(%v) failed to check delayed db, %d errors found ", q.fullName, count)
+			return errors.New("boltdb file corrupt")
+		}
+		return nil
+	})
+}
+
 func (q *DelayQueue) reOpenStore() error {
 	var err error
 	q.kvStore, err = bolt.Open(path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition)), 0644, nil)
@@ -212,6 +239,7 @@ func (q *DelayQueue) reOpenStore() error {
 		nsqLog.LogErrorf("topic(%v) failed to open delayed db: %v ", q.fullName, err)
 		return err
 	}
+	q.kvStore.NoSync = true
 	err = q.kvStore.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists(bucketDelayedMsg)
 		if err != nil {
@@ -972,6 +1000,7 @@ func (q *DelayQueue) compactStore(force bool) error {
 	if err != nil {
 		return err
 	}
+	dst.NoSync = true
 	nsqLog.Infof("db %v begin compact", origPath)
 	defer nsqLog.Infof("db %v end compact", origPath)
 	q.compactMutex.Lock()
