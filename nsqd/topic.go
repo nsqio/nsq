@@ -592,7 +592,7 @@ func (t *Topic) IsOrdered() bool {
 	return atomic.LoadInt32(&t.isOrdered) == 1
 }
 
-func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerator) {
+func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerator, delayIDGen MsgIDGenerator) {
 	t.Lock()
 	if idGen != nil {
 		t.msgIDCursor = idGen
@@ -606,8 +606,8 @@ func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerato
 	} else {
 		atomic.StoreInt32(&t.isOrdered, 0)
 	}
-	if !dynamicConf.OrderedMulti && idGen != nil {
-		dq, _ := t.GetOrCreateDelayedQueueNoLock(idGen)
+	if !dynamicConf.OrderedMulti && delayIDGen != nil {
+		dq, _ := t.GetOrCreateDelayedQueueNoLock(delayIDGen)
 		if dq != nil {
 			atomic.StoreInt64(&dq.SyncEvery, dynamicConf.SyncEvery)
 		}

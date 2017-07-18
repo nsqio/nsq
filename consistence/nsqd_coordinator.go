@@ -704,7 +704,7 @@ func (self *NsqdCoordinator) loadLocalTopicData() error {
 				Ext:          topicInfo.Ext,
 			}
 			tc.GetData().updateBufferSize(int(dyConf.SyncEvery - 1))
-			topic.SetDynamicInfo(*dyConf, tc.GetData().logMgr)
+			topic.SetDynamicInfo(*dyConf, tc.GetData().logMgr, tc.GetData().delayedLogMgr)
 			// TODO: check the last commit log data logid is equal with the disk queue message
 			// this can avoid data corrupt, if not equal we need rollback and find backward for the right data.
 			// check the first log commit log is valid on the disk queue, so that we can fix the wrong start of the commit log
@@ -1710,7 +1710,7 @@ func (self *NsqdCoordinator) catchupFromLeader(topicInfo TopicPartitionMetaInfo,
 		Ext:          topicInfo.Ext,
 	}
 	tc.GetData().updateBufferSize(int(dyConf.SyncEvery - 1))
-	localTopic.SetDynamicInfo(*dyConf, tc.GetData().logMgr)
+	localTopic.SetDynamicInfo(*dyConf, tc.GetData().logMgr, tc.GetData().delayedLogMgr)
 
 	syncErr := self.pullCatchupDataFromLeader(tc, topicInfo, localTopic, tc.GetData().logMgr, false, logIndex, offset)
 	if syncErr != nil {
@@ -2092,7 +2092,7 @@ func (self *NsqdCoordinator) updateTopicLeaderSession(topicCoord *TopicCoordinat
 		Ext:          tcData.topicInfo.Ext,
 	}
 	tcData.updateBufferSize(int(dyConf.SyncEvery - 1))
-	localTopic.SetDynamicInfo(*dyConf, tcData.logMgr)
+	localTopic.SetDynamicInfo(*dyConf, tcData.logMgr, tcData.delayedLogMgr)
 	// leader changed (maybe down), we make sure out data is flushed to keep data safe
 	self.switchStateForMaster(topicCoord, localTopic, false)
 
@@ -2326,7 +2326,7 @@ func (self *NsqdCoordinator) updateLocalTopic(topicInfo *TopicPartitionMetaInfo,
 		Ext:          topicInfo.Ext,
 	}
 	tcData.updateBufferSize(int(dyConf.SyncEvery - 1))
-	t.SetDynamicInfo(*dyConf, tcData.logMgr)
+	t.SetDynamicInfo(*dyConf, tcData.logMgr, tcData.delayedLogMgr)
 
 	return t, nil
 }

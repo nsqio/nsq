@@ -628,7 +628,7 @@ func TestConsumeTagMessageNormal(t *testing.T) {
 		SyncEvery:  1,
 		Ext:        true,
 	}
-	topic.SetDynamicInfo(topicDynConf, nil)
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
 
 	topic.GetChannel("ch")
 
@@ -724,7 +724,7 @@ func TestConsumeMultiTagMessages(t *testing.T) {
 		SyncEvery:  1,
 		Ext:        true,
 	}
-	topic.SetDynamicInfo(topicDynConf, nil)
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
 
 	topic.GetChannel("ch")
 
@@ -832,7 +832,7 @@ func TestRemoveTagClientWhileConsuming(t *testing.T) {
 		SyncEvery:  1,
 		Ext:        true,
 	}
-	topic.SetDynamicInfo(topicDynConf, nil)
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
 
 	topic.GetChannel("ch")
 
@@ -940,7 +940,7 @@ func TestInvalidTagSub(t *testing.T) {
 		SyncEvery:  1,
 		Ext:        true,
 	}
-	topic.SetDynamicInfo(topicDynConf, nil)
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
 	topic.GetChannel("ch")
 
 	//pub without ext content
@@ -985,7 +985,7 @@ func consumeTagConcurrent(t *testing.T, producerFirst bool, ticker *time.Ticker)
 		SyncEvery:  1,
 		Ext:        true,
 	}
-	topic.SetDynamicInfo(topicDynConf, nil)
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
 	topic.GetChannel("ch")
 
 	tags := make([]ext.TagExt, 3)
@@ -1338,7 +1338,7 @@ func TestWriteAndConsumeTagMix(t *testing.T) {
 		SyncEvery:  1,
 		Ext:        true,
 	}
-	topic.SetDynamicInfo(topicDynConf, nil)
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
 	topic.GetChannel("ch")
 
 	tag, err := ext.NewTagExt([]byte("TAG"))
@@ -1450,7 +1450,7 @@ func TestStuckOnAnotherTag(t *testing.T) {
 		SyncEvery:  1,
 		Ext:        true,
 	}
-	topic.SetDynamicInfo(topicDynConf, nil)
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
 
 	topic.GetChannel("ch")
 
@@ -2374,7 +2374,7 @@ func TestSubOrderedMulti(t *testing.T) {
 		AutoCommit:   1,
 		OrderedMulti: true,
 	}
-	topic.SetDynamicInfo(conf, nil)
+	topic.SetDynamicInfo(conf, nil, nil)
 
 	identify(t, conn, nil, frameTypeResponse)
 	_, err = nsq.Subscribe(topicName, "ordered_ch").WriteTo(conn)
@@ -4152,7 +4152,7 @@ func benchmarkProtocolV2SubExt(b *testing.B, size int) {
 		SyncEvery:  1,
 		Ext:        true,
 	}
-	topic.SetDynamicInfo(topicDynConf, nil)
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
 	topic.GetChannel("ch")
 
 	workers := runtime.GOMAXPROCS(0)
