@@ -2202,7 +2202,7 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 	myRand := rand.New(rand.NewSource(time.Now().Unix()))
 	allmsgs := make(map[int]bool)
 	for i := 0; i < putCnt; i++ {
-		if i%3 == 0 {
+		if i%5 == 0 {
 			dms := opts.ReqToEndThreshold/2 + time.Duration(myRand.Intn(int(opts.ReqToEndThreshold*2)))
 			delayTs := int(time.Now().Add(dms).UnixNano())
 			delayBody := []byte(strconv.Itoa(delayTs))
@@ -2258,7 +2258,7 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 						nsq.Requeue(nsq.MessageID(msgOut.GetFullMsgID()), time.Duration(delayTs-now)).WriteTo(conn)
 						atomic.AddInt32(&reqCnt, 1)
 						continue
-					} else if now-delayTs > int(opts.QueueScanInterval*3+20*time.Millisecond) {
+					} else if now-delayTs > int(opts.QueueScanInterval*3+500*time.Millisecond) {
 						if msgOut.Attempts > 1 {
 							t.Errorf("\033[31m got delayed message too late: %v (id %v), now: %v\033[39m\n\n", string(msgOut.Body), msgOut.ID, now)
 						} else if now-delayTs > int(opts.QueueScanInterval*3+time.Second) {

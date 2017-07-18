@@ -654,7 +654,7 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 			if err != nil {
 				continue
 			}
-			if nsqLog.Level() >= levellogger.LOG_DETAIL {
+			if nsqLog.Level() > levellogger.LOG_DETAIL {
 				nsqLog.LogDebugf("peek delayed message %v: %v", k, delayedTs)
 			}
 
@@ -673,7 +673,7 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 				nsqLog.LogErrorf("failed to decode delayed message: %v, %v", m, err)
 				continue
 			}
-			if nsqLog.Level() >= levellogger.LOG_DETAIL {
+			if nsqLog.Level() > levellogger.LOG_DETAIL {
 				nsqLog.LogDebugf("peek delayed message %v: %v, %v", k, delayedTs, m)
 			}
 

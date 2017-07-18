@@ -156,7 +156,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			break
 		}
 
-		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
+		if nsqd.NsqLogger().Level() > levellogger.LOG_DETAIL {
 			nsqd.NsqLogger().Logf("PROTOCOL(V2) got client command: %v ", line)
 		}
 		// handle the compatible for message id.
@@ -227,7 +227,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 				}
 			}
 		}
-		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
+		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() > levellogger.LOG_DETAIL {
 			nsqd.NsqLogger().Logf("PROTOCOL(V2) got client command: %v ", line)
 		}
 		if !isSpecial {
@@ -240,7 +240,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			params = bytes.Split(line, separatorBytes)
 		}
 
-		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
+		if p.ctx.getOpts().Verbose || nsqd.NsqLogger().Level() > levellogger.LOG_DETAIL {
 			nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] %v, %v", client, string(params[0]), params)
 		}
 
@@ -262,7 +262,10 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	close(client.ExitChan)
 	p.ctx.nsqd.CleanClientPubStats(client.RemoteAddr().String(), "tcp")
 	<-msgPumpStoppedChan
-	nsqd.NsqLogger().Logf("msg pump stopped client %v", client)
+
+	if nsqd.NsqLogger().Level() >= levellogger.LOG_DEBUG {
+		nsqd.NsqLogger().Logf("msg pump stopped client %v", client)
+	}
 
 	if client.Channel != nil {
 		client.Channel.RequeueClientMessages(client.ID, client.String())

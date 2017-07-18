@@ -1799,7 +1799,7 @@ exit:
 			checkFast = true
 		}
 	} else if waitingDelayCnt >= MaxWaitingDelayed {
-		if nsqLog.Level() >= levellogger.LOG_DETAIL {
+		if nsqLog.Level() > levellogger.LOG_DETAIL {
 			c.confirmMutex.Lock()
 			nsqLog.LogDebugf("delayed waiting : ")
 			for id, m := range c.delayedMsgs {
