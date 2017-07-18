@@ -377,11 +377,11 @@ func TestLoadTopicMetaExt(t *testing.T) {
 	topicNameExt := "load_topic_meta_ext" + strconv.Itoa(int(time.Now().Unix()))
 	topicExt := nsqd.GetTopicIgnPart(topicNameExt)
 	topicDynConf := TopicDynamicConf{
-		AutoCommit:1,
-		SyncEvery:1,
-		Ext: true,
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
 	}
-	topicExt.SetDynamicInfo(topicDynConf, nil)
+	topicExt.SetDynamicInfo(topicDynConf, nil, nil)
 	topicExt.GetChannel("ch")
 
 	atomic.StoreInt32(&nsqd.isLoading, 0)

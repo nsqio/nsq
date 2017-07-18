@@ -464,6 +464,7 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 	}
 	msgKey := getDelayedMsgDBKey(int(m.DelayedType), m.DelayedChannel, m.DelayedTs, m.ID)
 
+	wstart := time.Now()
 	q.compactMutex.Lock()
 	err = q.getStore().Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
@@ -501,6 +502,12 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 			"TOPIC(%s) : failed to write delayed message %v to kv store- %s",
 			q.GetFullName(), m, err)
 		return m.ID, offset, writeBytes, dend, err
+	}
+	if nsqLog.Level() >= levellogger.LOG_DEBUG {
+		cost := time.Since(wstart)
+		if cost > time.Millisecond*2 {
+			nsqLog.Logf("write local delayed queue db cost :%v", cost)
+		}
 	}
 	if trace {
 		if m.TraceID != 0 || atomic.LoadInt32(&q.EnableTrace) == 1 || nsqLog.Level() >= levellogger.LOG_DETAIL {
@@ -542,12 +549,7 @@ func (q *DelayQueue) exit(deleted bool) error {
 }
 
 func (q *DelayQueue) ForceFlush() {
-	s := time.Now()
 	q.flush()
-	cost := time.Now().Sub(s)
-	if cost > time.Second {
-		nsqLog.Logf("topic(%s): flush cost: %v", q.GetFullName(), cost)
-	}
 }
 
 func (q *DelayQueue) flush() error {
@@ -555,6 +557,7 @@ func (q *DelayQueue) flush() error {
 	if !ok {
 		return nil
 	}
+	s := time.Now()
 	atomic.StoreInt64(&q.lastSyncCnt, q.backend.GetQueueWriteEnd().TotalMsgCnt())
 	err := q.backend.Flush()
 	if err != nil {
@@ -562,6 +565,18 @@ func (q *DelayQueue) flush() error {
 		return err
 	}
 	q.getStore().Sync()
+
+	cost := time.Now().Sub(s)
+	if cost > time.Second {
+		nsqLog.Logf("topic(%s): flush cost: %v", q.GetFullName(), cost)
+	}
+
+	if nsqLog.Level() >= levellogger.LOG_DEBUG {
+		if cost > time.Millisecond*3 {
+			nsqLog.Logf("flush local delayed queue db cost :%v", cost)
+		}
+	}
+
 	return err
 }
 
