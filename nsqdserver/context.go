@@ -405,6 +405,11 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 	if ch.Exiting() {
 		return nsqd.ErrExiting
 	}
+
+	if !c.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
+		return consistence.ErrNotTopicLeader.ToErrorType()
+	}
+
 	newMsg := oldMsg.GetCopy()
 	newMsg.ID = 0
 	newMsg.DelayedType = nsqd.ChannelDelayed

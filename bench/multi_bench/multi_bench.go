@@ -43,6 +43,7 @@ var (
 	checkMsgSize  = flagSet.Bool("check-size", false, "enable check the body size of sub")
 	topicListFile = flagSet.String("topic-list-file", "", "the file that contains one topic each line")
 	maxDelaySecs  = flagSet.Int("max-delaysec", 30, "the max delayed message in second")
+	delayPercent  = flagSet.Int("delay-percent", 371, "the percent of delayed")
 )
 
 func getPartitionID(msgID nsq.NewMessageID) string {
@@ -1007,7 +1008,7 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 		}
 
 		singleMsg := batch[0]
-		if testDelay && atomic.LoadInt64(&currentMsgCount)%171 == 0 {
+		if testDelay && atomic.LoadInt64(&currentMsgCount)%int64(*delayPercent) == 0 {
 			delayDuration := time.Second * time.Duration(1+myRand.Intn(*maxDelaySecs))
 			delayTs := int(time.Now().Add(delayDuration).Unix())
 			if int64(delayTs) > atomic.LoadInt64(&maxDelayTs) {
