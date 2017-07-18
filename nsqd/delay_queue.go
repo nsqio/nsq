@@ -600,7 +600,7 @@ func (q *DelayQueue) flush() error {
 	}
 
 	if nsqLog.Level() >= levellogger.LOG_DEBUG {
-		if cost > time.Millisecond*3 {
+		if cost > time.Millisecond*5 {
 			nsqLog.Logf("flush local delayed queue db cost :%v", cost)
 		}
 	}

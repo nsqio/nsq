@@ -2245,7 +2245,8 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 					break
 				}
 				if atomic.AddInt32(&recvCnt, 1) >= int32(putCnt) {
-					t.Logf("recving: %v, %v, %v", recvCnt, reqCnt, finCnt)
+					t.Logf("recving: %v, %v, %v", atomic.LoadInt32(&recvCnt),
+						atomic.LoadInt32(&reqCnt), atomic.LoadInt32(&finCnt))
 				}
 				if len(msgOut.Body) >= 10 {
 					delayTs, err := strconv.Atoi(string(msgOut.Body))

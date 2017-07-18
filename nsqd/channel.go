@@ -829,10 +829,10 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 	newTimeout := time.Now().Add(timeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
 		c.option.MaxReqTimeout {
-		return msg, true
+		return msg.GetCopy(), true
 	}
 	if timeout > threshold {
-		return msg, true
+		return msg.GetCopy(), true
 	}
 
 	if msg.Attempts < 3 {
@@ -846,10 +846,10 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 		}
 
 		if msg.Attempts > MAX_MEM_REQ_TIMES && ts > threshold.Nanoseconds() {
-			return msg, true
+			return msg.GetCopy(), true
 		}
 		if ts > 20*threshold.Nanoseconds() {
-			return msg, true
+			return msg.GetCopy(), true
 		}
 		return nil, false
 	} else {
@@ -866,7 +866,7 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 		if c.Depth() < 100 {
 			return nil, false
 		}
-		return msg, true
+		return msg.GetCopy(), true
 	}
 }
 
