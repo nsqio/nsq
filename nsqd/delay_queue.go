@@ -154,6 +154,8 @@ type DelayQueue struct {
 	needFixData int32
 	isExt       bool
 	dbLock      sync.Mutex
+	// prevent write while compact db
+	compactMutex sync.Mutex
 }
 
 func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
@@ -394,6 +396,8 @@ func (q *DelayQueue) RestoreKVStoreFrom(body io.Reader) error {
 		return err
 	}
 
+	q.compactMutex.Lock()
+	defer q.compactMutex.Unlock()
 	kvPath := path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition))
 	q.dbLock.Lock()
 	defer q.dbLock.Unlock()
@@ -460,6 +464,7 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 	}
 	msgKey := getDelayedMsgDBKey(int(m.DelayedType), m.DelayedChannel, m.DelayedTs, m.ID)
 
+	q.compactMutex.Lock()
 	err = q.getStore().Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		oldV := b.Get(msgKey)
@@ -490,6 +495,7 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 		}
 		return b.Put(syncedOffsetKey, []byte(strconv.Itoa(int(dend.Offset()))))
 	})
+	q.compactMutex.Unlock()
 	if err != nil {
 		nsqLog.LogErrorf(
 			"TOPIC(%s) : failed to write delayed message %v to kv store- %s",
@@ -562,6 +568,8 @@ func (q *DelayQueue) flush() error {
 func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch string) error {
 	db := q.getStore()
 	prefix := getDelayedMsgDBPrefixKey(dt, ch)
+	q.compactMutex.Lock()
+	defer q.compactMutex.Unlock()
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
@@ -592,6 +600,8 @@ func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch st
 func (q *DelayQueue) emptyAllDelayedType(dt int, ch string) error {
 	db := q.getStore()
 	prefix := getDelayedMsgDBPrefixKey(dt, ch)
+	q.compactMutex.Lock()
+	defer q.compactMutex.Unlock()
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
@@ -729,10 +739,12 @@ func (q *DelayQueue) GetCurrentDelayedCnt(dt int, channel string) (uint64, error
 func (q *DelayQueue) ConfirmedMessage(msg *Message) error {
 	// confirmed message is finished by channel, this message has swap the
 	// delayed id and original id to make sure the map key of inflight is original id
+	q.compactMutex.Lock()
 	err := q.getStore().Update(func(tx *bolt.Tx) error {
 		return deleteBucketKey(int(msg.DelayedType), msg.DelayedChannel,
 			msg.DelayedTs, msg.DelayedOrigID, tx)
 	})
+	q.compactMutex.Unlock()
 	if err != nil {
 		nsqLog.LogErrorf(
 			"%s : failed to delete delayed message %v-%v, %v",
@@ -947,8 +959,11 @@ func (q *DelayQueue) compactStore(force bool) error {
 	}
 	nsqLog.Infof("db %v begin compact", origPath)
 	defer nsqLog.Infof("db %v end compact", origPath)
-	err = compactBolt(dst, src)
+	q.compactMutex.Lock()
+	defer q.compactMutex.Unlock()
+	err = compactBolt(dst, src, time.Second*2)
 	if err != nil {
+		nsqLog.Infof("db %v compact failed: %v", origPath, err)
 		return err
 	}
 
@@ -970,7 +985,8 @@ func (q *DelayQueue) compactStore(force bool) error {
 	return nil
 }
 
-func compactBolt(dst, src *bolt.DB) error {
+func compactBolt(dst, src *bolt.DB, maxCompactTime time.Duration) error {
+	startT := time.Now()
 	defer dst.Close()
 	// commit regularly, or we'll run out of memory for large datasets if using one transaction.
 	var size int64
@@ -989,6 +1005,9 @@ func compactBolt(dst, src *bolt.DB) error {
 				return err
 			}
 
+			if time.Since(startT) >= maxCompactTime {
+				return errors.New("compact timeout")
+			}
 			// Start new transaction.
 			tx, err = dst.Begin(true)
 			if err != nil {
