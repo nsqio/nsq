@@ -103,7 +103,8 @@ func main() {
 		opts := &nsqd.Options{
 			MaxBytesPerFile: 1024 * 1024 * 100,
 		}
-		delayQ, err := nsqd.NewDelayQueue(*topic, *partition, topicDataPath, opts, nil, false)
+		nsqd.NsqLogger().Infof("checking delayed")
+		delayQ, err := nsqd.NewDelayQueueForRead(*topic, *partition, topicDataPath, opts, nil, false)
 		if err != nil {
 			log.Fatalf("init delayed queue failed: %v", err)
 		}

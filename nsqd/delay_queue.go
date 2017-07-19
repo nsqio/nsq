@@ -158,8 +158,22 @@ type DelayQueue struct {
 	compactMutex sync.Mutex
 }
 
+func NewDelayQueueForRead(topicName string, part int, dataPath string, opt *Options,
+	idGen MsgIDGenerator, isExt bool) (*DelayQueue, error) {
+	ro := &bolt.Options{
+		Timeout:  time.Second,
+		ReadOnly: true,
+	}
+	return newDelayQueue(topicName, part, dataPath, opt, idGen, isExt, ro)
+}
+
 func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
 	idGen MsgIDGenerator, isExt bool) (*DelayQueue, error) {
+
+	return newDelayQueue(topicName, part, dataPath, opt, idGen, isExt, nil)
+}
+func newDelayQueue(topicName string, part int, dataPath string, opt *Options,
+	idGen MsgIDGenerator, isExt bool, ro *bolt.Options) (*DelayQueue, error) {
 	dataPath = path.Join(dataPath, "delayed_queue")
 	os.MkdirAll(dataPath, 0755)
 	q := &DelayQueue{
@@ -184,7 +198,7 @@ func NewDelayQueue(topicName string, part int, dataPath string, opt *Options,
 		return nil, err
 	}
 	q.backend = queue.(*diskQueueWriter)
-	q.kvStore, err = bolt.Open(path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition)), 0644, nil)
+	q.kvStore, err = bolt.Open(path.Join(q.dataPath, getDelayQueueDBName(q.tname, q.partition)), 0644, ro)
 	if err != nil {
 		nsqLog.LogErrorf("topic(%v) failed to init delayed db: %v , %v ", q.fullName, err, backendName)
 		return nil, err
