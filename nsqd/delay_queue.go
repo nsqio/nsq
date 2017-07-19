@@ -80,6 +80,9 @@ func decodeDelayedMsgDBKey(b []byte) (uint16, int64, MessageID, string, error) {
 	pos++
 	chLen := int(binary.BigEndian.Uint16(b[pos : pos+2]))
 	pos += 2
+	if len(b) < pos+chLen {
+		return 0, 0, 0, "", errors.New("invalid buffer length")
+	}
 	ch := b[pos : pos+chLen]
 	pos += chLen
 	ts := int64(binary.BigEndian.Uint64(b[pos : pos+8]))
@@ -214,7 +217,9 @@ func newDelayQueue(topicName string, part int, dataPath string, opt *Options,
 	})
 	if err != nil {
 		nsqLog.LogErrorf("topic(%v) failed to init delayed db: %v , %v ", q.fullName, err, backendName)
-		return nil, err
+		if ro == nil || !ro.ReadOnly {
+			return nil, err
+		}
 	}
 
 	return q, nil
@@ -633,6 +638,7 @@ func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch st
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
 			_, delayedTs, delayedID, delayedCh, err := decodeDelayedMsgDBKey(k)
 			if err != nil {
+				nsqLog.Infof("decode key failed : %v, %v", k, err)
 				continue
 			}
 			if delayedTs > peekTs {
@@ -665,6 +671,7 @@ func (q *DelayQueue) emptyAllDelayedType(dt int, ch string) error {
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
 			delayedType, delayedTs, delayedID, delayedCh, err := decodeDelayedMsgDBKey(k)
 			if err != nil {
+				nsqLog.Infof("decode key failed : %v, %v", k, err)
 				continue
 			}
 			if delayedType != uint16(dt) {
@@ -712,6 +719,7 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 		for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
 			_, delayedTs, _, delayedCh, err := decodeDelayedMsgDBKey(k)
 			if err != nil {
+				nsqLog.Infof("decode key failed : %v, %v", k, err)
 				continue
 			}
 			if nsqLog.Level() > levellogger.LOG_DETAIL {
@@ -857,6 +865,7 @@ func (q *DelayQueue) GetOldestConsumedState(chList []string, includeOthers bool)
 			for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
 				_, delayedTs, _, delayedCh, err := decodeDelayedMsgDBKey(k)
 				if err != nil {
+					nsqLog.Infof("decode key failed : %v, %v", k, err)
 					continue
 				}
 
@@ -886,6 +895,7 @@ func (q *DelayQueue) UpdateConsumedState(keyList RecentKeyList, cntList map[int]
 	for _, k := range keyList {
 		dt, dts, id, delayedCh, err := decodeDelayedMsgDBKey(k)
 		if err != nil {
+			nsqLog.Infof("decode key failed : %v, %v", k, err)
 			continue
 		}
 		q.emptyDelayedUntil(int(dt), dts, id, delayedCh)
