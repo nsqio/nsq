@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"github.com/absolute8511/nsq/internal/ext"
 	"io"
@@ -249,6 +250,9 @@ func (m *Message) WriteDelayedTo(w io.Writer, writeExt bool) (int64, error) {
 		}
 
 		if m.ExtVer != ext.NO_EXT_VER {
+			if len(m.ExtBytes) >= 65535 {
+				return total, errors.New("extend data exceed the limit")
+			}
 			binary.BigEndian.PutUint16(buf[:2], uint16(len(m.ExtBytes)))
 			n, err = w.Write(buf[:2])
 			total += int64(n)
@@ -313,18 +317,24 @@ func decodeMessage(b []byte, isExt bool) (*Message, error) {
 	bodyStart := 26
 
 	if isExt {
+		if len(b) < 27 {
+			return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
+		}
 		extVer := ext.ExtVer(uint8(b[bodyStart]))
+		msg.ExtVer = extVer
 		switch extVer {
-		case ext.TAG_EXT_VER:
-			tagLen := binary.BigEndian.Uint16(b[27 : 27+2])
-			msg.ExtVer = ext.TAG_EXT_VER
-			msg.ExtBytes = b[29 : 29+tagLen]
-			bodyStart = 29 + int(tagLen)
 		case ext.NO_EXT_VER:
-			msg.ExtVer = ext.NO_EXT_VER
 			bodyStart = 27
 		default:
-			return nil, fmt.Errorf("invalid ext version %v", extVer)
+			if len(b) < 27+2 {
+				return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
+			}
+			tagLen := binary.BigEndian.Uint16(b[27 : 27+2])
+			if len(b) < 27+2+int(tagLen) {
+				return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
+			}
+			msg.ExtBytes = b[29 : 29+tagLen]
+			bodyStart = 29 + int(tagLen)
 		}
 	}
 
