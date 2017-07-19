@@ -130,6 +130,7 @@ type Channel struct {
 	delayedQueue           *DelayQueue
 	delayedMsgs            map[MessageID]Message
 	delayedConfirmedMsgs   map[MessageID]Message
+	peekedMsgs             []Message
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
@@ -160,6 +161,7 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		consumeDisabled:      consumeDisabled,
 		delayedMsgs:          make(map[MessageID]Message, MaxWaitingDelayed),
 		delayedConfirmedMsgs: make(map[MessageID]Message, MaxWaitingDelayed),
+		peekedMsgs:           make([]Message, MaxWaitingDelayed),
 		Ext:                  ext,
 	}
 	if len(opt.E2EProcessingLatencyPercentiles) > 0 {
@@ -652,7 +654,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 		c.GetDelayedQueue().ConfirmedMessage(msg)
 		delete(c.delayedMsgs, msg.ID)
 		c.delayedConfirmedMsgs[msg.ID] = *msg
-		if len(c.delayedMsgs) < MaxWaitingDelayed/2 {
+		if len(c.delayedMsgs) <= 1 {
 			c.nsqdNotify.NotifyScanDelayed(c)
 		}
 		return 0, 0, true
@@ -1733,17 +1735,17 @@ exit:
 	waitingDelayCnt := len(c.delayedMsgs)
 	c.confirmMutex.Unlock()
 	checkFast := false
+	needPeekDelay := (waitingDelayCnt <= MaxWaitingDelayed/10) || (waitingDelayCnt <= clientNum)
 	if !c.IsConsumeDisabled() && !c.IsOrdered() && delayedQueue != nil &&
-		waitingDelayCnt < MaxWaitingDelayed && clientNum > 0 {
-		dmsgs := make([]Message, MaxWaitingDelayed)
+		needPeekDelay && clientNum > 0 {
 		peekStart := time.Now()
-		cnt, err := delayedQueue.PeekRecentChannelTimeout(tnow, dmsgs, c.GetName())
+		cnt, err := delayedQueue.PeekRecentChannelTimeout(tnow, c.peekedMsgs, c.GetName())
 		if err == nil {
-			if cnt >= len(dmsgs) {
+			if cnt >= len(c.peekedMsgs) {
 				checkFast = true
 			}
 
-			for _, tmpMsg := range dmsgs[:cnt] {
+			for _, tmpMsg := range c.peekedMsgs[:cnt] {
 				m := tmpMsg
 				c.inFlightMutex.Lock()
 				c.confirmMutex.Lock()

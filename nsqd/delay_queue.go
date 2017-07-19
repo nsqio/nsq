@@ -688,6 +688,9 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 	var prefix []byte
 	if filterType > 0 {
 		prefix = getDelayedMsgDBPrefixKey(filterType, filterChannel)
+		if nsqLog.Level() > levellogger.LOG_DETAIL {
+			nsqLog.LogDebugf("peek prefix %v: channel %v", prefix, filterChannel)
+		}
 	}
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
@@ -829,14 +832,24 @@ func (q *DelayQueue) GetOldestConsumedState(chList []string, includeOthers bool)
 		if i >= chIndex {
 			origCh = chList[i-chIndex]
 		}
+
+		if nsqLog.Level() > levellogger.LOG_DETAIL {
+			nsqLog.LogDebugf("peek prefix %v: channel %v", prefix, origCh)
+		}
+
 		err := db.View(func(tx *bolt.Tx) error {
 			b := tx.Bucket(bucketDelayedMsg)
 			c := b.Cursor()
 			for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-				_, _, _, delayedCh, err := decodeDelayedMsgDBKey(k)
+				_, delayedTs, _, delayedCh, err := decodeDelayedMsgDBKey(k)
 				if err != nil {
 					continue
 				}
+
+				if nsqLog.Level() > levellogger.LOG_DETAIL {
+					nsqLog.LogDebugf("peek delayed message %v: %v, %v", k, delayedTs, origCh)
+				}
+
 				// prefix seek may across to other channel with the same prefix
 				if delayedCh != origCh {
 					continue

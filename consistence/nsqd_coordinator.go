@@ -24,7 +24,7 @@ const (
 	MAX_CATCHUP_RETRY                = 5
 	MAX_LOG_PULL                     = 10000
 	MAX_LOG_PULL_BYTES               = 1024 * 1024 * 32
-	MAX_TOPIC_RETENTION_SIZE_PER_DAY = 1024 * 1024 * 1024 * 4
+	MAX_TOPIC_RETENTION_SIZE_PER_DAY = 1024 * 1024 * 1024 * 16
 	MAX_CATCHUP_RUNNING              = 3
 	API_BACKUP_DELAYED_QUEUE_DB      = "/delayqueue/backupto"
 )
@@ -376,6 +376,7 @@ func (self *NsqdCoordinator) checkAndCleanOldData() {
 					retentionDay = int32(nsqd.DEFAULT_RETENTION_DAYS)
 				}
 				retentionSize := MAX_TOPIC_RETENTION_SIZE_PER_DAY * int64(retentionDay)
+				// TODO: check if disk almost full (over 80%), then we do a more greed clean
 				if checkRetentionDay {
 					retentionSize = 0
 				}
