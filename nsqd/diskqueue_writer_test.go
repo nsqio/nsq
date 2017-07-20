@@ -633,24 +633,25 @@ func TestDiskQueueWriterTorture(t *testing.T) {
 		}()
 	}
 
-	t.Logf("waiting for depth 0")
+	start := time.Now()
 	for {
 		if atomic.LoadInt64(&read) == depth {
 			break
 		}
+		if time.Since(start) > time.Minute {
+			break
+		}
 		time.Sleep(time.Second)
 	}
-	equal(t, atomic.LoadInt64(&read), depth)
-	equal(t, dqReader.(*diskQueueReader).GetQueueConfirmed().Offset(),
-		BackendOffset(depth))
-	equal(t, dqReader.Depth(), int64(0))
-	equal(t, dqReader.DepthSize(), int64(0))
-
 	t.Logf("closing readExitChan")
 	close(readExitChan)
 	wg.Wait()
 
 	equal(t, atomic.LoadInt64(&read), depth)
+	equal(t, dqReader.(*diskQueueReader).GetQueueConfirmed().Offset(),
+		BackendOffset(depth))
+	equal(t, dqReader.Depth(), int64(0))
+	equal(t, dqReader.DepthSize(), int64(0))
 }
 
 func BenchmarkDiskQueueWriterPut16(b *testing.B) {

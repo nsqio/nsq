@@ -1814,22 +1814,22 @@ exit:
 		if newAdded >= MaxWaitingDelayed/2 {
 			checkFast = true
 		}
-	}
-	if waitingDelayCnt > 0 {
-		if nsqLog.Level() >= levellogger.LOG_DETAIL {
-			c.inFlightMutex.Lock()
-			c.confirmMutex.Lock()
-			for id, dm := range c.delayedMsgs {
-				if _, ok := c.inFlightMessages[id]; !ok {
+	} else {
+		if waitingDelayCnt > 0 && nsqLog.Level() >= levellogger.LOG_DETAIL {
+			nsqLog.LogDebugf("delayed waiting : %v", waitingDelayCnt)
+		}
+		c.inFlightMutex.Lock()
+		c.confirmMutex.Lock()
+		for id, dm := range c.delayedMsgs {
+			if _, ok := c.inFlightMessages[id]; !ok {
+				if time.Since(dm.deliveryTs) > time.Second*3 {
 					nsqLog.LogDebugf("delayed waiting not in flight : %v, %v", id, dm)
-					if time.Since(dm.deliveryTs) > time.Second*3 {
-						delete(c.delayedMsgs, id)
-					}
+					delete(c.delayedMsgs, id)
 				}
 			}
-			c.confirmMutex.Unlock()
-			c.inFlightMutex.Unlock()
 		}
+		c.confirmMutex.Unlock()
+		c.inFlightMutex.Unlock()
 	}
 
 	if ((flightCnt == 0) && (reqLen == 0) &&
