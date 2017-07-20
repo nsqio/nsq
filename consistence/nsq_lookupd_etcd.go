@@ -115,7 +115,7 @@ func (self *NsqLookupdEtcdMgr) refresh(stopC <-chan bool) {
 		select {
 		case <-stopC:
 			return
-		case <-time.After(time.Second * time.Duration(ETCD_TTL*4/10)):
+		case <-time.After(time.Second * time.Duration(ETCD_TTL/10)):
 			_, err := self.client.SetWithTTL(self.nodeKey, ETCD_TTL)
 			if err != nil {
 				coordLog.Errorf("update error: %s", err.Error())
