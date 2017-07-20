@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"path"
+	"time"
 
 	"github.com/absolute8511/nsq/consistence"
 	"github.com/absolute8511/nsq/internal/levellogger"
@@ -117,7 +118,12 @@ func main() {
 			nsqd.NsqLogger().Infof("channel %v cnt : %v", k, v)
 		}
 		rets := make([]nsqd.Message, *viewCnt)
-		cnt, err := delayQ.PeekAll(rets)
+		cnt, err := delayQ.PeekRecentChannelTimeout(time.Now().UnixNano(), rets, *viewCh)
+		for _, m := range rets[:cnt] {
+			nsqd.NsqLogger().Infof("peeked channel msg : %v", m)
+		}
+
+		cnt, err = delayQ.PeekAll(rets)
 		for _, m := range rets[:cnt] {
 			nsqd.NsqLogger().Infof("peeked msg : %v", m)
 		}

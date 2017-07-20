@@ -730,7 +730,7 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 				break
 			}
 
-			if delayedCh != filterChannel {
+			if filterChannel != "" && delayedCh != filterChannel {
 				continue
 			}
 
@@ -746,9 +746,6 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 			}
 
 			if filterType >= 0 && filterType != int(m.DelayedType) {
-				continue
-			}
-			if len(filterChannel) > 0 && filterChannel != m.DelayedChannel {
 				continue
 			}
 			results[idx] = *m

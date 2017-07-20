@@ -55,6 +55,11 @@ type MsgChanData struct {
 	ClientCnt int64
 }
 
+type delayedMessage struct {
+	msg        Message
+	deliveryTs time.Time
+}
+
 // Channel represents the concrete type for a NSQ channel (and also
 // implements the Queue interface)
 //
@@ -128,7 +133,7 @@ type Channel struct {
 	waitingDeliveryState   int32
 	delayedLock            sync.RWMutex
 	delayedQueue           *DelayQueue
-	delayedMsgs            map[MessageID]Message
+	delayedMsgs            map[MessageID]delayedMessage
 	delayedConfirmedMsgs   map[MessageID]Message
 	peekedMsgs             []Message
 }
@@ -159,7 +164,7 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		option:               opt,
 		nsqdNotify:           notify,
 		consumeDisabled:      consumeDisabled,
-		delayedMsgs:          make(map[MessageID]Message, MaxWaitingDelayed),
+		delayedMsgs:          make(map[MessageID]delayedMessage, MaxWaitingDelayed),
 		delayedConfirmedMsgs: make(map[MessageID]Message, MaxWaitingDelayed),
 		peekedMsgs:           make([]Message, MaxWaitingDelayed),
 		Ext:                  ext,
@@ -1202,7 +1207,7 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *boo
 	if clearConfirmed {
 		c.confirmMutex.Lock()
 		c.confirmedMsgs = NewIntervalTree()
-		c.delayedMsgs = make(map[MessageID]Message, MaxWaitingDelayed)
+		c.delayedMsgs = make(map[MessageID]delayedMessage, MaxWaitingDelayed)
 		atomic.StoreInt32(&c.waitingConfirm, 0)
 		c.confirmMutex.Unlock()
 	}
@@ -1735,16 +1740,13 @@ exit:
 	waitingDelayCnt := len(c.delayedMsgs)
 	c.confirmMutex.Unlock()
 	checkFast := false
-	needPeekDelay := (waitingDelayCnt <= MaxWaitingDelayed/10) || (waitingDelayCnt <= clientNum)
+	needPeekDelay := (waitingDelayCnt <= MaxWaitingDelayed/4) || (waitingDelayCnt <= clientNum)
 	if !c.IsConsumeDisabled() && !c.IsOrdered() && delayedQueue != nil &&
 		needPeekDelay && clientNum > 0 {
 		peekStart := time.Now()
+		newAdded := 0
 		cnt, err := delayedQueue.PeekRecentChannelTimeout(tnow, c.peekedMsgs, c.GetName())
 		if err == nil {
-			if cnt >= len(c.peekedMsgs) {
-				checkFast = true
-			}
-
 			for _, tmpMsg := range c.peekedMsgs[:cnt] {
 				m := tmpMsg
 				c.inFlightMutex.Lock()
@@ -1752,9 +1754,17 @@ exit:
 				oldMsg, ok := c.delayedMsgs[m.DelayedOrigID]
 				_, cok := c.delayedConfirmedMsgs[m.DelayedOrigID]
 				if ok || cok {
-					if ok && m.DelayedTs != oldMsg.DelayedTs {
-						nsqLog.LogWarningf("delay queue peek msg %v not match with waiting msg %v ",
-							m, oldMsg)
+					if ok {
+						if time.Since(oldMsg.deliveryTs) > time.Second*10 {
+							nsqLog.LogDebugf("delayed waiting too long : %v", oldMsg)
+							if _, ok2 := c.inFlightMessages[m.DelayedOrigID]; !ok2 {
+								delete(c.delayedMsgs, m.DelayedOrigID)
+							}
+						}
+						if m.DelayedTs != oldMsg.msg.DelayedTs {
+							nsqLog.LogWarningf("delay queue peek msg %v not match with waiting msg %v ",
+								m, oldMsg)
+						}
 					}
 				} else {
 					oldMsg2, ok2 := c.inFlightMessages[m.DelayedOrigID]
@@ -1764,7 +1774,10 @@ exit:
 								oldMsg2, m)
 						}
 					} else {
-						c.delayedMsgs[m.DelayedOrigID] = m
+						var dm delayedMessage
+						dm.msg = m
+						dm.deliveryTs = time.Now()
+						c.delayedMsgs[m.DelayedOrigID] = dm
 						waitingDelayCnt = len(c.delayedMsgs)
 
 						tmpID := m.ID
@@ -1781,6 +1794,7 @@ exit:
 							nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "DELAY_QUEUE_TIMEOUT", m.TraceID, &m, "")
 						}
 
+						newAdded++
 						if m.belongedConsumer != nil {
 							m.belongedConsumer.RequeuedMessage()
 							m.belongedConsumer = nil
@@ -1797,17 +1811,24 @@ exit:
 			c.delayedConfirmedMsgs = make(map[MessageID]Message, MaxWaitingDelayed)
 			c.confirmMutex.Unlock()
 		}
-		if waitingDelayCnt >= MaxWaitingDelayed {
+		if newAdded >= MaxWaitingDelayed/2 {
 			checkFast = true
 		}
-	} else if waitingDelayCnt >= MaxWaitingDelayed {
-		if nsqLog.Level() > levellogger.LOG_DETAIL {
+	}
+	if waitingDelayCnt > 0 {
+		if nsqLog.Level() >= levellogger.LOG_DETAIL {
+			c.inFlightMutex.Lock()
 			c.confirmMutex.Lock()
-			nsqLog.LogDebugf("delayed waiting : ")
-			for id, m := range c.delayedMsgs {
-				nsqLog.LogDebugf("delayed waiting : %v, %v", id, m)
+			for id, dm := range c.delayedMsgs {
+				if _, ok := c.inFlightMessages[id]; !ok {
+					nsqLog.LogDebugf("delayed waiting not in flight : %v, %v", id, dm)
+					if time.Since(dm.deliveryTs) > time.Second*3 {
+						delete(c.delayedMsgs, id)
+					}
+				}
 			}
 			c.confirmMutex.Unlock()
+			c.inFlightMutex.Unlock()
 		}
 	}
 
