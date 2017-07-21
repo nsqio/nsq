@@ -558,10 +558,11 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				goto exit
 			}
 
-			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
+			if sampleRate > 0 && rand.Int31n(100) > sampleRate && msg.DelayedType != nsqd.ChannelDelayed {
 				// FIN automatically, all message will not wait to confirm if not sending,
 				// and the reader keep moving forward.
 				offset, confirmedCnt, changed := subChannel.ConfirmBackendQueue(msg)
+				subChannel.CleanWaitingRequeueChan(msg)
 				if changed && p.ctx.nsqdCoord != nil {
 					p.ctx.nsqdCoord.SetChannelConsumeOffsetToCluster(subChannel, int64(offset), confirmedCnt, true)
 				}
@@ -571,6 +572,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 			// this may happen while the channel reader is reset to old position
 			// due to some retry or leader change.
 			if subChannel.IsConfirmed(msg) {
+				subChannel.CleanWaitingRequeueChan(msg)
 				subChannel.ContinueConsumeForOrder()
 				continue
 			}
