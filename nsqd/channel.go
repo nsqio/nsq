@@ -1265,7 +1265,9 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *boo
 			done = true
 		}
 	}
+	reqCnt := 0
 	c.inFlightMutex.Lock()
+	reqCnt += len(c.waitingRequeueMsgs) + len(c.waitingRequeueChanMsgs)
 	for k, _ := range c.waitingRequeueMsgs {
 		delete(c.waitingRequeueMsgs, k)
 	}
@@ -1273,6 +1275,8 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *boo
 		delete(c.waitingRequeueChanMsgs, k)
 	}
 	c.inFlightMutex.Unlock()
+	nsqLog.Logf("drained channel %v waiting req %v, delay: %v", c.GetName(), reqCnt,
+		atomic.LoadInt64(&c.deferredFromDelay))
 	atomic.StoreInt64(&c.deferredFromDelay, 0)
 
 	if lastDataNeedRead != nil {
@@ -1799,6 +1803,7 @@ exit:
 				_, cok := c.delayedConfirmedMsgs[m.DelayedOrigID]
 				c.confirmMutex.Unlock()
 				if cok {
+					nsqLog.LogDebugf("delayed message already confirmed %v ", m)
 				} else {
 					oldMsg2, ok2 := c.inFlightMessages[m.DelayedOrigID]
 					_, ok3 := c.waitingRequeueChanMsgs[m.DelayedOrigID]
@@ -1810,6 +1815,7 @@ exit:
 						}
 					} else if ok3 || ok4 {
 						// already waiting requeue
+						nsqLog.LogDebugf("delayed waiting in requeued %v ", m)
 					} else {
 						tmpID := m.ID
 						m.ID = m.DelayedOrigID
@@ -1842,10 +1848,8 @@ exit:
 			c.confirmMutex.Lock()
 			c.delayedConfirmedMsgs = make(map[MessageID]Message, MaxWaitingDelayed)
 			c.confirmMutex.Unlock()
-			if newAdded > 0 {
-				if nsqLog.Level() >= levellogger.LOG_DEBUG {
-					nsqLog.LogDebugf("delayed waiting added %v new : %v", newAdded, waitingDelayCnt)
-				}
+			if newAdded > 0 && nsqLog.Level() >= levellogger.LOG_DEBUG {
+				nsqLog.LogDebugf("delayed waiting peeked %v added %v new : %v", cnt, newAdded, waitingDelayCnt)
 			}
 		}
 	} else if clientNum > 0 {

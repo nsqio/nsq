@@ -158,7 +158,9 @@ type DelayQueue struct {
 	isExt       bool
 	dbLock      sync.Mutex
 	// prevent write while compact db
-	compactMutex sync.Mutex
+	compactMutex           sync.Mutex
+	oldestChannelDelayedTs map[string]int64
+	oldestMutex            sync.Mutex
 }
 
 func NewDelayQueueForRead(topicName string, part int, dataPath string, opt *Options,
@@ -186,6 +188,7 @@ func newDelayQueue(topicName string, part int, dataPath string, opt *Options,
 		dataPath:    dataPath,
 		msgIDCursor: idGen,
 		isExt:       isExt,
+		oldestChannelDelayedTs: make(map[string]int64),
 	}
 	q.fullName = GetTopicFullName(q.tname, q.partition)
 	backendName := getDelayQueueBackendName(q.tname, q.partition)
@@ -258,6 +261,11 @@ func (q *DelayQueue) reOpenStore() error {
 		nsqLog.LogErrorf("topic(%v) failed to open delayed db: %v ", q.fullName, err)
 		return err
 	}
+
+	q.oldestMutex.Lock()
+	q.oldestChannelDelayedTs = make(map[string]int64)
+	q.oldestMutex.Unlock()
+
 	q.kvStore.NoSync = true
 	err = q.kvStore.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists(bucketDelayedMsg)
@@ -550,6 +558,14 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 			q.GetFullName(), m, err)
 		return m.ID, offset, writeBytes, dend, err
 	}
+	if m.DelayedType == ChannelDelayed {
+		q.oldestMutex.Lock()
+		oldest, ok := q.oldestChannelDelayedTs[m.DelayedChannel]
+		if !ok || oldest == 0 || m.DelayedTs < oldest {
+			q.oldestChannelDelayedTs[m.DelayedChannel] = m.DelayedTs
+		}
+		q.oldestMutex.Unlock()
+	}
 	if nsqLog.Level() >= levellogger.LOG_DEBUG {
 		cost := time.Since(wstart)
 		if cost > time.Millisecond*2 {
@@ -632,7 +648,7 @@ func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch st
 	prefix := getDelayedMsgDBPrefixKey(dt, ch)
 	q.compactMutex.Lock()
 	defer q.compactMutex.Unlock()
-	return db.Update(func(tx *bolt.Tx) error {
+	err := db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
@@ -658,6 +674,18 @@ func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch st
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if dt == ChannelDelayed {
+		q.oldestMutex.Lock()
+		old, ok := q.oldestChannelDelayedTs[ch]
+		if !ok || old == 0 || peekTs < old {
+			q.oldestChannelDelayedTs[ch] = peekTs
+		}
+		q.oldestMutex.Unlock()
+	}
+	return nil
 }
 
 func (q *DelayQueue) emptyAllDelayedType(dt int, ch string) error {
@@ -665,7 +693,7 @@ func (q *DelayQueue) emptyAllDelayedType(dt int, ch string) error {
 	prefix := getDelayedMsgDBPrefixKey(dt, ch)
 	q.compactMutex.Lock()
 	defer q.compactMutex.Unlock()
-	return db.Update(func(tx *bolt.Tx) error {
+	err := db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
 		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
@@ -687,6 +715,17 @@ func (q *DelayQueue) emptyAllDelayedType(dt int, ch string) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if dt == ChannelDelayed && ch != "" {
+		// no message anymore, oldest as next hour
+		q.oldestMutex.Lock()
+		q.oldestChannelDelayedTs[ch] = time.Now().Add(time.Hour).UnixNano()
+		q.oldestMutex.Unlock()
+	}
+
+	return nil
 }
 
 func (q *DelayQueue) EmptyDelayedType(dt int) error {
@@ -704,6 +743,22 @@ func (q *DelayQueue) EmptyDelayedChannel(ch string) error {
 
 func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64, filterType int,
 	filterChannel string) (int, error) {
+
+	oldest := int64(0)
+	if filterType == ChannelDelayed && filterChannel != "" {
+		q.oldestMutex.Lock()
+		ok := false
+		oldest, ok = q.oldestChannelDelayedTs[filterChannel]
+		q.oldestMutex.Unlock()
+		if ok && oldest > peekTs {
+			if nsqLog.Level() > levellogger.LOG_DETAIL {
+				nsqLog.LogDebugf("channel %v peek until %v ignored since oldest is %v",
+					filterChannel, peekTs, oldest)
+			}
+			return 0, nil
+		}
+	}
+
 	db := q.getStore()
 	idx := 0
 	var prefix []byte
@@ -721,6 +776,11 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 			if err != nil {
 				nsqLog.Infof("decode key failed : %v, %v", k, err)
 				continue
+			}
+			if filterType == ChannelDelayed && filterChannel != "" {
+				if oldest == 0 || delayedTs < oldest {
+					oldest = delayedTs
+				}
 			}
 			if nsqLog.Level() > levellogger.LOG_DETAIL {
 				nsqLog.LogDebugf("peek delayed message %v: %v", k, delayedTs)
@@ -753,6 +813,15 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 		}
 		return nil
 	})
+	if err == nil && oldest > 0 {
+		// no message anymore, oldest as next hour
+		q.oldestMutex.Lock()
+		old, ok := q.oldestChannelDelayedTs[filterChannel]
+		if !ok || old == 0 || oldest < old {
+			q.oldestChannelDelayedTs[filterChannel] = oldest
+		}
+		q.oldestMutex.Unlock()
+	}
 	return idx, err
 }
 

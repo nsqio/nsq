@@ -61,6 +61,26 @@ func sub(t *testing.T, conn io.ReadWriter, topicName string, channelName string)
 	readValidate(t, conn, frameTypeResponse, "OK")
 }
 
+func subWaitResp(t *testing.T, conn io.ReadWriter, topicName string, channelName string) ([]byte, error) {
+	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
+	test.Equal(t, err, nil)
+	for {
+		resp, err := nsq.ReadResponse(conn)
+		if err != nil {
+			return nil, err
+		}
+		_, data, err := nsq.UnpackResponse(resp)
+		test.Equal(t, err, nil)
+
+		if string(data) == string(heartbeatBytes) {
+			cmd := nsq.Nop()
+			cmd.WriteTo(conn)
+			continue
+		}
+		return data, nil
+	}
+}
+
 func subOrdered(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	_, err := nsq.SubscribeOrdered(topicName, channelName, "0").WriteTo(conn)
 	test.Equal(t, err, nil)
@@ -115,8 +135,8 @@ func readValidate(t *testing.T, conn io.ReadWriter, f int32, d string) []byte {
 			continue
 		}
 
-		test.Equal(t, frameType, f)
 		test.Equal(t, string(data), d)
+		test.Equal(t, frameType, f)
 		return data
 	}
 }
@@ -214,7 +234,9 @@ func recvNextMsgAndCheckExt(t *testing.T, conn io.ReadWriter,
 		resp, err := nsq.ReadResponse(conn)
 		if err != nil {
 			t.Logf("read response err: %v", err.Error())
-			if strings.Contains(err.Error(), "closed") || strings.Contains(err.Error(), "EOF") {
+			if strings.Contains(err.Error(), "closed") ||
+				strings.Contains(err.Error(), "EOF") ||
+				strings.Contains(err.Error(), "reset by peer") {
 				break
 			}
 		}
@@ -2171,12 +2193,20 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
+func TestDelayManyMessagesToQueueEndWithLeaderChanged(t *testing.T) {
+	testDelayManyMessagesToQueueEnd(t, true)
+}
+
 func TestDelayManyMessagesToQueueEnd(t *testing.T) {
+	testDelayManyMessagesToQueueEnd(t, false)
+}
+
+func testDelayManyMessagesToQueueEnd(t *testing.T, changedLeader bool) {
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
 	opts.LogLevel = 1
 	if testing.Verbose() {
-		opts.LogLevel = 4
+		opts.LogLevel = 5
 		nsqdNs.SetLogger(opts.Logger)
 	}
 	opts.SyncEvery = 1
@@ -2193,7 +2223,7 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 
 	topicName := "test_requeue_delay" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopicIgnPart(topicName)
-	topic.GetChannel("ch")
+	ch := topic.GetChannel("ch")
 
 	putCnt := nsqdNs.MaxWaitingDelayed + 100
 	recvCnt := int32(0)
@@ -2219,10 +2249,12 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 
 	dumpCheck := make(map[uint64]*nsqdNs.Message)
 	var dumpLock sync.Mutex
+	dumpCnt := int32(0)
 	gcnt := 5
 	msgChan := make(chan nsqdNs.Message, 10)
 	for i := 0; i < gcnt; i++ {
 		go func() {
+		RECONNECT:
 			conn, err := mustConnectNSQD(tcpAddr)
 			test.Equal(t, err, nil)
 			defer conn.Close()
@@ -2230,13 +2262,34 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 			identify(t, conn, map[string]interface{}{
 				"output_buffer_timeout": opts.MaxOutputBufferTimeout / time.Millisecond,
 			}, frameTypeResponse)
-			sub(t, conn, topicName, "ch")
+			subRsp, err := subWaitResp(t, conn, topicName, "ch")
+			if changedLeader {
+				if atomic.LoadInt32(&finCnt) >= int32(putCnt) {
+					return
+				}
+				if err != nil || string(subRsp) != "OK" {
+					conn.Close()
+					time.Sleep(time.Millisecond * 3)
+					goto RECONNECT
+				}
+			} else {
+				test.Nil(t, err)
+				test.Equal(t, "OK", string(subRsp))
+			}
 			_, err = nsq.Ready(10).WriteTo(conn)
 			test.Equal(t, err, nil)
 
 			for {
 				msgOut := recvNextMsgAndCheck(t, conn, 0, 0, false)
 				if msgOut == nil {
+					if changedLeader {
+						if atomic.LoadInt32(&finCnt) >= int32(putCnt) {
+							break
+						}
+						conn.Close()
+						time.Sleep(time.Millisecond * 3)
+						goto RECONNECT
+					}
 					if atomic.LoadInt32(&finCnt) < int32(putCnt) {
 						t.Errorf("\033error recv: %v, %v, %v", atomic.LoadInt32(&recvCnt),
 							atomic.LoadInt32(&reqCnt), atomic.LoadInt32(&finCnt))
@@ -2269,15 +2322,32 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 				} else {
 					test.Equal(t, "nodelay", string(msgOut.Body))
 				}
+
 				dumpLock.Lock()
-				if dup, ok := dumpCheck[uint64(msgOut.ID)]; ok {
-					test.Assert(t, false, fmt.Sprintf("should no duplicate message fin %v", dup))
+				received := false
+				var dup *nsqdNs.Message
+				if dup, received = dumpCheck[uint64(msgOut.ID)]; received {
+					if changedLeader {
+						t.Logf("found duplicate message fin %v", dup)
+					} else {
+						test.Assert(t, false, fmt.Sprintf("should no duplicate message fin %v", dup))
+					}
+					atomic.AddInt32(&dumpCnt, 1)
 				}
 				dumpCheck[uint64(msgOut.ID)] = msgOut
 				dumpLock.Unlock()
-				test.Assert(t, msgOut.Attempts < 3, "should never attempt more than 2")
+				if msgOut.Attempts >= 3 {
+					if changedLeader {
+						t.Logf("found message attempts 3 more %v", msgOut)
+					} else {
+						test.Assert(t, msgOut.Attempts < 3, "should never attempt more than 2")
+					}
+				}
 				nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
-				newCnt := atomic.AddInt32(&finCnt, 1)
+				newCnt := atomic.LoadInt32(&finCnt)
+				if !received {
+					newCnt = atomic.AddInt32(&finCnt, 1)
+				}
 				msgChan <- *msgOut
 				if newCnt >= int32(putCnt) {
 					break
@@ -2286,10 +2356,19 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 		}()
 	}
 	done := false
+	changed := false
 	for !done {
 		select {
 		case m := <-msgChan:
 			delete(allmsgs, int(m.ID))
+			if len(allmsgs) == putCnt/2 && changedLeader && !changed {
+				t.Logf("try disable channel ==== ")
+				ch.DisableConsume(true)
+				time.Sleep(time.Millisecond * 10)
+				t.Logf("try enable channel ==== ")
+				ch.DisableConsume(false)
+				changed = true
+			}
 			if len(allmsgs) == 0 {
 				t.Logf("done since all msgs is finished")
 				done = true
@@ -2299,15 +2378,19 @@ func TestDelayManyMessagesToQueueEnd(t *testing.T) {
 				done = true
 				break
 			}
-		case <-time.After(time.Second*10 + opts.ReqToEndThreshold*3):
+		case <-time.After(time.Second*30 + opts.ReqToEndThreshold*3):
 			t.Errorf("\033[31m timeout recv: %v, %v, %v\033[39m\n\n", atomic.LoadInt32(&recvCnt),
 				atomic.LoadInt32(&reqCnt), atomic.LoadInt32(&finCnt))
 			done = true
 			break
 		}
 	}
-	t.Logf("final: %v, %v, %v", recvCnt, reqCnt, finCnt)
-	test.Equal(t, recvCnt, finCnt+reqCnt)
+
+	t.Logf("final: %v, %v, %v, %v", atomic.LoadInt32(&recvCnt),
+		atomic.LoadInt32(&reqCnt), atomic.LoadInt32(&finCnt),
+		atomic.LoadInt32(&dumpCnt))
+	test.Equal(t, atomic.LoadInt32(&recvCnt), atomic.LoadInt32(&reqCnt)+atomic.LoadInt32(&finCnt)+
+		atomic.LoadInt32(&dumpCnt))
 	test.Equal(t, 0, len(allmsgs))
 }
 
