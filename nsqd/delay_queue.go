@@ -677,12 +677,14 @@ func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch st
 	if err != nil {
 		return err
 	}
-	if dt == ChannelDelayed {
+	if dt == ChannelDelayed && ch != "" {
 		q.oldestMutex.Lock()
-		old, ok := q.oldestChannelDelayedTs[ch]
-		if !ok || old == 0 || peekTs < old {
-			q.oldestChannelDelayedTs[ch] = peekTs
+		q.oldestChannelDelayedTs[ch] = peekTs
+		if nsqLog.Level() >= levellogger.LOG_DETAIL {
+			nsqLog.LogDebugf("channel %v update oldest to %v at time %v",
+				ch, peekTs, time.Now().UnixNano())
 		}
+
 		q.oldestMutex.Unlock()
 	}
 	return nil
@@ -768,6 +770,7 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 			nsqLog.LogDebugf("peek prefix %v: channel %v", prefix, filterChannel)
 		}
 	}
+	oldest = int64(0)
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketDelayedMsg)
 		c := b.Cursor()
@@ -777,13 +780,11 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 				nsqLog.Infof("decode key failed : %v, %v", k, err)
 				continue
 			}
-			if filterType == ChannelDelayed && filterChannel != "" {
-				if oldest == 0 || delayedTs < oldest {
-					oldest = delayedTs
-				}
+			if oldest == 0 && filterType == ChannelDelayed && filterChannel != "" {
+				oldest = delayedTs
 			}
 			if nsqLog.Level() > levellogger.LOG_DETAIL {
-				nsqLog.LogDebugf("peek delayed message %v: %v", k, delayedTs)
+				nsqLog.LogDebugf("peek delayed message %v: %v at %v", k, delayedTs, time.Now().UnixNano())
 			}
 
 			if delayedTs > peekTs || idx >= len(results) {
@@ -816,9 +817,10 @@ func (q *DelayQueue) PeekRecentTimeoutWithFilter(results []Message, peekTs int64
 	if err == nil && oldest > 0 {
 		// no message anymore, oldest as next hour
 		q.oldestMutex.Lock()
-		old, ok := q.oldestChannelDelayedTs[filterChannel]
-		if !ok || old == 0 || oldest < old {
-			q.oldestChannelDelayedTs[filterChannel] = oldest
+		q.oldestChannelDelayedTs[filterChannel] = oldest
+		if nsqLog.Level() >= levellogger.LOG_DETAIL {
+			nsqLog.LogDebugf("channel %v update oldest to %v at time %v",
+				filterChannel, oldest, time.Now().UnixNano())
 		}
 		q.oldestMutex.Unlock()
 	}
