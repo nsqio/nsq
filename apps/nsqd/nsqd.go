@@ -237,7 +237,7 @@ func (p *program) Start() error {
 	nsqd.Main()
 
 	// hook into addons
-	addons := contrib.NewEnabledNSQDAddons(opts.ModOpt, nsqd, nsqd.Logf)
+	addons := contrib.NewEnabledNSQDAddons(opts.ModOpt, nsqd)
 	addons.Start()
 
 	p.nsqd = nsqd

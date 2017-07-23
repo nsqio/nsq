@@ -2,8 +2,8 @@ package	contrib
 
 import (
 	"testing"
-	"github.com/nsqio/nsq/internal/test"
-	"github.com/nsqio/nsq/nsqd"
+	_"github.com/nsqio/nsq/internal/test"
+	_"github.com/nsqio/nsq/nsqd"
 )
 
 func TestEnabledTrueWhenAddressPresent(t *testing.T) {
