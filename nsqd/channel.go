@@ -103,7 +103,7 @@ func NewChannel(topicName string, channelName string, ctx *context,
 			int32(ctx.nsqd.getOpts().MaxMsgSize)+minValidMsgLength,
 			ctx.nsqd.getOpts().SyncEvery,
 			ctx.nsqd.getOpts().SyncTimeout,
-			ctx.nsqd.getOpts().Logger)
+			backendLogger{ctx.nsqd.logf})
 	}
 
 	c.ctx.nsqd.Notify(c)
