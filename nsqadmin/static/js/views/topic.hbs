@@ -25,6 +25,7 @@
     </div>
 </div>
 {{else}}
+{{#if isAdmin}}
 <div class="row topic-actions">
     <div class="col-md-2">
         <button class="btn btn-medium btn-warning" data-action="empty">Empty Queue</button>
@@ -40,6 +41,7 @@
         {{/if}}
     </div>
 </div>
+{{/if}}
 
 <div class="row">
     <div class="col-md-12">

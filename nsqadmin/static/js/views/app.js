@@ -73,7 +73,6 @@ var AppView = BaseView.extend({
                     .fail(function() { $el.html('ERROR'); });
             });
         });
-
         this.render();
     },
 
@@ -98,21 +97,21 @@ var AppView = BaseView.extend({
 
     showTopic: function(topic) {
         this.showView(function() {
-            var model = new Topic({'name': topic});
+            var model = new Topic({'name': topic, 'isAdmin': AppState.get('IS_ADMIN')});
             return new TopicView({'model': model});
         });
     },
 
     showChannel: function(topic, channel) {
         this.showView(function() {
-            var model = new Channel({'topic': topic, 'name': channel});
+            var model = new Channel({'topic': topic, 'name': channel, 'isAdmin': AppState.get('IS_ADMIN')});
             return new ChannelView({'model': model});
         });
     },
 
     showLookup: function() {
         this.showView(function() {
-            return new LookupView();
+            return new LookupView({'isAdmin': AppState.get('IS_ADMIN')});
         });
     },
 

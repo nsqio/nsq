@@ -47,7 +47,9 @@ var (
 	httpClientTLSKey                = flagSet.String("http-client-tls-key", "", "path to key file for the HTTP client")
 
 	allowConfigFromCIDR = flagSet.String("allow-config-from-cidr", "127.0.0.1/8", "A CIDR from which to allow HTTP requests to the /config endpoint")
+	aclHttpHeader       = flagSet.String("acl-http-header", "X-Forwarded-User", "HTTP header to check for authenticated admin users")
 
+	adminUsers              = app.StringArray{}
 	nsqlookupdHTTPAddresses = app.StringArray{}
 	nsqdHTTPAddresses       = app.StringArray{}
 )
@@ -55,6 +57,7 @@ var (
 func init() {
 	flagSet.Var(&nsqlookupdHTTPAddresses, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
 	flagSet.Var(&nsqdHTTPAddresses, "nsqd-http-address", "nsqd HTTP address (may be given multiple times)")
+	flagSet.Var(&adminUsers, "admin-user", "admin user (may be given multiple times; if specified, only these users will be able to perform privileged actions; acl-http-header is used to determine the authenticated user)")
 }
 
 func main() {

@@ -134,6 +134,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 		StatsdGaugeFormat   string
 		StatsdPrefix        string
 		NSQLookupd          []string
+		IsAdmin             bool
 	}{
 		Version:             version.Binary,
 		ProxyGraphite:       s.ctx.nsqadmin.getOpts().ProxyGraphite,
@@ -144,6 +145,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 		StatsdGaugeFormat:   s.ctx.nsqadmin.getOpts().StatsdGaugeFormat,
 		StatsdPrefix:        s.ctx.nsqadmin.getOpts().StatsdPrefix,
 		NSQLookupd:          s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses,
+		IsAdmin:             s.isAuthorizedAdminRequest(req),
 	})
 
 	return nil, nil
@@ -420,6 +422,11 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 		Topic   string `json:"topic"`
 		Channel string `json:"channel"`
 	}
+
+	if !s.isAuthorizedAdminRequest(req) {
+		return nil, http_api.Err{403, "FORBIDDEN"}
+	}
+
 	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
@@ -458,6 +465,10 @@ func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.
 func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	var messages []string
 
+	if !s.isAuthorizedAdminRequest(req) {
+		return nil, http_api.Err{403, "FORBIDDEN"}
+	}
+
 	topicName := ps.ByName("topic")
 
 	err := s.ci.DeleteTopic(topicName,
@@ -482,6 +493,10 @@ func (s *httpServer) deleteTopicHandler(w http.ResponseWriter, req *http.Request
 
 func (s *httpServer) deleteChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	var messages []string
+
+	if !s.isAuthorizedAdminRequest(req) {
+		return nil, http_api.Err{403, "FORBIDDEN"}
+	}
 
 	topicName := ps.ByName("topic")
 	channelName := ps.ByName("channel")
@@ -523,6 +538,11 @@ func (s *httpServer) topicChannelAction(req *http.Request, topicName string, cha
 	var body struct {
 		Action string `json:"action"`
 	}
+
+	if !s.isAuthorizedAdminRequest(req) {
+		return nil, http_api.Err{403, "FORBIDDEN"}
+	}
+
 	err := json.NewDecoder(req.Body).Decode(&body)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
@@ -753,6 +773,21 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 	}
 
 	return v, nil
+}
+
+func (s *httpServer) isAuthorizedAdminRequest(req *http.Request) bool {
+	adminUsers := s.ctx.nsqadmin.getOpts().AdminUsers
+	if len(adminUsers) == 0 {
+		return true
+	}
+	aclHttpHeader := s.ctx.nsqadmin.getOpts().AclHttpHeader
+	user := req.Header.Get(aclHttpHeader)
+	for _, v := range adminUsers {
+		if v == user {
+			return true
+		}
+	}
+	return false
 }
 
 func getOptByCfgName(opts interface{}, name string) (interface{}, bool) {

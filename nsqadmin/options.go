@@ -38,6 +38,9 @@ type Options struct {
 	AllowConfigFromCIDR string `flag:"allow-config-from-cidr"`
 
 	NotificationHTTPEndpoint string `flag:"notification-http-endpoint"`
+
+	AclHttpHeader string   `flag:"acl-http-header"`
+	AdminUsers    []string `flag:"admin-user" cfg:"admin_users"`
 }
 
 func NewOptions() *Options {
@@ -52,5 +55,7 @@ func NewOptions() *Options {
 		HTTPClientConnectTimeout: 2 * time.Second,
 		HTTPClientRequestTimeout: 5 * time.Second,
 		AllowConfigFromCIDR:      "127.0.0.1/8",
+		AclHttpHeader:            "X-Forwarded-User",
+		AdminUsers:               []string{},
 	}
 }
