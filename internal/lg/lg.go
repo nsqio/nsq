@@ -19,12 +19,12 @@ const (
 type AppLogFunc func(lvl LogLevel, f string, args ...interface{})
 
 type Logger interface {
-	Output(maxdepth int, s string) error
+	Output(calldepth int, s string) error
 }
 
 type NilLogger struct{}
 
-func (l NilLogger) Output(maxdepth int, s string) error {
+func (l NilLogger) Output(calldepth int, s string) error {
 	return nil
 }
 
