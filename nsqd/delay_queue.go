@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -242,6 +243,9 @@ func (q *DelayQueue) CheckConsistence() error {
 					break
 				}
 				nsqLog.LogErrorf("topic(%v) failed to check delayed db: %v ", q.fullName, err)
+				if err != nil && strings.Contains(err.Error(), "unreachable unfreed") {
+					continue
+				}
 				count++
 			}
 		}
