@@ -1132,8 +1132,10 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 			if dup.msg.Offset != message.Offset || dup.msg.RawSize != message.RawSize {
 				log.Printf("got dump message with mismatch data: %v, %v\n", dup.msg, message)
 			}
-			atomic.AddInt64(&dup.recvCnt, 1)
+			dupCnt := atomic.AddInt64(&dup.recvCnt, 1)
 			dup.msg = message
+
+			log.Printf("got dump message : %v\n", dup.msg, dupCnt)
 			topicCheck[mid] = dup
 			return nil
 		}

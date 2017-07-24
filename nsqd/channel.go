@@ -871,6 +871,18 @@ func (c *Channel) ShouldRequeueToEnd(clientID int64, clientAddr string, id Messa
 		return msg.GetCopy(), true
 	}
 
+	deCnt := atomic.LoadInt64(&c.deferredCount)
+	if (deCnt >= c.option.MaxConfirmWin) &&
+		(timeout > threshold/2) {
+		// if requeued by deferred is more than half of the all messages handled,
+		// it may be a bug in client which can not handle any more, so we just wait
+		// timeout not requeue to defer
+		cnt := c.GetChannelWaitingConfirmCnt()
+		if cnt >= c.option.MaxConfirmWin && float64(deCnt) <= float64(cnt)*0.6 {
+			nsqLog.Logf("requeue msg to end %v, since too much delayed in memory: %v vs %v", id, deCnt, cnt)
+			return msg.GetCopy(), true
+		}
+	}
 	if msg.Attempts < 3 {
 		return nil, false
 	}
@@ -958,12 +970,12 @@ func (c *Channel) RequeueMessage(clientID int64, clientAddr string, id MessageID
 			newTimeout, msg.deliveryTS, timeout, id)
 	}
 	deCnt := atomic.LoadInt64(&c.deferredCount)
-	if deCnt > c.option.MaxConfirmWin*2 {
+	if deCnt >= c.option.MaxConfirmWin {
 		// if requeued by deferred is more than half of the all messages handled,
 		// it may be a bug in client which can not handle any more, so we just wait
 		// timeout not requeue to defer
 		cnt := c.GetChannelWaitingConfirmCnt()
-		if cnt > c.option.MaxConfirmWin*2 && float64(deCnt) > float64(cnt)*0.6 {
+		if cnt >= c.option.MaxConfirmWin && float64(deCnt) > float64(cnt)*0.6 {
 			nsqLog.Logf("failed to requeue msg %v, since too much delayed in memory: %v vs %v", id, deCnt, cnt)
 			return ErrMsgDeferredTooMuch
 		}
