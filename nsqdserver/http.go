@@ -635,17 +635,27 @@ func (s *httpServer) doSkipChannel(w http.ResponseWriter, req *http.Request, ps 
 			nsqd.NsqLogger().LogErrorf("failure in %s - %s", req.URL.Path, err)
 			return nil, http_api.Err{500, "INTERNAL_ERROR"}
 		}
-		err = s.ctx.nsqdCoord.SetChannelConsumeOffsetToCluster(channel, int64(channel.GetConfirmed().Offset()), channel.GetConfirmed().TotalMsgCnt(), true)
-		if err != nil {
-			nsqd.NsqLogger().Errorf("fail to set channel consume offset channel %v topic %v, unskip quit.", channel.GetName(), topic.GetTopicName())
-			return nil, http_api.Err{500, "INTERNAL_ERROR"}
-		}
 	} else {
 		err = s.ctx.UpdateChannelState(channel, -1, 1)
 		if err != nil {
 			nsqd.NsqLogger().LogErrorf("failure in %s - %s", req.URL.Path, err)
 			return nil, http_api.Err{500, "INTERNAL_ERROR"}
 		}
+	}
+
+	var startFrom ConsumeOffset
+	startFrom.OffsetType = offsetSpecialType
+	startFrom.OffsetValue = -1
+	queueOffset, cnt, err := s.ctx.SetChannelOffset(channel, &startFrom, true)
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+	nsqd.NsqLogger().Logf("empty the channel to end offset: %v:%v, by client:%v",
+		queueOffset, cnt, req.RemoteAddr)
+	err = s.ctx.EmptyChannelDelayedQueue(channel)
+	if err != nil {
+		nsqd.NsqLogger().Logf("empty the channel %v failed to empty delayed: %v, by client:%v",
+			channelName, err, req.RemoteAddr)
 	}
 
 	// pro-actively persist metadata so in case of process failure
