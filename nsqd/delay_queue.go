@@ -17,10 +17,11 @@ import (
 )
 
 var (
-	syncedOffsetKey  = []byte("synced_offset")
-	bucketDelayedMsg = []byte("delayed_message")
-	bucketMeta       = []byte("meta")
-	CompactThreshold = 1024 * 1024 * 16
+	syncedOffsetKey       = []byte("synced_offset")
+	bucketDelayedMsg      = []byte("delayed_message")
+	bucketDelayedMsgIndex = []byte("delayed_message_index")
+	bucketMeta            = []byte("meta")
+	CompactThreshold      = 1024 * 1024 * 16
 )
 
 const (
@@ -54,6 +55,17 @@ func IsValidDelayedMessage(m *Message) bool {
 		return true
 	}
 	return false
+}
+
+func getDelayedMsgDBIndexValue(ts int64, id MessageID) []byte {
+	d := make([]byte, 1+8+8)
+	pos := 0
+	d[0] = byte(1)
+	pos++
+	binary.BigEndian.PutUint64(d[pos:pos+8], uint64(ts))
+	pos += 8
+	binary.BigEndian.PutUint64(d[pos:pos+8], uint64(id))
+	return d
 }
 
 func getDelayedMsgDBKey(dt int, ch string, ts int64, id MessageID) []byte {
@@ -92,6 +104,38 @@ func decodeDelayedMsgDBKey(b []byte) (uint16, int64, MessageID, string, error) {
 	return dt, ts, MessageID(id), string(ch), nil
 }
 
+func getDelayedMsgDBIndexKey(dt int, ch string, id MessageID) []byte {
+	msgKey := make([]byte, len(ch)+2+1+2+8)
+	binary.BigEndian.PutUint16(msgKey[:2], uint16(dt))
+	pos := 2
+	msgKey[pos] = '-'
+	pos++
+	binary.BigEndian.PutUint16(msgKey[pos:pos+2], uint16(len(ch)))
+	pos += 2
+	copy(msgKey[pos:pos+len(ch)], []byte(ch))
+	pos += len(ch)
+	binary.BigEndian.PutUint64(msgKey[pos:pos+8], uint64(id))
+	return msgKey
+}
+
+func decodeDelayedMsgDBIndexKey(b []byte) (uint16, MessageID, string, error) {
+	if len(b) < 2+1+2+8 {
+		return 0, 0, "", errors.New("invalid buffer length")
+	}
+	dt := binary.BigEndian.Uint16(b[:2])
+	pos := 2
+	pos++
+	chLen := int(binary.BigEndian.Uint16(b[pos : pos+2]))
+	pos += 2
+	if len(b) < pos+chLen {
+		return 0, 0, "", errors.New("invalid buffer length")
+	}
+	ch := b[pos : pos+chLen]
+	pos += chLen
+	id := int64(binary.BigEndian.Uint64(b[pos : pos+8]))
+	return dt, MessageID(id), string(ch), nil
+}
+
 func getDelayedMsgDBPrefixKey(dt int, ch string) []byte {
 	msgKey := make([]byte, len(ch)+2+1+2)
 	binary.BigEndian.PutUint16(msgKey[:2], uint16(dt))
@@ -104,7 +148,23 @@ func getDelayedMsgDBPrefixKey(dt int, ch string) []byte {
 	return msgKey
 }
 
-func deleteBucketKey(dt int, ch string, ts int64, id MessageID, tx *bolt.Tx) error {
+func deleteMsgIndex(msgData []byte, tx *bolt.Tx, isExt bool) error {
+	m, err := DecodeDelayedMessage(msgData, isExt)
+	if err != nil {
+		nsqLog.LogErrorf("failed to decode delayed message: %v, %v", msgData, err)
+		return err
+	}
+	msgIndexKey := getDelayedMsgDBIndexKey(int(m.DelayedType), m.DelayedChannel, m.DelayedOrigID)
+	b := tx.Bucket(bucketDelayedMsgIndex)
+	err = b.Delete(msgIndexKey)
+	if err != nil {
+		nsqLog.Infof("failed to delete delayed index : %v", msgIndexKey)
+		return err
+	}
+	return nil
+}
+
+func deleteBucketKey(dt int, ch string, ts int64, id MessageID, tx *bolt.Tx, isExt bool) error {
 	b := tx.Bucket(bucketDelayedMsg)
 	msgKey := getDelayedMsgDBKey(dt, ch, ts, id)
 	oldV := b.Get(msgKey)
@@ -114,6 +174,11 @@ func deleteBucketKey(dt int, ch string, ts int64, id MessageID, tx *bolt.Tx) err
 		return err
 	}
 	if oldV != nil {
+		err = deleteMsgIndex(oldV, tx, isExt)
+		if err != nil {
+			return err
+		}
+
 		b = tx.Bucket(bucketMeta)
 		cntKey := append([]byte("counter_"), getDelayedMsgDBPrefixKey(dt, ch)...)
 		cnt := uint64(0)
@@ -216,6 +281,10 @@ func newDelayQueue(topicName string, part int, dataPath string, opt *Options,
 		if err != nil {
 			return err
 		}
+		_, err = tx.CreateBucketIfNotExists(bucketDelayedMsgIndex)
+		if err != nil {
+			return err
+		}
 		_, err = tx.CreateBucketIfNotExists(bucketMeta)
 		return err
 	})
@@ -276,6 +345,11 @@ func (q *DelayQueue) reOpenStore() error {
 		if err != nil {
 			return err
 		}
+		_, err = tx.CreateBucketIfNotExists(bucketDelayedMsgIndex)
+		if err != nil {
+			return err
+		}
+
 		_, err = tx.CreateBucketIfNotExists(bucketMeta)
 		return err
 	})
@@ -535,6 +609,20 @@ func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int3
 			if err != nil {
 				return err
 			}
+			if oldV != nil {
+				err = deleteMsgIndex(oldV, tx, q.isExt)
+				if err != nil {
+					nsqLog.Infof("failed to delete old delayed index : %v, %v", oldV, err)
+					return err
+				}
+			}
+			b = tx.Bucket(bucketDelayedMsgIndex)
+			newIndexKey := getDelayedMsgDBIndexKey(int(m.DelayedType), m.DelayedChannel, m.DelayedOrigID)
+			d := getDelayedMsgDBIndexValue(m.DelayedTs, m.DelayedOrigID)
+			err = b.Put(newIndexKey, d)
+			if err != nil {
+				return err
+			}
 		}
 		b = tx.Bucket(bucketMeta)
 		if !exists {
@@ -671,7 +759,7 @@ func (q *DelayQueue) emptyDelayedUntil(dt int, peekTs int64, id MessageID, ch st
 				continue
 			}
 
-			err = deleteBucketKey(dt, ch, delayedTs, delayedID, tx)
+			err = deleteBucketKey(dt, ch, delayedTs, delayedID, tx, q.isExt)
 			if err != nil {
 				nsqLog.Infof("failed to delete : %v, %v", k, err)
 			}
@@ -714,7 +802,7 @@ func (q *DelayQueue) emptyAllDelayedType(dt int, ch string) error {
 			if ch != "" && delayedCh != ch {
 				continue
 			}
-			err = deleteBucketKey(int(delayedType), delayedCh, delayedTs, delayedID, tx)
+			err = deleteBucketKey(int(delayedType), delayedCh, delayedTs, delayedID, tx, q.isExt)
 			if err != nil {
 				nsqLog.Infof("failed to delete : %v, %v", k, err)
 			}
@@ -882,7 +970,7 @@ func (q *DelayQueue) ConfirmedMessage(msg *Message) error {
 	q.compactMutex.Lock()
 	err := q.getStore().Update(func(tx *bolt.Tx) error {
 		return deleteBucketKey(int(msg.DelayedType), msg.DelayedChannel,
-			msg.DelayedTs, msg.DelayedOrigID, tx)
+			msg.DelayedTs, msg.DelayedOrigID, tx, q.isExt)
 	})
 	q.compactMutex.Unlock()
 	if err != nil {
@@ -891,6 +979,20 @@ func (q *DelayQueue) ConfirmedMessage(msg *Message) error {
 			q.GetFullName(), msg.DelayedOrigID, msg, err)
 	}
 	return err
+}
+
+func (q *DelayQueue) IsChannelMessageDelayed(msgID MessageID, ch string) bool {
+	found := false
+	msgKey := getDelayedMsgDBIndexKey(ChannelDelayed, ch, msgID)
+	q.getStore().View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketDelayedMsgIndex)
+		v := b.Get(msgKey)
+		if v != nil {
+			found = true
+		}
+		return nil
+	})
+	return found
 }
 
 func (q *DelayQueue) GetOldestConsumedState(chList []string, includeOthers bool) (RecentKeyList, map[int]uint64, map[string]uint64) {

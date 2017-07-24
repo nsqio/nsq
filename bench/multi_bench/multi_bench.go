@@ -1135,7 +1135,7 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 			dupCnt := atomic.AddInt64(&dup.recvCnt, 1)
 			dup.msg = message
 
-			log.Printf("got dump message : %v\n", dup.msg, dupCnt)
+			log.Printf("got dump message : %v, %v\n", dup.msg, dupCnt)
 			topicCheck[mid] = dup
 			return nil
 		}

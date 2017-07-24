@@ -744,6 +744,26 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 	// backend queue to force read the data from disk again.
 }
 
+func (c *Channel) ShouldWaitDelayed(msg *Message) bool {
+	dq := c.GetDelayedQueue()
+	if msg.DelayedOrigID > 0 && msg.DelayedType == ChannelDelayed && dq != nil {
+		return false
+	}
+	// check if this is in delayed queue
+	// (it may happen while the reader is reset to the confirmed for leader changed or other event trigger)
+	if dq != nil {
+		if dq.IsChannelMessageDelayed(msg.ID, c.GetName()) {
+			if msg.TraceID != 0 || c.IsTraced() || nsqLog.Level() >= levellogger.LOG_DEBUG {
+				nsqLog.LogDebugf("non-delayed msg %v should be delayed since in delayed queue", msg)
+				nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "IGNORE_DELAY_CONFIRMED", msg.TraceID, msg, "")
+			}
+			return true
+		}
+	}
+
+	return false
+}
+
 func (c *Channel) IsConfirmed(msg *Message) bool {
 	if msg.DelayedOrigID > 0 && msg.DelayedType == ChannelDelayed && c.GetDelayedQueue() != nil {
 		return false

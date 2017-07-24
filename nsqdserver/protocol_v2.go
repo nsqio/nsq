@@ -568,6 +568,11 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				}
 				continue
 			}
+			if subChannel.ShouldWaitDelayed(msg) {
+				subChannel.ConfirmBackendQueue(msg)
+				subChannel.CleanWaitingRequeueChan(msg)
+				continue
+			}
 			// avoid re-send some confirmed message,
 			// this may happen while the channel reader is reset to old position
 			// due to some retry or leader change.

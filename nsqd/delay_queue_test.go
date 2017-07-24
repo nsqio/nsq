@@ -36,6 +36,7 @@ func TestDelayQueuePutChannelDelayed(t *testing.T) {
 		msg.DelayedOrigID = MessageID(i + 1)
 		_, _, _, dend, err := dq.PutDelayMessage(msg)
 		test.Nil(t, err)
+		test.Equal(t, true, dq.IsChannelMessageDelayed(msg.DelayedOrigID, "test"))
 		end = dend.Offset()
 	}
 	synced, err := dq.GetSyncedOffset()
@@ -80,6 +81,7 @@ func TestDelayQueueWithExtPutChannelDelayed(t *testing.T) {
 		msg.DelayedOrigID = MessageID(i + 1)
 		_, _, _, dend, err := dq.PutDelayMessage(msg)
 		test.Nil(t, err)
+		test.Equal(t, true, dq.IsChannelMessageDelayed(msg.DelayedOrigID, "test"))
 		end = dend.Offset()
 	}
 	synced, err := dq.GetSyncedOffset()
@@ -270,8 +272,11 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 			test.Equal(t, true, m.DelayedTs <= time.Now().UnixNano())
 			oldCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
 
+			origID := m.DelayedOrigID
+			test.Equal(t, true, dq.IsChannelMessageDelayed(origID, "test"))
 			m.DelayedOrigID = m.ID
 			dq.ConfirmedMessage(&m)
+			test.Equal(t, false, dq.IsChannelMessageDelayed(origID, "test"))
 			newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
 			test.Equal(t, oldCnt-1, newCnt)
 			cursorList, cntList, channelCntList := dq.GetOldestConsumedState([]string{"test"}, true)
@@ -299,8 +304,11 @@ func TestDelayQueueConfirmMsg(t *testing.T) {
 			test.Equal(t, "test2", m.DelayedChannel)
 			test.Equal(t, true, m.DelayedTs <= time.Now().UnixNano())
 			oldCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
+			origID := m.DelayedOrigID
+			test.Equal(t, true, dq.IsChannelMessageDelayed(origID, "test2"))
 			m.DelayedOrigID = m.ID
 			dq.ConfirmedMessage(&m)
+			test.Equal(t, false, dq.IsChannelMessageDelayed(origID, "test2"))
 			newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test2")
 			test.Equal(t, oldCnt-1, newCnt)
 
@@ -468,8 +476,11 @@ func TestDelayQueueCompactStore(t *testing.T) {
 		n, err := dq.PeekRecentChannelTimeout(time.Now().UnixNano(), ret, "test")
 		test.Nil(t, err)
 		for _, m := range ret[:n] {
+			origID := m.DelayedOrigID
+			test.Equal(t, true, dq.IsChannelMessageDelayed(origID, "test"))
 			m.DelayedOrigID = m.ID
 			dq.ConfirmedMessage(&m)
+			test.Equal(t, false, dq.IsChannelMessageDelayed(origID, "test"))
 			newCnt, _ := dq.GetCurrentDelayedCnt(ChannelDelayed, "test")
 			if int(newCnt) < cnt/10 {
 				done = true
