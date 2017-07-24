@@ -660,15 +660,17 @@ func (c *Channel) CleanWaitingRequeueChan(msg *Message) {
 func (c *Channel) ConfirmDelayedMessage(msg *Message) (BackendOffset, int64, bool) {
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
+	needNotify := false
 	curConfirm := c.GetConfirmed()
 	if msg.DelayedOrigID > 0 && msg.DelayedType == ChannelDelayed && c.GetDelayedQueue() != nil {
 		c.GetDelayedQueue().ConfirmedMessage(msg)
 		c.delayedConfirmedMsgs[msg.ID] = *msg
 		if atomic.AddInt64(&c.deferredFromDelay, -1) <= 0 {
 			c.nsqdNotify.NotifyScanDelayed(c)
+			needNotify = true
 		}
 	}
-	return curConfirm.Offset(), curConfirm.TotalMsgCnt(), false
+	return curConfirm.Offset(), curConfirm.TotalMsgCnt(), needNotify
 }
 
 // in order not to make the confirm map too large,

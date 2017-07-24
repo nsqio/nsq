@@ -114,11 +114,11 @@ func (self *NsqdEtcdMgr) UnregisterNsqd(nodeData *NsqdNodeInfo) error {
 
 	_, err := self.client.Delete(self.createNsqdNodePath(nodeData), false)
 	if err != nil {
-		coordLog.Warningf("cluser[%s] node[%s] unregister failed: %v", self.clusterID, nodeData, err)
+		coordLog.Warningf("cluser[%v] node[%v] unregister failed: %v", self.clusterID, nodeData, err)
 		return err
 	}
 
-	coordLog.Infof("cluser[%s] node[%s] unregistered", self.clusterID, nodeData)
+	coordLog.Infof("cluser[%v] node[%v] unregistered", self.clusterID, nodeData)
 
 	return nil
 }

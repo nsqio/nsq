@@ -137,7 +137,7 @@ func (self *NsqLookupdEtcdMgr) Unregister(value *NsqLookupdNodeInfo) error {
 
 	_, err := self.client.Delete(self.createLookupdPath(value), false)
 	if err != nil {
-		coordLog.Warningf("cluser[%s] node[%s] unregister failed: %v", self.clusterID, value, err)
+		coordLog.Warningf("cluser[%v] node[%v] unregister failed: %v", self.clusterID, value, err)
 		return err
 	}
 
