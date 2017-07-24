@@ -551,7 +551,6 @@ func (c *Channel) doSkip(skipped bool) error {
 	} else {
 		atomic.StoreInt32(&c.skipped, 0)
 	}
-	c.drainChannelWaiting(true, nil, nil)
 	return nil
 }
 
@@ -1248,6 +1247,8 @@ func (c *Channel) DisableConsume(disable bool) {
 	c.nsqdNotify.NotifyStateChanged(c)
 }
 
+// should not drain outside of the messagepump loop
+// if drain outside loop, readerChanged channel should be triggered
 func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *bool, origReadChan chan ReadResult) error {
 	nsqLog.Logf("draining channel %v waiting %v", c.GetName(), clearConfirmed)
 	c.initPQ()
@@ -1791,7 +1792,6 @@ exit:
 				break
 			}
 		}
-		reqLen += len(c.requeuedMsgChan)
 	}
 	c.inFlightMutex.Unlock()
 	c.RLock()
