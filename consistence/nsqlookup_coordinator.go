@@ -34,7 +34,8 @@ var (
 )
 
 const (
-	waitMigrateInterval = time.Minute * 10
+	waitMigrateInterval          = time.Minute * 10
+	waitEmergencyMigrateInterval = time.Second * 10
 )
 
 type JoinISRState struct {
@@ -814,8 +815,10 @@ func (self *NsqLookupCoordinator) doCheckTopics(monitorChan chan struct{}, faile
 				continue
 			}
 
-			if (aliveCount <= t.Replica/2) ||
-				partitions[t.Partition].Before(time.Now().Add(-1*waitMigrateInterval)) {
+			failedTime := partitions[t.Partition]
+			emergency := (aliveCount <= t.Replica/2) && failedTime.Before(time.Now().Add(-1*waitEmergencyMigrateInterval))
+			if emergency ||
+				failedTime.Before(time.Now().Add(-1*waitMigrateInterval)) {
 				coordLog.Infof("begin migrate the topic :%v", t.GetTopicDesp())
 				aliveNodes, aliveEpoch := self.getCurrentNodesWithEpoch()
 				if aliveEpoch != currentNodesEpoch {
