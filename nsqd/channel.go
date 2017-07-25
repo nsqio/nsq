@@ -612,9 +612,6 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, al
 	// may need to be flushed on slave.
 	c.confirmMutex.Lock()
 	defer c.confirmMutex.Unlock()
-	if c.confirmedMsgs.Len() != 0 {
-		nsqLog.LogWarningf("should empty confirmed queue on slave.")
-	}
 	var err error
 	var newConfirmed BackendQueueEnd
 	if offset < c.GetConfirmed().Offset() {
@@ -1135,6 +1132,30 @@ func (c *Channel) GetInflightNum() int {
 	return n
 }
 
+func (c *Channel) UpdateConfirmedInterval(intervals []MsgQueueInterval) {
+	c.confirmMutex.Lock()
+	defer c.confirmMutex.Unlock()
+	if nsqLog.Level() >= levellogger.LOG_DEBUG {
+		nsqLog.Logf("update confirmed interval, before: %v", c.confirmedMsgs.ToString())
+	}
+	if c.confirmedMsgs.Len() != 0 {
+		c.confirmedMsgs = NewIntervalTree()
+	}
+	for _, qi := range intervals {
+		c.confirmedMsgs.AddOrMerge(&queueInterval{start: qi.Start, end: qi.End, endCnt: qi.EndCnt})
+	}
+	if nsqLog.Level() >= levellogger.LOG_DEBUG {
+		nsqLog.Logf("update confirmed interval, after: %v", c.confirmedMsgs.ToString())
+	}
+}
+
+func (c *Channel) GetConfirmedInterval() []MsgQueueInterval {
+	c.confirmMutex.Lock()
+	ret := c.confirmedMsgs.ToIntervalList()
+	c.confirmMutex.Unlock()
+	return ret
+}
+
 func (c *Channel) GetConfirmed() BackendQueueEnd {
 	return c.backend.GetQueueConfirmed()
 }
@@ -1243,6 +1264,12 @@ func (c *Channel) DisableConsume(disable bool) {
 		} else {
 			// we need reset backend read position to confirm position
 			// since we dropped all inflight and requeue data while disable consume.
+			if nsqLog.Level() >= levellogger.LOG_DEBUG {
+				c.confirmMutex.Lock()
+				nsqLog.Logf("confirmed interval while enable: %v", c.confirmedMsgs.ToString())
+				c.confirmMutex.Unlock()
+			}
+
 			done := false
 			for !done {
 				select {

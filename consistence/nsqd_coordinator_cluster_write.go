@@ -1127,6 +1127,7 @@ func (self *NsqdCoordinator) updateChannelOffsetOnSlave(tc *coordData, channelNa
 			return nil
 		}
 	}
+	ch.UpdateConfirmedInterval(offset.ConfirmedInterval)
 	err := ch.ConfirmBackendQueueOnSlave(nsqd.BackendOffset(offset.VOffset), offset.VCnt, offset.AllowBackward)
 	if err != nil {
 		coordLog.Warningf("update local channel(%v) offset %v failed: %v, current channel end: %v, topic end: %v",

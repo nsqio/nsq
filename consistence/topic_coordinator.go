@@ -1,6 +1,7 @@
 package consistence
 
 import (
+	"github.com/absolute8511/nsq/nsqd"
 	"os"
 	"path"
 	"sync"
@@ -8,10 +9,11 @@ import (
 )
 
 type ChannelConsumerOffset struct {
-	VOffset       int64
-	VCnt          int64
-	Flush         bool
-	AllowBackward bool
+	VOffset           int64
+	VCnt              int64
+	Flush             bool
+	AllowBackward     bool
+	ConfirmedInterval []nsqd.MsgQueueInterval
 }
 
 type ChannelConsumeMgr struct {

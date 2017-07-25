@@ -12,6 +12,12 @@ type QueueInterval interface {
 	augmentedtree.Interval
 }
 
+type MsgQueueInterval struct {
+	Start  int64
+	End    int64
+	EndCnt uint64
+}
+
 type queueInterval struct {
 	start  int64
 	end    int64
@@ -93,6 +99,22 @@ func (self *IntervalTree) AddOrMerge(inter QueueInterval) QueueInterval {
 
 func (self *IntervalTree) Len() int {
 	return int(self.tr.Len())
+}
+
+func (self *IntervalTree) ToIntervalList() []MsgQueueInterval {
+	il := make([]MsgQueueInterval, 0, self.Len())
+	self.tr.Traverse(func(inter augmentedtree.Interval) {
+		qi, ok := inter.(QueueInterval)
+		if ok {
+			var mqi MsgQueueInterval
+			mqi.Start = qi.Start()
+			mqi.End = qi.End()
+			mqi.EndCnt = qi.EndCnt()
+			il = append(il, mqi)
+		}
+	})
+
+	return il
 }
 
 func (self *IntervalTree) ToString() string {

@@ -2269,6 +2269,7 @@ func (self *NsqdCoordinator) trySyncTopicChannels(tcData *coordData, syncDelayed
 
 			syncOffset.VOffset = int64(confirmed.Offset())
 			syncOffset.VCnt = confirmed.TotalMsgCnt()
+			syncOffset.ConfirmedInterval = ch.GetConfirmedInterval()
 
 			for _, nodeID := range tcData.topicInfo.ISR {
 				if nodeID == self.myNode.GetID() {
