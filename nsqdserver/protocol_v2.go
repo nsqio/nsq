@@ -260,7 +260,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		nsqd.NsqLogger().LogDebugf("PROTOCOL(V2): client [%s] exiting ioloop", client)
 	}
 	close(client.ExitChan)
-	p.ctx.nsqd.CleanClientPubStats(client.RemoteAddr().String(), "tcp")
+	p.ctx.nsqd.CleanClientPubStats(client.String(), "tcp")
 	<-msgPumpStoppedChan
 
 	if nsqd.NsqLogger().Level() >= levellogger.LOG_DEBUG {
@@ -928,7 +928,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		return nil, protocol.NewFatalClientErr(nil, "E_SUB_ORDER_IS_MUST", "this topic is configured only allow ordered sub")
 	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
-		nsqd.NsqLogger().Logf("sub failed on not leader: %v-%v, remote is : %v", topicName, partition, client.RemoteAddr())
+		nsqd.NsqLogger().Logf("sub failed on not leader: %v-%v, remote is : %v", topicName, partition, client.String())
 		// we need disable topic here to trigger a notify, maybe we failed to notify lookup last time.
 		topic.DisableForSlave()
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
@@ -951,7 +951,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 	atomic.StoreInt32(&client.State, stateSubscribed)
 	client.Channel = channel
 	if enableTrace {
-		nsqd.NsqLogger().Logf("sub channel %v with trace enabled, remote is : %v", channelName, client.RemoteAddr())
+		nsqd.NsqLogger().Logf("sub channel %v with trace enabled, remote is : %v", channelName, client.String())
 	}
 	if ordered {
 		if atomic.LoadInt32(&client.SampleRate) != 0 {
@@ -1425,7 +1425,7 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		}
 		//p.ctx.setHealth(err)
 		if err != nil {
-			topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
+			topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", 1, true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
 				if !clusterErr.IsLocalErr() {
@@ -1434,7 +1434,7 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 			}
 			return nil, protocol.NewClientErr(err, "E_PUB_FAILED", err.Error())
 		}
-		topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, false)
+		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", 1, false)
 		cost := time.Now().UnixNano() - startPub
 		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(realBody)), cost/1000)
 		if !traceEnable {
@@ -1442,10 +1442,10 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		}
 		return getTracedReponse(messageBodyBuffer, id, traceID, offset, rawSize)
 	} else {
-		topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", 1, true)
+		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", 1, true)
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
-			topic.GetFullName(), client.RemoteAddr)
+			topic.GetFullName(), client.String())
 		topic.DisableForSlave()
 		return nil, protocol.NewClientErr(err, FailedOnNotLeader, "")
 	}
@@ -1476,7 +1476,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 		id, offset, rawSize, err := p.ctx.PutMessages(topic, messages)
 		//p.ctx.setHealth(err)
 		if err != nil {
-			topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), true)
+			topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", int64(len(messages)), true)
 			nsqd.NsqLogger().LogErrorf("topic %v put message failed: %v", topic.GetFullName(), err)
 
 			if clusterErr, ok := err.(*consistence.CommonCoordErr); ok {
@@ -1486,7 +1486,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 			}
 			return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", err.Error())
 		}
-		topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), false)
+		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", int64(len(messages)), false)
 		cost := time.Now().UnixNano() - startPub
 		topic.GetDetailStats().UpdateTopicMsgStats(0, cost/1000/int64(len(messages)))
 		if !traceEnable {
@@ -1494,10 +1494,10 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 		}
 		return getTracedReponse(buffers[0], id, 0, offset, rawSize)
 	} else {
-		topic.GetDetailStats().UpdatePubClientStats(client.RemoteAddr().String(), client.UserAgent, "tcp", int64(len(messages)), true)
+		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", int64(len(messages)), true)
 		//forward to master of topic
 		nsqd.NsqLogger().LogDebugf("should put to master: %v, from %v",
-			topic.GetFullName(), client.RemoteAddr)
+			topic.GetFullName(), client.String())
 		topic.DisableForSlave()
 		return nil, protocol.NewClientErr(preErr, FailedOnNotLeader, "")
 	}
