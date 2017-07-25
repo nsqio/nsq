@@ -720,6 +720,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 			return curConfirm.Offset(), curConfirm.TotalMsgCnt(), reduced
 		} else {
 			c.confirmedMsgs.DeleteLower(int64(newConfirmed))
+			atomic.StoreInt32(&c.waitingConfirm, int32(c.confirmedMsgs.Len()))
 		}
 		if int64(c.confirmedMsgs.Len()) < c.option.MaxConfirmWin/2 &&
 			atomic.LoadInt32(&c.needNotifyRead) == 1 &&
@@ -745,6 +746,9 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 }
 
 func (c *Channel) ShouldWaitDelayed(msg *Message) bool {
+	if c.IsOrdered() {
+		return false
+	}
 	dq := c.GetDelayedQueue()
 	if msg.DelayedOrigID > 0 && msg.DelayedType == ChannelDelayed && dq != nil {
 		return false
@@ -1223,7 +1227,11 @@ func (c *Channel) DisableConsume(disable bool) {
 			client.Exit()
 			delete(c.clients, cid)
 		}
-		c.drainChannelWaiting(true, nil, nil)
+		needClearConfirm := false
+		if c.IsOrdered() {
+			needClearConfirm = true
+		}
+		c.drainChannelWaiting(needClearConfirm, nil, nil)
 	} else {
 		nsqLog.Logf("channel %v enabled for consume", c.name)
 		if !atomic.CompareAndSwapInt32(&c.consumeDisabled, 1, 0) {
