@@ -13,6 +13,7 @@ import (
 const (
 	MsgIDLength       = 16
 	MsgTraceIDLength  = 8
+	MsgJsonHeaderLength = 2
 	minValidMsgLength = MsgIDLength + 8 + 2 // Timestamp + Attempts
 )
 
@@ -323,7 +324,23 @@ func decodeMessage(b []byte, isExt bool) (*Message, error) {
 		extVer := ext.ExtVer(uint8(b[bodyStart]))
 		msg.ExtVer = extVer
 		switch extVer {
+		case ext.JSON_HEADER_EXT_VER:
+			msg.ExtVer = ext.JSON_HEADER_EXT_VER
+
+			extLen := binary.BigEndian.Uint16(b[27 : 27+2])
+			msg.ExtBytes = b[29 : 29+extLen]
+			bodyStart = 29 + int(extLen)
+
+		case ext.TAG_EXT_VER:
+			msg.ExtVer = ext.TAG_EXT_VER
+
+			extLen := binary.BigEndian.Uint16(b[27 : 27+2])
+			msg.ExtBytes = b[29 : 29+extLen]
+			bodyStart = 29 + int(extLen)
+
 		case ext.NO_EXT_VER:
+			msg.ExtVer = ext.NO_EXT_VER
+
 			bodyStart = 27
 		default:
 			if len(b) < 27+2 {

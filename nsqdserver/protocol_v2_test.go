@@ -691,7 +691,7 @@ func TestConsumeTagMessageNormal(t *testing.T) {
 	go func() {
 		msgOut := recvNextMsgAndCheckWithCloseChan(t, conn2, len(msg.Body), msg.TraceID, true, true, closeChan)
 		test.Nil(t, msgOut)
-		t.Logf("subscrieb without tag stops.")
+		t.Logf("subscribe without tag stops.")
 		wg.Done()
 	}()
 
@@ -726,10 +726,143 @@ func TestConsumeTagMessageNormal(t *testing.T) {
 	conn2.Close()
 
 	time.Sleep(1 * time.Second)
-	_, exist := topic.GetChannel("ch").GetClientTagMsgChan(tag)
+	_, exist := topic.GetChannel("ch").GetClientTagMsgChan(tag.GetTagName())
 	//assert chan cnt
 	test.Equal(t, false, exist)
+}
 
+func TestConsumeJsonHeaderMessageNormal(t *testing.T) {
+	topicName := "test_json_header_normal" + strconv.Itoa(int(time.Now().Unix()))
+
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topicDynConf := nsqdNs.TopicDynamicConf{
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
+	}
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
+
+	topic.GetChannel("ch")
+
+	//subscribe normal client
+	conn1, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	client1Params := make(map[string]interface{})
+	client1Params["client_id"] = "client_w_tag"
+	client1Params["hostname"] = "client_w_tag"
+	identify(t, conn1, client1Params, frameTypeResponse)
+	sub(t, conn1, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn1)
+	test.Equal(t, err, nil)
+
+	jsonHeaderStr := "{\"##client_dispatch_tag\":\"test_tag\",\"##channel_filter_tag\":\"test\",\"custome_header1\":\"test_header\",\"custome_h2\":\"test\"}"
+	jhe := ext.NewJsonHeaderExt()
+	jhe.SetJsonHeaderBytes([]byte(jsonHeaderStr))
+	msgBody := []byte("test body")
+	//case 1: tagged message goes to client with tag
+	for i := 0; i < 10; i++ {
+		msg := nsqdNs.NewMessageWithExt(0, msgBody, jhe.ExtVersion(), jhe.GetBytes())
+		topic.GetChannel("ch")
+		_, _, _, _, putErr := topic.PutMessage(msg)
+		test.Nil(t, putErr)
+	}
+
+	for i := 0; i < 10; i++ {
+		msgOut := recvNextMsgAndCheckExt(t, conn1, len(msgBody), 0, true, true)
+		test.NotNil(t, msgOut)
+		test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+		test.Assert(t, bytes.Equal(msgOut.ExtBytes, []byte(jsonHeaderStr)), "json header from message not equals, expected: %v, got: %v", jsonHeaderStr, string(msgOut.ExtBytes))
+	}
+
+	conn1.Close()
+	time.Sleep(1 * time.Second)
+}
+
+func TestConsumeJsonHeaderMessageTag(t *testing.T) {
+	topicName := "test_json_header_tag" + strconv.Itoa(int(time.Now().Unix()))
+
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topicDynConf := nsqdNs.TopicDynamicConf{
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
+	}
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
+	topic.GetChannel("ch")
+
+	//subscribe tag client
+	conn1, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	client1Params := make(map[string]interface{})
+	client1Params["client_id"] = "client_w_tag"
+	client1Params["hostname"] = "client_w_tag"
+	client1Params["desired_tag"] = "test_tag"
+	identify(t, conn1, client1Params, frameTypeResponse)
+	sub(t, conn1, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn1)
+	test.Equal(t, err, nil)
+
+	//subscribe normal client
+	conn2, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	client2Params := make(map[string]interface{})
+	client2Params["client_id"] = "client_wo_tag"
+	client2Params["hostname"] = "client_wo_tag"
+	identify(t, conn2, client2Params, frameTypeResponse)
+	sub(t, conn2, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn2)
+	test.Equal(t, err, nil)
+
+	jsonHeaderTagStr := "{\"##client_dispatch_tag\":\"test_tag\",\"##channel_filter_tag\":\"test\",\"custome_header1\":\"test_header\",\"custome_h2\":\"test\"}"
+	jhe := ext.NewJsonHeaderExt()
+	jhe.SetJsonHeaderBytes([]byte(jsonHeaderTagStr))
+	msgBody := []byte("test body")
+	for i := 0; i < 5; i++ {
+		msg := nsqdNs.NewMessageWithExt(0, msgBody, jhe.ExtVersion(), jhe.GetBytes())
+		topic.GetChannel("ch")
+		_, _, _, _, putErr := topic.PutMessage(msg)
+		test.Nil(t, putErr)
+	}
+
+	jsonHeaderStr := "{\"##channel_filter_tag\":\"test\",\"custome_header1\":\"test_header\",\"custome_h2\":\"test\"}"
+	jhe = ext.NewJsonHeaderExt()
+	jhe.SetJsonHeaderBytes([]byte(jsonHeaderStr))
+	for i := 0; i < 10; i++ {
+		msg := nsqdNs.NewMessageWithExt(0, msgBody, jhe.ExtVersion(), jhe.GetBytes())
+		topic.GetChannel("ch")
+		_, _, _, _, putErr := topic.PutMessage(msg)
+		test.Nil(t, putErr)
+	}
+
+	//consume tag message
+	for i := 0; i < 5; i++ {
+		msgOut := recvNextMsgAndCheckExt(t, conn1, len(msgBody), 0, true, true)
+		test.NotNil(t, msgOut)
+		test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+		test.Assert(t, bytes.Equal(msgOut.ExtBytes, []byte(jsonHeaderTagStr)), "json header from message not equals, expected: %v, got: %v", jsonHeaderTagStr, string(msgOut.ExtBytes))
+	}
+
+	//consume normal message
+	for i := 0; i < 10; i++ {
+		msgOut := recvNextMsgAndCheckExt(t, conn2, len(msgBody), 0, true, true)
+		test.NotNil(t, msgOut)
+		test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+		test.Assert(t, bytes.Equal(msgOut.ExtBytes, []byte(jsonHeaderStr)), "json header from message not equals, expected: %v, got: %v", jsonHeaderStr, string(msgOut.ExtBytes))
+	}
+
+	conn1.Close()
+	conn2.Close()
+	time.Sleep(1 * time.Second)
 }
 
 func TestConsumeMultiTagMessages(t *testing.T) {
@@ -834,9 +967,9 @@ func TestConsumeMultiTagMessages(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 	//assert chan cnt
-	_, exist := topic.GetChannel("ch").GetClientTagMsgChan(tag1)
+	_, exist := topic.GetChannel("ch").GetClientTagMsgChan(tag1.GetTagName())
 	test.Equal(t, false, exist)
-	_, exist = topic.GetChannel("ch").GetClientTagMsgChan(tag2)
+	_, exist = topic.GetChannel("ch").GetClientTagMsgChan(tag2.GetTagName())
 	test.Equal(t, false, exist)
 }
 
@@ -884,7 +1017,7 @@ func TestRemoveTagClientWhileConsuming(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 	ch := topic.GetChannel("ch")
-	_, exist := ch.GetClientTagMsgChan(tag)
+	_, exist := ch.GetClientTagMsgChan(tag.GetTagName())
 	test.Equal(t, false, exist)
 
 	//subscribe back
@@ -939,12 +1072,12 @@ func TestRemoveTagClientWhileConsuming(t *testing.T) {
 	conn.Close()
 	time.Sleep(1 * time.Second)
 	ch = topic.GetChannel("ch")
-	_, exist = ch.GetClientTagMsgChan(tag)
+	_, exist = ch.GetClientTagMsgChan(tag.GetTagName())
 	test.Equal(t, true, exist)
 
 	conn2.Close()
 	time.Sleep(1 * time.Second)
-	_, exist = ch.GetClientTagMsgChan(tag)
+	_, exist = ch.GetClientTagMsgChan(tag.GetTagName())
 	test.Equal(t, false, exist)
 }
 
@@ -979,7 +1112,10 @@ func TestInvalidTagSub(t *testing.T) {
 	client1Params := make(map[string]interface{})
 	client1Params["client_id"] = "client_w_tag1"
 	client1Params["hostname"] = "client_w_tag1"
-	client1Params["desired_tag"] = "invalid_tag"
+	client1Params["desired_tag"] = "valid_tag_123"
+	identify(t, conn, client1Params, frameTypeResponse)
+
+	client1Params["desired_tag"] = "this should be invalid"
 	identify(t, conn, client1Params, frameTypeError)
 }
 

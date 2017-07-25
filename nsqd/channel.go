@@ -14,6 +14,7 @@ import (
 	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/quantile"
+	"encoding/json"
 )
 
 const (
@@ -277,10 +278,10 @@ func (c *Channel) GetClientMsgChan() chan *Message {
 /**
 get active tag channel or default message channel from tag channel map
 */
-func (c *Channel) GetClientTagMsgChan(tag ext.TagExt) (chan *Message, bool) {
+func (c *Channel) GetClientTagMsgChan(tag string) (chan *Message, bool) {
 	c.tagMsgChansMutex.RLock()
 	defer c.tagMsgChansMutex.RUnlock()
-	msgChanData, exist := c.tagMsgChans[string(tag)]
+	msgChanData, exist := c.tagMsgChans[tag]
 	if !exist {
 		nsqLog.Warningf("tag message channel fo tag %v not found.", tag)
 		return nil, false
@@ -1672,12 +1673,14 @@ LOOP:
 		}
 
 		var msgHasTag bool
-		var msgTag ext.TagExt
 	tagMsgLoop:
 		//deliver according to tag value in message
-		if msg.ExtVer == ext.TAG_EXT_VER {
+		msgTag, err := parseTagIfAny(msg)
+		if err != nil {
+			nsqLog.Errorf("error parse tag from message %v, offset %v", msg.ID, msg.Offset)
+		}
+		if msgTag != "" {
 			msgHasTag = true
-			msgTag = ext.TagExt(msg.ExtBytes)
 			tagMsgChan, chanExist := c.GetClientTagMsgChan(msgTag)
 			if chanExist {
 				select {
@@ -1700,7 +1703,7 @@ LOOP:
 	msgDefaultLoop:
 		select {
 		case newTag := <-c.tagChanInitChan:
-			if msgHasTag && newTag == string(msgTag) {
+			if msgHasTag && newTag == msgTag {
 				nsqLog.Infof("client with tag %v initialized, try deliver in tag loop", newTag)
 				goto tagMsgLoop
 			} else {
@@ -1722,6 +1725,25 @@ exit:
 	nsqLog.Logf("CHANNEL(%s): closing ... messagePump", c.name)
 	close(c.clientMsgChan)
 	close(c.exitSyncChan)
+}
+
+func parseTagIfAny(msg *Message) (string, error) {
+	var msgTag string
+	var err error
+	switch msg.ExtVer {
+	case ext.TAG_EXT_VER:
+		msgTag = string(msg.ExtBytes)
+	case ext.JSON_HEADER_EXT_VER:
+		var jsonExt map[string]interface{}
+		err = json.Unmarshal(msg.ExtBytes, &jsonExt)
+		if err == nil {
+			if iMsgTag, exist := jsonExt[ext.CLEINT_DISPATCH_TAG_KEY]; exist {
+				msgTag, _ = iMsgTag.(string)
+			}
+
+		}
+	}
+	return msgTag, err
 }
 
 func (c *Channel) GetChannelDebugStats() string {
