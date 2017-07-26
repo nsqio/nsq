@@ -9,11 +9,12 @@ import (
 )
 
 type ChannelConsumerOffset struct {
-	VOffset           int64
-	VCnt              int64
-	Flush             bool
-	AllowBackward     bool
-	ConfirmedInterval []nsqd.MsgQueueInterval
+	VOffset             int64
+	VCnt                int64
+	Flush               bool
+	AllowBackward       bool
+	ConfirmedInterval   []nsqd.MsgQueueInterval
+	NeedUpdateConfirmed bool
 }
 
 type ChannelConsumeMgr struct {
