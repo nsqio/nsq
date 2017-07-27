@@ -126,11 +126,21 @@ func (self *IntervalTree) ToString() string {
 	return dataStr
 }
 
-func (self *IntervalTree) Delete(inter QueueInterval) {
+func (self *IntervalTree) DeleteRange(inter QueueInterval) {
 	overlaps := self.tr.Query(inter)
 	for _, v := range overlaps {
 		if v.LowAtDimension(1) >= inter.LowAtDimension(1) &&
 			v.HighAtDimension(1) <= inter.HighAtDimension(1) {
+			self.tr.Delete(v)
+		}
+	}
+}
+
+func (self *IntervalTree) DeleteInterval(inter QueueInterval) {
+	overlaps := self.tr.Query(inter)
+	for _, v := range overlaps {
+		if v.LowAtDimension(1) == inter.LowAtDimension(1) &&
+			v.HighAtDimension(1) == inter.HighAtDimension(1) {
 			self.tr.Delete(v)
 		}
 	}
@@ -154,16 +164,14 @@ func (self *IntervalTree) DeleteLower(low int64) int {
 	return cnt
 }
 
-func (self *IntervalTree) IsOverlaps(inter QueueInterval, excludeBoard bool) bool {
+func (self *IntervalTree) IsCompleteOnverlap(inter QueueInterval) bool {
 	overlaps := self.tr.Query(inter)
 	for _, v := range overlaps {
-		if excludeBoard {
-			if v.LowAtDimension(1) >= inter.HighAtDimension(1) {
-				continue
-			}
-			if v.HighAtDimension(1) <= inter.LowAtDimension(1) {
-				continue
-			}
+		if v.LowAtDimension(1) >= inter.HighAtDimension(1) {
+			continue
+		}
+		if v.HighAtDimension(1) <= inter.LowAtDimension(1) {
+			continue
 		}
 		return true
 	}
@@ -262,6 +270,7 @@ func (self *IntervalSkipList) ToIntervalList() []MsgQueueInterval {
 			il = append(il, mqi)
 		}
 	}
+	it.Close()
 	return il
 }
 
@@ -271,10 +280,11 @@ func (self *IntervalSkipList) ToString() string {
 	for it.Next() {
 		dataStr += fmt.Sprintf("interval %v, ", it.Value())
 	}
+	it.Close()
 	return dataStr
 }
 
-func (self *IntervalSkipList) Delete(inter QueueInterval) {
+func (self *IntervalSkipList) DeleteRange(inter QueueInterval) {
 	overlaps := self.Query(inter, false)
 	for _, v := range overlaps {
 		if v.Start() >= inter.Start() &&
@@ -282,6 +292,10 @@ func (self *IntervalSkipList) Delete(inter QueueInterval) {
 			self.sl.Delete(v.Start())
 		}
 	}
+}
+
+func (self *IntervalSkipList) DeleteInterval(inter QueueInterval) {
+	self.sl.Delete(inter.Start())
 }
 
 func (self *IntervalSkipList) DeleteLower(low int64) int {
@@ -302,8 +316,8 @@ func (self *IntervalSkipList) DeleteLower(low int64) int {
 	return cnt
 }
 
-func (self *IntervalSkipList) IsOverlaps(inter QueueInterval, excludeBoard bool) bool {
-	overlaps := self.Query(inter, excludeBoard)
+func (self *IntervalSkipList) IsCompleteOnverlap(inter QueueInterval) bool {
+	overlaps := self.Query(inter, true)
 	return len(overlaps) > 0
 }
 
@@ -368,6 +382,182 @@ func (self *IntervalSkipList) IsLowestAt(low int64) QueueInterval {
 			return overlaps[0].(QueueInterval)
 		}
 		return nil
+	}
+	return nil
+}
+
+type IntervalHash struct {
+	elems map[int64]QueueInterval
+}
+
+func NewIntervalHash() *IntervalHash {
+	return &IntervalHash{
+		elems: make(map[int64]QueueInterval),
+	}
+}
+
+// return the merged interval, if no overlap just return the original
+func (self *IntervalHash) AddOrMerge(inter QueueInterval) QueueInterval {
+	minStart := inter.Start()
+	maxEnd := inter.End()
+	maxEndCnt := inter.EndCnt()
+	qi, ok := self.elems[minStart]
+	if ok {
+		if qi.Start() < minStart {
+			minStart = qi.Start()
+		}
+		delete(self.elems, qi.Start())
+		delete(self.elems, qi.End())
+	}
+	qi, ok = self.elems[maxEnd]
+	if ok {
+		if qi.End() > maxEnd {
+			maxEnd = qi.End()
+			maxEndCnt = qi.EndCnt()
+		}
+		delete(self.elems, qi.Start())
+		delete(self.elems, qi.End())
+	}
+	n := &queueInterval{
+		start:  minStart,
+		end:    maxEnd,
+		endCnt: maxEndCnt,
+	}
+	self.elems[minStart] = n
+	self.elems[maxEnd] = n
+	return n
+}
+
+func (self *IntervalHash) Len() int {
+	return int(len(self.elems) / 2)
+}
+
+func (self *IntervalHash) ToIntervalList() []MsgQueueInterval {
+	il := make([]MsgQueueInterval, 0, self.Len())
+	sorted := skiplist.NewIntMap()
+	for _, qi := range self.elems {
+		sorted.Set(qi.Start(), qi)
+	}
+	it := sorted.Iterator()
+	for it.Next() {
+		qi, ok := it.Value().(QueueInterval)
+		if ok {
+			var mqi MsgQueueInterval
+			mqi.Start = qi.Start()
+			mqi.End = qi.End()
+			mqi.EndCnt = qi.EndCnt()
+			il = append(il, mqi)
+		}
+	}
+	it.Close()
+	return il
+}
+
+func (self *IntervalHash) ToString() string {
+	sorted := skiplist.NewIntMap()
+	for _, qi := range self.elems {
+		sorted.Set(qi.Start(), qi)
+	}
+
+	dataStr := ""
+	it := sorted.Iterator()
+	for it.Next() {
+		dataStr += fmt.Sprintf("interval %v, ", it.Value())
+	}
+	it.Close()
+	return dataStr
+}
+
+func (self *IntervalHash) DeleteRange(inter QueueInterval) {
+	for _, v := range self.elems {
+		if v.Start() >= inter.Start() &&
+			v.End() <= inter.End() {
+			delete(self.elems, v.Start())
+			delete(self.elems, v.End())
+		}
+	}
+}
+
+func (self *IntervalHash) DeleteInterval(inter QueueInterval) {
+	qi, ok := self.elems[inter.Start()]
+	if ok && qi.Start() == inter.Start() && qi.End() == inter.End() {
+		delete(self.elems, qi.Start())
+		delete(self.elems, qi.End())
+	}
+}
+
+func (self *IntervalHash) DeleteLower(low int64) int {
+	cnt := 0
+	for _, v := range self.elems {
+		if v.End() <= low {
+			delete(self.elems, v.Start())
+			delete(self.elems, v.End())
+			cnt++
+		}
+	}
+
+	return cnt
+}
+
+func (self *IntervalHash) IsCompleteOnverlap(inter QueueInterval) bool {
+	qi, ok := self.elems[inter.Start()]
+	if ok {
+		if qi.End() >= inter.End() {
+			return true
+		}
+	}
+	qi, ok = self.elems[inter.End()]
+	if ok {
+		if qi.Start() <= inter.Start() {
+			return true
+		}
+	}
+	return false
+}
+
+func (self *IntervalHash) Query(inter QueueInterval, excludeBoard bool) []QueueInterval {
+	rets := make([]QueueInterval, 0)
+	sorted := skiplist.NewIntMap()
+	for _, v := range self.elems {
+		if v.End() < inter.Start() {
+			continue
+		}
+		if v.End() == inter.Start() && excludeBoard {
+			continue
+		}
+		if v.Start() > inter.End() {
+			continue
+		}
+		if v.Start() == inter.End() && excludeBoard {
+			continue
+		}
+		sorted.Set(v.Start(), v)
+	}
+
+	overlaps := sorted.Iterator()
+	for overlaps.Next() {
+		rets = append(rets, overlaps.Value().(QueueInterval))
+	}
+	overlaps.Close()
+	return rets
+}
+
+func (self *IntervalHash) IsLowestAt(low int64) QueueInterval {
+	qi, ok := self.elems[low]
+	if ok && qi.Start() == low {
+		// check if any lower segment
+		foundLower := false
+		for _, v := range self.elems {
+			if v.Start() < low {
+				foundLower = true
+				break
+			}
+		}
+		if foundLower {
+			return nil
+		} else {
+			return qi
+		}
 	}
 	return nil
 }

@@ -352,7 +352,8 @@ func TestChannelDepthTimestamp(t *testing.T) {
 
 func TestRangeTree(t *testing.T) {
 	//tr := NewIntervalTree()
-	tr := NewIntervalSkipList()
+	//tr := NewIntervalSkipList()
+	tr := NewIntervalHash()
 	m1 := &queueInterval{0, 10, 2}
 	m2 := &queueInterval{10, 20, 3}
 	m3 := &queueInterval{20, 30, 4}
@@ -433,12 +434,12 @@ func BenchmarkRangeTree(b *testing.B) {
 	b.StopTimer()
 	b.StartTimer()
 	for i := 0; i <= b.N; i++ {
-		tr := NewIntervalSkipList()
+		tr := NewIntervalHash()
 		for index, q := range mn {
 			if index%2 == 0 {
 				tr.AddOrMerge(q)
 				if index >= 1 {
-					tr.IsOverlaps(mn[index/2], true)
+					tr.IsCompleteOnverlap(mn[index/2])
 				}
 			}
 		}
@@ -446,7 +447,7 @@ func BenchmarkRangeTree(b *testing.B) {
 			if index%2 == 1 {
 				tr.AddOrMerge(q)
 				if index >= 1 {
-					tr.IsOverlaps(mn[index/2], false)
+					tr.IsCompleteOnverlap(mn[index/2])
 				}
 			}
 		}
@@ -454,11 +455,25 @@ func BenchmarkRangeTree(b *testing.B) {
 			b.Fatal("len not 1 " + tr.ToString())
 		}
 		l := tr.ToIntervalList()
-		if l[0].Start != int64(0) {
-			b.Fatal("start not 0 " + tr.ToString())
+		tr.DeleteInterval(&queueInterval{
+			start:  l[0].Start,
+			end:    l[0].End,
+			endCnt: l[0].EndCnt,
+		})
+		for index, q := range mn {
+			if index%2 == 1 {
+				tr.AddOrMerge(q)
+				if index >= 1 {
+					tr.DeleteInterval(mn[index/2])
+				}
+			}
 		}
-		if l[0].End != int64(10000) {
-			b.Fatal("end not 10000 " + tr.ToString())
-		}
+
+		//if l[0].Start != int64(0) {
+		//	b.Fatal("start not 0 " + tr.ToString())
+		//}
+		//if l[0].End != int64(10000) {
+		//	b.Fatal("end not 10000 " + tr.ToString())
+		//}
 	}
 }

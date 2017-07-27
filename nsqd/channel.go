@@ -115,7 +115,7 @@ type Channel struct {
 	inFlightPQ       inFlightPqueue
 	inFlightMutex    sync.Mutex
 
-	confirmedMsgs   *IntervalSkipList
+	confirmedMsgs   *IntervalHash
 	confirmMutex    sync.Mutex
 	waitingConfirm  int32
 	tryReadBackend  chan bool
@@ -157,7 +157,7 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		exitChan:               make(chan int),
 		exitSyncChan:           make(chan bool),
 		clients:                make(map[int64]Consumer),
-		confirmedMsgs:          NewIntervalSkipList(),
+		confirmedMsgs:          NewIntervalHash(),
 		tryReadBackend:         make(chan bool, 1),
 		readerChanged:          make(chan resetChannelData, 10),
 		endUpdatedChan:         make(chan bool, 1),
@@ -716,7 +716,7 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 			}
 			return curConfirm.Offset(), curConfirm.TotalMsgCnt(), reduced
 		} else {
-			c.confirmedMsgs.DeleteLower(int64(newConfirmed))
+			c.confirmedMsgs.DeleteInterval(mergedInterval)
 			atomic.StoreInt32(&c.waitingConfirm, int32(c.confirmedMsgs.Len()))
 		}
 		if int64(c.confirmedMsgs.Len()) < c.option.MaxConfirmWin/2 &&
@@ -770,9 +770,9 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 		return false
 	}
 	c.confirmMutex.Lock()
-	ok := c.confirmedMsgs.IsOverlaps(&queueInterval{start: int64(msg.Offset),
+	ok := c.confirmedMsgs.IsCompleteOnverlap(&queueInterval{start: int64(msg.Offset),
 		end:    int64(msg.Offset) + int64(msg.RawMoveSize),
-		endCnt: uint64(msg.queueCntIndex)}, true)
+		endCnt: uint64(msg.queueCntIndex)})
 	c.confirmMutex.Unlock()
 
 	if ok {
@@ -1139,7 +1139,7 @@ func (c *Channel) UpdateConfirmedInterval(intervals []MsgQueueInterval) {
 		nsqLog.Logf("update confirmed interval, before: %v", c.confirmedMsgs.ToString())
 	}
 	if c.confirmedMsgs.Len() != 0 {
-		c.confirmedMsgs = NewIntervalSkipList()
+		c.confirmedMsgs = NewIntervalHash()
 	}
 	for _, qi := range intervals {
 		c.confirmedMsgs.AddOrMerge(&queueInterval{start: qi.Start, end: qi.End, endCnt: qi.EndCnt})
@@ -1309,7 +1309,7 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *boo
 	c.initPQ()
 	if clearConfirmed {
 		c.confirmMutex.Lock()
-		c.confirmedMsgs = NewIntervalSkipList()
+		c.confirmedMsgs = NewIntervalHash()
 		atomic.StoreInt32(&c.waitingConfirm, 0)
 		c.confirmMutex.Unlock()
 	}
