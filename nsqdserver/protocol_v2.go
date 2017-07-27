@@ -126,6 +126,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 	clientID := p.ctx.nextClientID()
 	client := nsqd.NewClientV2(clientID, conn, p.ctx.getOpts(), p.ctx.GetTlsConfig())
+	client.SetWriteDeadline(zeroTime)
 
 	// synchronize the startup of messagePump in order
 	// to guarantee that it gets a chance to initialize
@@ -347,13 +348,6 @@ func internalSend(client *nsqd.ClientV2, frameType int32, data []byte, needFlush
 	defer client.UnlockWrite()
 	if client.Writer == nil {
 		return errors.New("client closed")
-	}
-
-	var zeroTime time.Time
-	if client.HeartbeatInterval > 0 {
-		client.SetWriteDeadline(time.Now().Add(client.HeartbeatInterval))
-	} else {
-		client.SetWriteDeadline(zeroTime)
 	}
 
 	_, err := protocol.SendFramedResponse(client.Writer, frameType, data)
@@ -1236,10 +1230,6 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 	}
 
 	topicName := string(params[1])
-	if !protocol.IsValidTopicName(topicName) {
-		return 0, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
-			fmt.Sprintf("topic name %q is not valid", topicName))
-	}
 	partition := -1
 	if len(params) >= 3 {
 		partition, err = strconv.Atoi(string(params[2]))

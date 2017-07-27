@@ -544,17 +544,20 @@ func (n *NSQD) internalGetTopic(topicName string, part int, ext bool, disabled i
 
 // GetExistingTopic gets a topic only if it exists
 func (n *NSQD) GetExistingTopic(topicName string, part int) (*Topic, error) {
+	var err error
+	var topic *Topic
 	n.RLock()
-	defer n.RUnlock()
 	topics, ok := n.topicMap[topicName]
-	if !ok {
-		return nil, ErrTopicNotExist
+	if ok {
+		topic, ok = topics[part]
+		if !ok {
+			err = ErrTopicNotExist
+		}
+	} else {
+		err = ErrTopicNotExist
 	}
-	topic, ok := topics[part]
-	if !ok {
-		return nil, ErrTopicNotExist
-	}
-	return topic, nil
+	n.RUnlock()
+	return topic, err
 }
 
 func (n *NSQD) deleteTopic(topicName string, part int) {
