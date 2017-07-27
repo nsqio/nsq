@@ -3,7 +3,7 @@ package nsqd
 import (
 	"fmt"
 	"github.com/Workiva/go-datastructures/augmentedtree"
-	"github.com/ryszard/goskiplist/skiplist"
+	"github.com/absolute8511/goskiplist/skiplist"
 )
 
 type QueueInterval interface {
@@ -210,7 +210,7 @@ type IntervalSkipList struct {
 }
 
 func NewIntervalSkipList() *IntervalSkipList {
-	sl := skiplist.NewInt64Map()
+	sl := skiplist.NewIntMap()
 	return &IntervalSkipList{
 		sl: sl,
 	}
