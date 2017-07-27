@@ -921,6 +921,7 @@ func main() {
 	config.EnableTrace = *trace
 	config.EnableOrdered = *ordered
 	config.PubStrategy = nsq.PubRR
+	config.OutputBufferSize = 1024 * 32
 	if config.EnableOrdered {
 		config.PubStrategy = nsq.PubIDHash
 		config.Hasher = murmur3.New32()
