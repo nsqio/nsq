@@ -3,6 +3,7 @@ package nsqd
 import (
 	"fmt"
 	"github.com/Workiva/go-datastructures/augmentedtree"
+	"github.com/ryszard/goskiplist/skiplist"
 )
 
 type QueueInterval interface {
@@ -197,6 +198,173 @@ func (self *IntervalTree) IsLowestAt(low int64) QueueInterval {
 		return nil
 	} else if len(overlaps) == 1 {
 		if overlaps[0].LowAtDimension(1) == low {
+			return overlaps[0].(QueueInterval)
+		}
+		return nil
+	}
+	return nil
+}
+
+type IntervalSkipList struct {
+	sl *skiplist.SkipList
+}
+
+func NewIntervalSkipList() *IntervalSkipList {
+	sl := skiplist.NewInt64Map()
+	return &IntervalSkipList{
+		sl: sl,
+	}
+}
+
+// return the merged interval, if no overlap just return the original
+func (self *IntervalSkipList) AddOrMerge(inter QueueInterval) QueueInterval {
+	minStart := inter.Start()
+	maxEnd := inter.End()
+	maxEndCnt := inter.EndCnt()
+	removings := self.Query(inter, false)
+	if len(removings) == 0 {
+		self.sl.Set(inter.Start(), inter)
+		return inter
+	}
+	if removings[0].Start() < minStart {
+		minStart = removings[0].Start()
+	}
+	if removings[len(removings)-1].End() > maxEnd {
+		maxEnd = removings[len(removings)-1].End()
+		maxEndCnt = removings[len(removings)-1].EndCnt()
+	}
+	for _, v := range removings {
+		self.sl.Delete(v.Start())
+	}
+	n := &queueInterval{
+		start:  minStart,
+		end:    maxEnd,
+		endCnt: maxEndCnt,
+	}
+	self.sl.Set(minStart, n)
+	return n
+}
+
+func (self *IntervalSkipList) Len() int {
+	return int(self.sl.Len())
+}
+
+func (self *IntervalSkipList) ToIntervalList() []MsgQueueInterval {
+	il := make([]MsgQueueInterval, 0, self.Len())
+	it := self.sl.Iterator()
+	for it.Next() {
+		qi, ok := it.Value().(QueueInterval)
+		if ok {
+			var mqi MsgQueueInterval
+			mqi.Start = qi.Start()
+			mqi.End = qi.End()
+			mqi.EndCnt = qi.EndCnt()
+			il = append(il, mqi)
+		}
+	}
+	return il
+}
+
+func (self *IntervalSkipList) ToString() string {
+	dataStr := ""
+	it := self.sl.Iterator()
+	for it.Next() {
+		dataStr += fmt.Sprintf("interval %v, ", it.Value())
+	}
+	return dataStr
+}
+
+func (self *IntervalSkipList) Delete(inter QueueInterval) {
+	overlaps := self.Query(inter, false)
+	for _, v := range overlaps {
+		if v.Start() >= inter.Start() &&
+			v.End() <= inter.End() {
+			self.sl.Delete(v.Start())
+		}
+	}
+}
+
+func (self *IntervalSkipList) DeleteLower(low int64) int {
+	qi := &queueInterval{
+		start:  0,
+		end:    low,
+		endCnt: 0,
+	}
+	overlaps := self.Query(qi, false)
+	cnt := 0
+
+	for _, v := range overlaps {
+		if v.End() <= low {
+			self.sl.Delete(v.Start())
+			cnt++
+		}
+	}
+	return cnt
+}
+
+func (self *IntervalSkipList) IsOverlaps(inter QueueInterval, excludeBoard bool) bool {
+	overlaps := self.Query(inter, excludeBoard)
+	return len(overlaps) > 0
+}
+
+func (self *IntervalSkipList) Query(inter QueueInterval, excludeBoard bool) []QueueInterval {
+	rets := make([]QueueInterval, 0)
+
+	queryEnd := inter.End()
+	queryStart := inter.Start()
+	if !excludeBoard {
+		queryEnd++
+	} else {
+		queryStart++
+	}
+	overlaps := self.sl.Seek(queryStart)
+	if overlaps == nil {
+		overlaps = self.sl.SeekToLast()
+		if overlaps != nil {
+			prevEnd := overlaps.Value().(QueueInterval).End()
+			if prevEnd < inter.Start() {
+			} else if excludeBoard && prevEnd == inter.Start() {
+			} else {
+				rets = append(rets, overlaps.Value().(QueueInterval))
+			}
+		}
+		return rets
+	}
+	defer overlaps.Close()
+	hasPrev := overlaps.Previous()
+	if hasPrev {
+		prevEnd := overlaps.Value().(QueueInterval).End()
+		if prevEnd < inter.Start() {
+		} else if excludeBoard && prevEnd == inter.Start() {
+		} else {
+			rets = append(rets, overlaps.Value().(QueueInterval))
+		}
+	} else {
+		if overlaps.Key().(int64) < queryEnd {
+			rets = append(rets, overlaps.Value().(QueueInterval))
+		}
+	}
+
+	for overlaps.Next() {
+		if overlaps.Key().(int64) >= queryEnd {
+			break
+		}
+		rets = append(rets, overlaps.Value().(QueueInterval))
+	}
+	return rets
+}
+
+func (self *IntervalSkipList) IsLowestAt(low int64) QueueInterval {
+	qi := &queueInterval{
+		start:  0,
+		end:    low,
+		endCnt: 0,
+	}
+	overlaps := self.Query(qi, false)
+	if len(overlaps) == 0 {
+		return nil
+	} else if len(overlaps) == 1 {
+		if overlaps[0].Start() == low {
 			return overlaps[0].(QueueInterval)
 		}
 		return nil

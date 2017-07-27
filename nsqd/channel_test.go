@@ -2,7 +2,6 @@ package nsqd
 
 import (
 	//"github.com/absolute8511/nsq/internal/levellogger"
-	"github.com/Workiva/go-datastructures/augmentedtree"
 	"os"
 	"strconv"
 	"testing"
@@ -352,35 +351,22 @@ func TestChannelDepthTimestamp(t *testing.T) {
 }
 
 func TestRangeTree(t *testing.T) {
-	atr := augmentedtree.New(1)
-	atr.Add(&queueInterval{100, 110, 2})
-	atr.Add(&queueInterval{110, 120, 3})
-	atr.Add(&queueInterval{120, 130, 4})
-	atr.Add(&queueInterval{130, 140, 5})
-	aret := atr.Query(&queueInterval{111, 140, 5})
-	equal(t, len(aret), 3)
-	aret = atr.Query(&queueInterval{99, 100, 1})
-	equal(t, len(aret), 1)
-	atr.Traverse(func(inter augmentedtree.Interval) {
-		t.Logf("inter: %v\n", inter)
-	})
-	atr.Delete(&queueInterval{110, 120, 5})
-	t.Log("after delete \n")
-	atr.Traverse(func(inter augmentedtree.Interval) {
-		t.Logf("inter: %v\n", inter)
-	})
-	equal(t, atr.Len(), uint64(3))
-
-	tr := NewIntervalTree()
+	//tr := NewIntervalTree()
+	tr := NewIntervalSkipList()
 	m1 := &queueInterval{0, 10, 2}
 	m2 := &queueInterval{10, 20, 3}
 	m3 := &queueInterval{20, 30, 4}
 	m4 := &queueInterval{30, 40, 5}
 	m5 := &queueInterval{40, 50, 6}
 	m6 := &queueInterval{50, 60, 7}
+
 	ret := tr.Query(m1, false)
 	equal(t, len(ret), 0)
-	tr.AddOrMerge(m1)
+	equal(t, m1, tr.AddOrMerge(m1))
+	t.Logf("1 %v", tr.ToString())
+
+	ret = tr.Query(m1, false)
+	equal(t, len(ret), 1)
 	lowest := tr.IsLowestAt(m1.Start())
 	equal(t, lowest, m1)
 	lowest = tr.IsLowestAt(m1.End())
@@ -392,6 +378,7 @@ func TestRangeTree(t *testing.T) {
 	lowest = tr.IsLowestAt(m1.Start())
 	equal(t, lowest, m1)
 	tr.AddOrMerge(m3)
+	t.Logf("2 %v", tr.ToString())
 	ret = tr.Query(m5, false)
 	equal(t, len(ret), 0)
 	tr.AddOrMerge(m5)
@@ -406,6 +393,7 @@ func TestRangeTree(t *testing.T) {
 	equal(t, deleted, 0)
 
 	merged := tr.AddOrMerge(m2)
+	t.Logf("4 %v", tr.ToString())
 	equal(t, merged.Start(), m1.Start())
 	equal(t, merged.End(), m3.End())
 	equal(t, merged.EndCnt(), m3.EndCnt())
@@ -433,4 +421,44 @@ func TestRangeTree(t *testing.T) {
 	deleted = tr.DeleteLower(int64(60))
 	equal(t, deleted, 1)
 	equal(t, tr.Len(), int(0))
+}
+
+func BenchmarkRangeTree(b *testing.B) {
+
+	mn := make([]*queueInterval, 1000)
+	for i := 0; i < 1000; i++ {
+		mn[i] = &queueInterval{int64(i) * 10, int64(i)*10 + 10, uint64(i) + 2}
+	}
+
+	b.StopTimer()
+	b.StartTimer()
+	for i := 0; i <= b.N; i++ {
+		tr := NewIntervalSkipList()
+		for index, q := range mn {
+			if index%2 == 0 {
+				tr.AddOrMerge(q)
+				if index >= 1 {
+					tr.IsOverlaps(mn[index/2], true)
+				}
+			}
+		}
+		for index, q := range mn {
+			if index%2 == 1 {
+				tr.AddOrMerge(q)
+				if index >= 1 {
+					tr.IsOverlaps(mn[index/2], false)
+				}
+			}
+		}
+		if tr.Len() != int(1) {
+			b.Fatal("len not 1 " + tr.ToString())
+		}
+		l := tr.ToIntervalList()
+		if l[0].Start != int64(0) {
+			b.Fatal("start not 0 " + tr.ToString())
+		}
+		if l[0].End != int64(10000) {
+			b.Fatal("end not 10000 " + tr.ToString())
+		}
+	}
 }

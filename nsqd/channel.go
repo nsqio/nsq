@@ -115,7 +115,7 @@ type Channel struct {
 	inFlightPQ       inFlightPqueue
 	inFlightMutex    sync.Mutex
 
-	confirmedMsgs   *IntervalTree
+	confirmedMsgs   *IntervalSkipList
 	confirmMutex    sync.Mutex
 	waitingConfirm  int32
 	tryReadBackend  chan bool
@@ -157,7 +157,7 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 		exitChan:               make(chan int),
 		exitSyncChan:           make(chan bool),
 		clients:                make(map[int64]Consumer),
-		confirmedMsgs:          NewIntervalTree(),
+		confirmedMsgs:          NewIntervalSkipList(),
 		tryReadBackend:         make(chan bool, 1),
 		readerChanged:          make(chan resetChannelData, 10),
 		endUpdatedChan:         make(chan bool, 1),
@@ -1139,7 +1139,7 @@ func (c *Channel) UpdateConfirmedInterval(intervals []MsgQueueInterval) {
 		nsqLog.Logf("update confirmed interval, before: %v", c.confirmedMsgs.ToString())
 	}
 	if c.confirmedMsgs.Len() != 0 {
-		c.confirmedMsgs = NewIntervalTree()
+		c.confirmedMsgs = NewIntervalSkipList()
 	}
 	for _, qi := range intervals {
 		c.confirmedMsgs.AddOrMerge(&queueInterval{start: qi.Start, end: qi.End, endCnt: qi.EndCnt})
@@ -1309,7 +1309,7 @@ func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *boo
 	c.initPQ()
 	if clearConfirmed {
 		c.confirmMutex.Lock()
-		c.confirmedMsgs = NewIntervalTree()
+		c.confirmedMsgs = NewIntervalSkipList()
 		atomic.StoreInt32(&c.waitingConfirm, 0)
 		c.confirmMutex.Unlock()
 	}
