@@ -385,6 +385,8 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.PUB(client, params)
 	case bytes.Equal(params[0], []byte("PUB_TRACE")):
 		return p.PUBTRACE(client, params)
+	case bytes.Equal(params[0], []byte("PUB_EXT")):
+		return p.PUBEXT(client, params)
 	case bytes.Equal(params[0], []byte("MPUB")):
 		return p.MPUB(client, params)
 	case bytes.Equal(params[0], []byte("MPUB_TRACE")):
@@ -1293,7 +1295,7 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 func parseExtContent(topicName string, isExt bool, params [][]byte) (ext.IExtContent, error) {
 	var extContent ext.IExtContent
 	var err error
-	if isPubWithExt(params[0]) {
+	if isPubExt(params[0]) {
 		//parse as json header ext, leave outer logic to parse json ext header
 		extContent = ext.NewJsonHeaderExt()
 	} else if len(params) == 4 && isExt {
@@ -1321,8 +1323,8 @@ func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error)
 	return p.internalPubAndTrace(client, params, false)
 }
 
-func (p *protocolV2) PUBWITHEXT(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
-	return p.internalPubAndTrace(client, params, false)
+func (p *protocolV2) PUBEXT(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalPubExtAndTrace(client, params, true, false)
 }
 
 func (p *protocolV2) MPUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
@@ -1385,22 +1387,31 @@ func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsq
 	return info.Err
 }
 
-func isPubWithExt(pubCmdName []byte) bool {
+func isPubExt(pubCmdName []byte) bool {
 	return bytes.Equal(pubCmdName, []byte("PUB_WITH_EXT"))
 }
 
+
 func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
+	return p.internalPubExtAndTrace(client, params, false, traceEnable)
+}
+
+/**
+pub ext or pub trace or pub, if pubExt is true, traceEnable is ignored.
+ */
+func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]byte, pubExt bool, traceEnable bool) ([]byte, error) {
 	startPub := time.Now().UnixNano()
 	bodyLen, topic, extContent, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize, false)
 	if err != nil {
 		return nil, err
 	}
 
-	pubWExt := isPubWithExt(params[0])
 	if traceEnable && bodyLen <= nsqd.MsgTraceIDLength {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
 			fmt.Sprintf("invalid body size %d with trace id enabled", bodyLen))
-	} else if pubWExt && bodyLen <= nsqd.MsgJsonHeaderLength {
+	}
+
+	if pubExt && bodyLen <= nsqd.MsgJsonHeaderLength {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
 			fmt.Sprintf("invalid body size %d with ext json header enabled", bodyLen))
 	}
@@ -1421,10 +1432,10 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 	var extJsonLen uint16
 	var traceID uint64
 	var realBody []byte
-	if traceEnable {
+	if traceEnable && !pubExt {
 		traceID = binary.BigEndian.Uint64(messageBody[:nsqd.MsgTraceIDLength])
 		realBody = messageBody[nsqd.MsgTraceIDLength:]
-	} else if pubWExt {
+	} else if pubExt {
 		//read two byte header length
 		extJsonLen = binary.BigEndian.Uint16(messageBody[:nsqd.MsgJsonHeaderLength])
 		extJsonBytes := messageBody[nsqd.MsgJsonHeaderLength:nsqd.MsgJsonHeaderLength + extJsonLen]
@@ -1438,7 +1449,23 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		if err != nil {
 			return nil, protocol.NewClientErr(err, ext.E_INVALID_JSON_HEADER, "fail to parse json header")
 		}
+
+		//parse traceID, if there is any
+		var traceIDStr string
+		traceIDI, exist := jsonHeader[ext.TRACE_ID_KEY]
+		if exist {
+			var ok bool
+			if traceIDStr, ok = traceIDI.(string); !ok {
+				return nil, protocol.NewClientErr(err, "INVALID_TRACE_ID", "fail to parse trace id")
+			}
+
+			traceID, err = strconv.ParseUint(traceIDStr, 10, 0)
+			if err != nil {
+				return nil, protocol.NewClientErr(err, "INVALID_TRACE_ID", "fail to parse trace id")
+			}
+		}
 		jhe.SetJsonHeaderBytes(extJsonBytes)
+		realBody = messageBody[nsqd.MsgJsonHeaderLength + extJsonLen:]
 	} else {
 		realBody = messageBody
 	}

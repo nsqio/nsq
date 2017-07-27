@@ -346,12 +346,13 @@ func decodeMessage(b []byte, isExt bool) (*Message, error) {
 			if len(b) < 27+2 {
 				return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
 			}
-			tagLen := binary.BigEndian.Uint16(b[27 : 27+2])
-			if len(b) < 27+2+int(tagLen) {
+
+			extLen := binary.BigEndian.Uint16(b[27 : 27+2])
+			if len(b) < 27+2+int(extLen) {
 				return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
 			}
-			msg.ExtBytes = b[29 : 29+tagLen]
-			bodyStart = 29 + int(tagLen)
+			msg.ExtBytes = b[29 : 29+extLen]
+			bodyStart = 29 + int(extLen)
 		}
 	}
 

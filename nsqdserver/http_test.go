@@ -74,7 +74,7 @@ func TestHTTPpub(t *testing.T) {
 	conn.Close()
 }
 
-func TestHTTPPubWithExt(t *testing.T) {
+func TestHTTPPubExt(t *testing.T) {
 	topicName := "test_json_header_tag_http" + strconv.Itoa(int(time.Now().Unix()))
 
 	opts := nsqd.NewOptions()
@@ -106,7 +106,7 @@ func TestHTTPPubWithExt(t *testing.T) {
 
 	jsonHeaderTagStr := "{\"##client_dispatch_tag\":\"test_tag\",\"##channel_filter_tag\":\"test\",\"custome_header1\":\"test_header\",\"custome_h2\":\"test\"}"
 	messageBody := "test message"
-	aUrl, err := url.Parse(fmt.Sprintf("http://%s/pub_with_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagStr)))
+	aUrl, err := url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagStr)))
 	if err != nil {
 		t.FailNow()
 	}
@@ -115,13 +115,15 @@ func TestHTTPPubWithExt(t *testing.T) {
 		t.FailNow()
 	}
 	req.Header.Set("X-NSQEXT-Key-Test", "val-http")
+	req.Header.Set("accept", "application/vnd.nsq; version=1.0")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		t.FailNow()
 	}
 	defer resp.Body.Close()
-	test.Equal(t, resp.StatusCode, 200)
+	fmt.Printf(resp.Status)
+	test.Equal(t, 200, resp.StatusCode)
 	msgOut := recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
 	test.NotNil(t, msgOut)
 	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
@@ -132,7 +134,7 @@ func TestHTTPPubWithExt(t *testing.T) {
 
 	//publish with empty ext
 	jsonHeaderTagEmptyStr := ""
-	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_with_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagEmptyStr)))
+	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagEmptyStr)))
 	if err != nil {
 		t.FailNow()
 	}
@@ -151,7 +153,7 @@ func TestHTTPPubWithExt(t *testing.T) {
 
 	//publish with invalid ext
 	jsonHeaderTagInvalidStr := "{this is invalid json"
-	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_with_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagInvalidStr)))
+	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagInvalidStr)))
 	if err != nil {
 		t.FailNow()
 	}

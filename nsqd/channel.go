@@ -1738,7 +1738,11 @@ func parseTagIfAny(msg *Message) (string, error) {
 		err = json.Unmarshal(msg.ExtBytes, &jsonExt)
 		if err == nil {
 			if iMsgTag, exist := jsonExt[ext.CLEINT_DISPATCH_TAG_KEY]; exist {
-				msgTag, _ = iMsgTag.(string)
+				var ok bool
+				msgTag, ok = iMsgTag.(string)
+				if !ok {
+					err = fmt.Errorf("invalid tag format in jon header")
+				}
 			}
 
 		}

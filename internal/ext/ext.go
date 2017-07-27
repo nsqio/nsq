@@ -9,10 +9,13 @@ const (
 	E_EXT_NOT_SUPPORT = "E_EXT_NOT_SUPPORT"
 	E_BAD_TAG	= "E_BAD_TAG"
 	E_INVALID_JSON_HEADER = "E_INVALID_JSON_HEADER"
+
+	CLEINT_DISPATCH_TAG_KEY = "##client_dispatch_tag"
+	TRACE_ID_KEY = "##trace_id"
 )
 
 var MAX_TAG_LEN = 100
-var validTagFmt = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+var validTagFmt = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 type ExtVer uint8
 
@@ -39,8 +42,6 @@ func (n NoExt) ExtVersion() ExtVer {
 func (n NoExt) GetBytes() []byte {
 	return nil
 }
-
-var CLEINT_DISPATCH_TAG_KEY = "##client_dispatch_tag"
 
 type JsonHeaderExt struct {
 	bytes []byte

@@ -28,6 +28,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+const HTTP_EXT_HEADER_PREFIX = "X-Nsqext-"
+
 type httpServer struct {
 	ctx         *context
 	tlsEnabled  bool
@@ -56,7 +58,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 
 	// v1 negotiate
 	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
-	router.Handle("POST", "/pub_with_ext", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
+	router.Handle("POST", "/pub_ext", http_api.Decorate(s.doPUBExt, http_api.NegotiateVersion))
 	router.Handle("POST", "/pubtrace", http_api.Decorate(s.doPUBTrace, http_api.V1))
 	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
@@ -236,14 +238,12 @@ func (s *httpServer) doPUBTrace(w http.ResponseWriter, req *http.Request, ps htt
 	return s.internalPUB(w, req, ps, true, false)
 }
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	var pubExt bool
-	if strings.HasSuffix(req.URL.Path, "/pub_with_ext") {
-		pubExt = true
-	}
-	return s.internalPUB(w, req, ps, false, pubExt)
+	return s.internalPUB(w, req, ps, false, false)
 }
 
-var HTTP_EXT_HEADER_PREFIX = "X-Nsqext-"
+func (s *httpServer) doPUBExt(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	return s.internalPUB(w, req, ps, false, true)
+}
 
 func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params, enableTrace bool, pubExt bool) (interface{}, error) {
 	startPub := time.Now().UnixNano()
@@ -286,13 +286,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		var err error
-		traceIDStr := params.Get("trace_id")
-		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
-		if enableTrace && err != nil {
-			nsqd.NsqLogger().Logf("trace id invalid %v, %v",
-				traceIDStr, err)
-			return nil, http_api.Err{400, "INVALID_TRACE_ID"}
-		}
+		var traceIDStr string
 
 		//parse tag name, if target topic is not configured extendable, request should be stopped here
 		var extContent ext.IExtContent
@@ -307,9 +301,19 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			var jsonHeaderExt map[string]interface{}
 			err = json.Unmarshal([]byte(headerStr), &jsonHeaderExt)
 			if err != nil {
-				fmt.Println(err)
 				return nil, http_api.Err{400, ext.E_INVALID_JSON_HEADER}
 			}
+			//check trace id
+			traceIDI, exist := jsonHeaderExt[ext.TRACE_ID_KEY]
+			if exist {
+				var ok bool
+				if traceIDStr, ok = traceIDI.(string); !ok {
+					return nil, http_api.Err{400, "INVALID_TRACE_ID"}
+				}
+				//set sync as trace id in header is found
+				asyncAction = false
+			}
+
 			//check header X-Nsqext-XXX:value
 			for hKey, _ := range req.Header {
 				if strings.HasPrefix(hKey, HTTP_EXT_HEADER_PREFIX) {
@@ -336,6 +340,18 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{400, ext.E_EXT_NOT_SUPPORT}
 		} else {
 			extContent = ext.NewNoExt()
+		}
+
+		//trace not parsed in ext header & trace is enable, try fetching trace id in params
+		if traceIDStr == "" && !pubExt && enableTrace {
+			traceIDStr = params.Get("trace_id")
+		}
+
+		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
+		if err != nil && enableTrace {
+			nsqd.NsqLogger().Logf("trace id invalid %v, %v",
+				traceIDStr, err)
+			return nil, http_api.Err{400, "INVALID_TRACE_ID"}
 		}
 
 		id := nsqd.MessageID(0)
