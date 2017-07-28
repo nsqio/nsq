@@ -1318,15 +1318,10 @@ func (p *protocolV2) MPUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 	return p.internalMPUBAndTrace(client, params, false)
 }
 
-func getTracedReponse(messageBodyBuffer *bytes.Buffer, id nsqd.MessageID, traceID uint64, offset nsqd.BackendOffset, rawSize int32) ([]byte, error) {
-	var buf []byte
+func getTracedReponse(id nsqd.MessageID, traceID uint64, offset nsqd.BackendOffset, rawSize int32) ([]byte, error) {
 	// pub with trace will return OK+16BYTES ID+8bytes offset of the disk queue + 4bytes raw size of disk queue data.
 	retLen := 2 + 16 + 8 + 4
-	if len(messageBodyBuffer.Bytes()) >= retLen {
-		buf = messageBodyBuffer.Bytes()[:retLen]
-	} else {
-		buf = make([]byte, retLen)
-	}
+	buf := make([]byte, retLen)
 	copy(buf[:2], okBytes)
 	pos := 2
 	binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(id))
@@ -1336,6 +1331,10 @@ func getTracedReponse(messageBodyBuffer *bytes.Buffer, id nsqd.MessageID, traceI
 	binary.BigEndian.PutUint64(buf[pos:pos+8], uint64(offset))
 	pos += 8
 	binary.BigEndian.PutUint32(buf[pos:pos+4], uint32(rawSize))
+
+	if nsqd.NsqLogger().Level() >= levellogger.LOG_DEBUG {
+		nsqd.NsqLogger().Logf("pub traced %v (%v) response : %v", id, offset, buf)
+	}
 	return buf, nil
 }
 
@@ -1430,7 +1429,7 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		if !traceEnable {
 			return okBytes, nil
 		}
-		return getTracedReponse(messageBodyBuffer, id, traceID, offset, rawSize)
+		return getTracedReponse(id, traceID, offset, rawSize)
 	} else {
 		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", 1, true)
 		//forward to master of topic
@@ -1482,7 +1481,7 @@ func (p *protocolV2) internalMPUBAndTrace(client *nsqd.ClientV2, params [][]byte
 		if !traceEnable {
 			return okBytes, nil
 		}
-		return getTracedReponse(buffers[0], id, 0, offset, rawSize)
+		return getTracedReponse(id, 0, offset, rawSize)
 	} else {
 		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", int64(len(messages)), true)
 		//forward to master of topic

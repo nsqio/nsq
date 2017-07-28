@@ -1044,7 +1044,7 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 			}
 			oldResp, ok := topicResp[uint64(traceResp.id)]
 			if ok {
-				log.Printf("got the same id with mpub: %v\n", traceResp.id)
+				log.Printf("got the same id with mpub: %v\n", traceResp)
 				if oldResp != traceResp {
 					log.Printf("response not the same old %v, new:%v\n", oldResp, traceResp)
 				}
