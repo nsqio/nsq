@@ -1,9 +1,9 @@
 package contrib
 
 import (
-	"testing"
 	"github.com/nsqio/nsq/internal/test"
 	"net"
+	"testing"
 )
 
 func TestDDTagsStringNoTags(t *testing.T) {
@@ -45,8 +45,8 @@ func TestDDCSend(t *testing.T) {
 
 	go func() {
 		ddc := &DataDogClient{
-			conn: w,
-			addr: "test",
+			conn:   w,
+			addr:   "test",
 			prefix: "nsq.",
 		}
 		testValue := int64(100)

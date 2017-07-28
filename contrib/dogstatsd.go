@@ -1,10 +1,10 @@
 package contrib
 
 import (
+	"flag"
 	"fmt"
 	"github.com/nsqio/nsq/nsqd"
 	"time"
-	"flag"
 )
 
 type NSQDDogStatsdOptions struct {
@@ -24,7 +24,7 @@ func NewNSQDDogStatsdContribFlags(opts *NSQDDogStatsdOptions) *flag.FlagSet {
 	flagSet.DurationVar(
 		&opts.DogStatsdInterval,
 		"dogstatsd-interval",
-		10 * time.Second,
+		10*time.Second,
 		"duration between pushing to dogstatsd",
 	)
 	// flagSet.Bool("statsd-mem-stats", opts.StatsdMemStats, "toggle sending memory and GC stats to statsd")
@@ -37,7 +37,7 @@ func NewNSQDDogStatsdContribFlags(opts *NSQDDogStatsdOptions) *flag.FlagSet {
 	return flagSet
 }
 
-func NewNSQDDogStatsd(contribOpts []string, n *nsqd.NSQD) INSQDAddon {
+func NewNSQDDogStatsd(contribOpts []string, n INSQD) INSQDAddon {
 	n.Logf(nsqd.LOG_INFO, "Received options: %+v", contribOpts)
 
 	dogStatsdOpts := &NSQDDogStatsdOptions{}
@@ -49,12 +49,12 @@ func NewNSQDDogStatsd(contribOpts []string, n *nsqd.NSQD) INSQDAddon {
 	// pass the dogstats specific opts on
 	return &NSQDDogStatsd{
 		opts: dogStatsdOpts,
-		nsqd:        n,
+		nsqd: n,
 	}
 }
 
 type NSQDDogStatsd struct {
-	nsqd        *nsqd.NSQD
+	nsqd INSQD
 	opts *NSQDDogStatsdOptions
 }
 

@@ -1,9 +1,15 @@
 package contrib
 
 import (
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/nsqd"
 )
 
+type INSQD interface {
+	Logf(level lg.LogLevel, f string, args ...interface{})
+	GetStats() []nsqd.TopicStats
+	AddModuleGoroutine(addonFn func(exitChan chan int))
+}
 
 type INSQDAddon interface {
 	Enabled() bool
@@ -23,7 +29,7 @@ func (as *NSQDAddons) Start() {
 }
 
 // Initializes addons that have options set
-func NewEnabledNSQDAddons(contribOpts []string, n *nsqd.NSQD) *NSQDAddons {
+func NewEnabledNSQDAddons(contribOpts []string, n INSQD) *NSQDAddons {
 	var activeAddons []INSQDAddon
 
 	n.Logf(nsqd.LOG_INFO, "Addons Initializing")

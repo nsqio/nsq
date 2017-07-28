@@ -1,11 +1,9 @@
 package contrib
 
 import (
-	"testing"
 	"github.com/nsqio/nsq/internal/test"
+	"testing"
 )
-
-
 
 type TestAddon struct {
 	numStartCalls int
@@ -18,7 +16,6 @@ func (ta *TestAddon) Start() {
 func (ta *TestAddon) Enabled() bool {
 	return true
 }
-
 
 func TestStartMultipleAddons(t *testing.T) {
 	ta1 := &TestAddon{}
