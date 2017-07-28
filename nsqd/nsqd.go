@@ -154,10 +154,6 @@ func New(opts *Options) *NSQD {
 	return n
 }
 
-func (n *NSQD) ExitChan() *chan int {
-	return &n.exitChan
-}
-
 func (n *NSQD) getOpts() *Options {
 	return n.opts.Load().(*Options)
 }
@@ -269,8 +265,8 @@ func (n *NSQD) Main() {
 	}
 }
 
-func (n *NSQD) RegisterAddon(addonFn func()) {
-	n.waitGroup.Wrap(func() { addonFn() })
+func (n *NSQD) AddModuleGoroutine(addonFn func(exitChan chan int)) {
+	n.waitGroup.Wrap(func() { addonFn(n.exitChan) })
 }
 
 type meta struct {

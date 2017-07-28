@@ -69,10 +69,10 @@ func (dd *NSQDDogStatsd) Enabled() bool {
 
 func (dd *NSQDDogStatsd) Start() {
 	dd.nsqd.Logf(nsqd.LOG_INFO, "Starting Datadog NSQD Monitor")
-	dd.nsqd.RegisterAddon(dd.Loop)
+	dd.nsqd.AddModuleGoroutine(dd.Loop)
 }
 
-func (dd *NSQDDogStatsd) Loop() {
+func (dd *NSQDDogStatsd) Loop(exitChan chan int) {
 	// var lastMemStats *nsqd.memStats
 	var lastStats []nsqd.TopicStats
 	var stat string
@@ -80,7 +80,6 @@ func (dd *NSQDDogStatsd) Loop() {
 	ticker := time.NewTicker(dd.opts.DogStatsdInterval)
 
 	dd.nsqd.Logf(nsqd.LOG_DEBUG, "Loop started")
-	exitChan := *dd.nsqd.ExitChan()
 
 	for {
 		select {
