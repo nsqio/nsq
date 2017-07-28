@@ -122,7 +122,6 @@ func TestHTTPPubExt(t *testing.T) {
 		t.FailNow()
 	}
 	defer resp.Body.Close()
-	fmt.Printf(resp.Status)
 	test.Equal(t, 200, resp.StatusCode)
 	msgOut := recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
 	test.NotNil(t, msgOut)

@@ -496,7 +496,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				subChannel.GetName())
 			subEventChan = nil
 			tag := client.GetTag()
-			if tag != nil {
+			if tag != "" {
 				client.SetTagMsgChannel(subChannel.GetOrCreateClientMsgChannel(tag))
 			}
 		case identifyData := <-identifyEventChan:
@@ -698,7 +698,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 		AuthRequired:        p.ctx.isAuthEnabled(),
 		OutputBufferSize:    client.OutputBufferSize,
 		OutputBufferTimeout: int64(client.OutputBufferTimeout / time.Millisecond),
-		DesiredTag:          string(client.GetTag()),
+		DesiredTag:          client.GetTag(),
 	})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -931,7 +931,7 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 	channel := topic.GetChannel(channelName)
-	if !topic.IsExt() && client.GetTag() != nil {
+	if !topic.IsExt() && client.GetTag() != "" {
 		return nil, protocol.NewFatalClientErr(nil, ext.E_EXT_NOT_SUPPORT, fmt.Sprintf("IDENTIFY before subscribe has a tag %v to topic %v not support tag.", client.Tag, topicName))
 	}
 
@@ -1295,22 +1295,17 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 func parseExtContent(topicName string, isExt bool, params [][]byte) (ext.IExtContent, error) {
 	var extContent ext.IExtContent
 	var err error
-	if isPubExt(params[0]) {
+	pubExt := isPubExt(params[0])
+	if pubExt && isExt {
 		//parse as json header ext, leave outer logic to parse json ext header
 		extContent = ext.NewJsonHeaderExt()
-	} else if len(params) == 4 && isExt {
-		extContent, err = ext.NewTagExt(params[3])
-		if err != nil {
-			return nil, protocol.NewFatalClientErr(nil, ext.E_BAD_TAG,
-				fmt.Sprintf("topic tag filter %v is not valid: %v", topicName, err))
-		}
-	} else if len(params) == 4 && !isExt {
-		return nil, protocol.NewFatalClientErr(nil, ext.E_EXT_NOT_SUPPORT,
-			fmt.Sprintf("tag filter %v not supportted in topic %v", extContent, topicName))
+	} else if pubExt && !isExt {
+		err = protocol.NewClientErr(nil, ext.E_EXT_NOT_SUPPORT,
+			fmt.Sprintf("ext content not supported in topic %v", topicName))
 	} else {
 		extContent = ext.NewNoExt()
 	}
-	return extContent, nil
+	return extContent, err
 }
 
 // PUB TRACE data format

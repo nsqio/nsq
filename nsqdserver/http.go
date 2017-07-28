@@ -330,13 +330,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			jhe := ext.NewJsonHeaderExt()
 			jhe.SetJsonHeaderBytes(jsonHeaderExtBytes)
 			extContent = jhe
-		} else if tagParam := getTag(params); isExt && tagParam != "" {
-			extContent, err = ext.NewTagExt([]byte(tagParam))
-			if err != nil {
-				nsqd.NsqLogger().Logf("parse tag err: %v", err)
-				return nil, http_api.Err{400, ext.E_BAD_TAG}
-			}
-		} else if !isExt && (tagParam != "" || pubExt) {
+		} else if !isExt && pubExt {
 			return nil, http_api.Err{400, ext.E_EXT_NOT_SUPPORT}
 		} else {
 			extContent = ext.NewNoExt()
@@ -404,20 +398,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, err
 	}
 
-	var extContent ext.IExtContent
-	isExt := topic.IsExt()
-	tagParam := getTag(reqParams)
-	if isExt && tagParam != "" {
-		extContent, err = ext.NewTagExt([]byte(tagParam))
-		if err != nil {
-			nsqd.NsqLogger().Logf("parse tag err: %v", err)
-			return nil, http_api.Err{400, ext.E_BAD_TAG}
-		}
-	} else if !isExt && tagParam != "" {
-		return nil, http_api.Err{400, ext.E_EXT_NOT_SUPPORT}
-	} else {
-		extContent = ext.NewNoExt()
-	}
+	extContent := ext.NewNoExt()
 
 	var msgs []*nsqd.Message
 	var buffers []*bytes.Buffer

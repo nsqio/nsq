@@ -331,13 +331,6 @@ func decodeMessage(b []byte, isExt bool) (*Message, error) {
 			msg.ExtBytes = b[29 : 29+extLen]
 			bodyStart = 29 + int(extLen)
 
-		case ext.TAG_EXT_VER:
-			msg.ExtVer = ext.TAG_EXT_VER
-
-			extLen := binary.BigEndian.Uint16(b[27 : 27+2])
-			msg.ExtBytes = b[29 : 29+extLen]
-			bodyStart = 29 + int(extLen)
-
 		case ext.NO_EXT_VER:
 			msg.ExtVer = ext.NO_EXT_VER
 
@@ -405,12 +398,12 @@ func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 		extVer := ext.ExtVer(uint8(b[pos]))
 		pos++
 		switch extVer {
-		case ext.TAG_EXT_VER:
-			tagLen := binary.BigEndian.Uint16(b[pos : pos+2])
+		case ext.JSON_HEADER_EXT_VER:
+			extLen := binary.BigEndian.Uint16(b[pos : pos+2])
 			pos += 2
-			msg.ExtVer = ext.TAG_EXT_VER
-			msg.ExtBytes = b[pos : pos+int(tagLen)]
-			pos += int(tagLen)
+			msg.ExtVer = ext.JSON_HEADER_EXT_VER
+			msg.ExtBytes = b[pos : pos+int(extLen)]
+			pos += int(extLen)
 		case ext.NO_EXT_VER:
 			msg.ExtVer = ext.NO_EXT_VER
 		default:

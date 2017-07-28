@@ -228,19 +228,18 @@ func (c *Channel) closeClientMsgChannels() {
 	}
 }
 
-func (c *Channel) RemoveTagClientMsgChannel(tag ext.TagExt) {
+func (c *Channel) RemoveTagClientMsgChannel(tag string) {
 	c.tagMsgChansMutex.Lock()
 	defer c.tagMsgChansMutex.Unlock()
 
-	tagStr := string(tag)
-	cnt := c.tagMsgChans[tagStr].ClientCnt
+	cnt := c.tagMsgChans[tag].ClientCnt
 	if cnt-1 > int64(0) {
-		c.tagMsgChans[tagStr].ClientCnt = cnt - 1
+		c.tagMsgChans[tag].ClientCnt = cnt - 1
 	} else {
-		c.tagMsgChans[tagStr].ClientCnt = 0
-		delete(c.tagMsgChans, tagStr)
+		c.tagMsgChans[tag].ClientCnt = 0
+		delete(c.tagMsgChans, tag)
 		select {
-		case c.tagChanRemovedChan <- tagStr:
+		case c.tagChanRemovedChan <- tag:
 		case <-time.After(50 * time.Millisecond):
 			nsqLog.Infof("timeout sending tag channel remove signal for %v", tag)
 		}
@@ -248,10 +247,10 @@ func (c *Channel) RemoveTagClientMsgChannel(tag ext.TagExt) {
 }
 
 //get or create tag message chanel, invoked from protocol_v2.messagePump()
-func (c *Channel) GetOrCreateClientMsgChannel(tag ext.TagExt) chan *Message {
+func (c *Channel) GetOrCreateClientMsgChannel(tag string) chan *Message {
 	c.tagMsgChansMutex.Lock()
 	defer c.tagMsgChansMutex.Unlock()
-	tagMsgChanData, exist := c.tagMsgChans[string(tag)]
+	tagMsgChanData, exist := c.tagMsgChans[tag]
 
 	if exist {
 		tagMsgChanData.ClientCnt = tagMsgChanData.ClientCnt + 1
@@ -262,13 +261,13 @@ func (c *Channel) GetOrCreateClientMsgChannel(tag ext.TagExt) chan *Message {
 			1,
 		}
 		select {
-		case c.tagChanInitChan <- string(tag):
+		case c.tagChanInitChan <- tag:
 		case <-time.After(50 * time.Millisecond):
 			nsqLog.Infof("timeout sending tag channel init signal for %v", tag)
 		}
 	}
 
-	return c.tagMsgChans[string(tag)].MsgChan
+	return c.tagMsgChans[tag].MsgChan
 }
 
 func (c *Channel) GetClientMsgChan() chan *Message {
@@ -1100,9 +1099,9 @@ func (c *Channel) AddClient(clientID int64, client Consumer) error {
 }
 
 // RemoveClient removes a client from the Channel's client list
-func (c *Channel) RemoveClient(clientID int64, clientTag ext.TagExt) {
+func (c *Channel) RemoveClient(clientID int64, clientTag string) {
 
-	if clientTag != nil {
+	if clientTag != "" {
 		c.RemoveTagClientMsgChannel(clientTag)
 	}
 
@@ -1731,8 +1730,6 @@ func parseTagIfAny(msg *Message) (string, error) {
 	var msgTag string
 	var err error
 	switch msg.ExtVer {
-	case ext.TAG_EXT_VER:
-		msgTag = string(msg.ExtBytes)
 	case ext.JSON_HEADER_EXT_VER:
 		var jsonExt map[string]interface{}
 		err = json.Unmarshal(msg.ExtBytes, &jsonExt)

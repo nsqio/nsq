@@ -122,7 +122,7 @@ type ClientV2 struct {
 	subErrCnt          int64
 	lastConsumeTimeout int64
 
-	Tag           ext.TagExt
+	Tag           string
 	TagMsgChannel chan *Message
 }
 
@@ -328,7 +328,7 @@ func (c *ClientV2) Stats() ClientStats {
 		Authed:          c.HasAuthorizations(),
 		AuthIdentity:    identity,
 		AuthIdentityURL: identityURL,
-		DesiredTag:      string(c.GetTag()),
+		DesiredTag:      c.GetTag(),
 	}
 	if stats.TLS {
 		p := prettyConnectionState{c.tlsConn.ConnectionState()}
@@ -576,7 +576,7 @@ func (c *ClientV2) SetSampleRate(sampleRate int32) error {
 	return nil
 }
 
-func (c *ClientV2) GetTag() ext.TagExt {
+func (c *ClientV2) GetTag() string {
 	c.LockRead()
 	defer c.UnlockRead()
 	return c.Tag
@@ -603,15 +603,15 @@ func (c *ClientV2) SetTag(tagStr string) error {
 	if tagStr == "" {
 		return nil
 	}
-	tag, err := ext.NewTagExt([]byte(tagStr))
+	err := ext.ValidateTag(tagStr)
 	if err != nil {
 		return err
 	}
 
 	c.LockWrite()
 	defer c.UnlockWrite()
-	if tag != nil && string(c.Tag) != tagStr {
-		c.Tag = tag
+	if tagStr != "" && c.Tag != tagStr {
+		c.Tag = tagStr
 	}
 	return nil
 }
