@@ -252,6 +252,66 @@ func TestHTTPmpubBinary(t *testing.T) {
 
 }
 
+func TestHTTPFinish(t *testing.T) {
+	opts := nsqd.NewOptions()
+	opts.LogLevel = 2
+	opts.Logger = newTestLogger(t)
+	if testing.Verbose() {
+		opts.LogLevel = 4
+		nsqd.SetLogger(opts.Logger)
+	}
+
+	//opts.Logger = &levellogger.SimpleLogger{}
+	tcpAddr, httpAddr, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+
+	topicName := "test_http_finish" + strconv.Itoa(int(time.Now().Unix()))
+	_ = nsqd.GetTopicIgnPart(topicName)
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+
+	buf := bytes.NewBuffer([]byte("test message"))
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
+	resp, err := http.Post(url, "application/octet-stream", buf)
+	test.Equal(t, err, nil)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	test.Equal(t, string(body), "OK")
+
+	time.Sleep(5 * time.Millisecond)
+
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Equal(t, err, nil)
+	// sleep to allow the RDY state to take effect
+	time.Sleep(50 * time.Millisecond)
+
+	for {
+		resp, _ := nsq.ReadResponse(conn)
+		frameType, data, err := nsq.UnpackResponse(resp)
+		test.Nil(t, err)
+		test.NotEqual(t, frameTypeError, frameType)
+		if frameType == frameTypeResponse {
+			t.Logf("got response data: %v", string(data))
+			continue
+		}
+		msgOut, err := nsq.DecodeMessage(data)
+		test.Equal(t, []byte("test message"), msgOut.Body)
+
+		url := fmt.Sprintf("http://%s/message/finish?topic=%s&partition=0&channel=%s&msgid=%d", httpAddr,
+			topicName, "ch", nsq.GetNewMessageID(msgOut.ID[:]))
+		ret, err := http.Post(url, "", nil)
+		test.Equal(t, err, nil)
+		test.Equal(t, 200, ret.StatusCode)
+		ioutil.ReadAll(ret.Body)
+		ret.Body.Close()
+		break
+	}
+	conn.Close()
+}
+
 func TestHTTPSRequire(t *testing.T) {
 	opts := nsqd.NewOptions()
 	opts.Logger = newTestLogger(t)

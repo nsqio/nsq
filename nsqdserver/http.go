@@ -62,7 +62,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("GET", "/coordinator/stats", http_api.Decorate(s.doCoordStats, log, http_api.V1))
 	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.V1))
 	router.Handle("GET", "/message/get", http_api.Decorate(s.doMessageGet, log, http_api.V1))
-	router.Handle("GET", "/message/finish", http_api.Decorate(s.doMessageFinish, log, http_api.V1))
+	router.Handle("POST", "/message/finish", http_api.Decorate(s.doMessageFinish, log, http_api.V1))
 	router.Handle("GET", "/message/historystats", http_api.Decorate(s.doMessageHistoryStats, log, http_api.V1))
 	router.Handle("POST", "/message/trace/enable", http_api.Decorate(s.enableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/message/trace/disable", http_api.Decorate(s.disableMessageTrace, log, http_api.V1))
@@ -951,7 +951,8 @@ func (s *httpServer) doMessageFinish(w http.ResponseWriter, req *http.Request, p
 		return nil, http_api.Err{500, err.Error()}
 	}
 
-	nsqd.NsqLogger().Logf("topic %v-%v channel %v msgid %v is finished by api", topicName, topicPart, msgID)
+	nsqd.NsqLogger().Logf("topic %v-%v channel %v msgid %v is finished by api", topicName,
+		topicPart, channelName, msgID)
 	return nil, nil
 }
 

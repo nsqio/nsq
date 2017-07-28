@@ -38,22 +38,6 @@ func getBackendName(topicName string, part int) string {
 	return backendName
 }
 
-func decodeMessage(b []byte) (*nsqd.Message, error) {
-	var msg nsqd.Message
-
-	if len(b) < 16+8+2 {
-		return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
-	}
-
-	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
-	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
-	msg.ID = nsqd.MessageID(binary.BigEndian.Uint64(b[10:18]))
-	msg.TraceID = binary.BigEndian.Uint64(b[18:26])
-
-	msg.Body = b[26:]
-	return &msg, nil
-}
-
 func main() {
 	flag.Parse()
 
