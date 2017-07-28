@@ -909,7 +909,7 @@ func main() {
 		*batchSize = 1
 	}
 	config = nsq.NewConfig()
-	config.MsgTimeout = time.Second * time.Duration(10*(*channelNum))
+	config.MsgTimeout = time.Second * time.Duration(30*(*channelNum))
 	if config.MsgTimeout >= time.Second*200 {
 		config.MsgTimeout = time.Second * 200
 	}

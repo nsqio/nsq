@@ -939,7 +939,11 @@ func (self *NsqdCoordinator) FinishMessageToCluster(channel *nsqd.Channel, clien
 	delayedMsg := false
 
 	doLocalWrite := func(d *coordData) *CoordErr {
-		offset, cnt, tmpChanged, msg, localErr := channel.FinishMessage(clientID, clientAddr, msgID)
+		forceFin := false
+		if clientID == 0 && clientAddr == "" {
+			forceFin = true
+		}
+		offset, cnt, tmpChanged, msg, localErr := channel.FinishMessageForce(clientID, clientAddr, msgID, forceFin)
 		if localErr != nil {
 			coordLog.Infof("channel %v finish local msg %v error: %v", channel.GetName(), msgID, localErr)
 			changed = false

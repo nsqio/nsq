@@ -182,6 +182,17 @@ func (c *context) PutMessages(topic *nsqd.Topic, msgs []*nsqd.Message) (nsqd.Mes
 	return c.nsqdCoord.PutMessagesToCluster(topic, msgs)
 }
 
+func (c *context) FinishMessageForce(ch *nsqd.Channel, msgID nsqd.MessageID) error {
+	if c.nsqdCoord == nil {
+		_, _, _, _, err := ch.FinishMessageForce(0, "", msgID, true)
+		if err == nil {
+			ch.ContinueConsumeForOrder()
+		}
+		return err
+	}
+	return c.nsqdCoord.FinishMessageToCluster(ch, 0, "", msgID)
+}
+
 func (c *context) FinishMessage(ch *nsqd.Channel, clientID int64, clientAddr string, msgID nsqd.MessageID) error {
 	if c.nsqdCoord == nil {
 		_, _, _, _, err := ch.FinishMessage(clientID, clientAddr, msgID)

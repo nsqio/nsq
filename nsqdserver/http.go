@@ -62,6 +62,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("GET", "/coordinator/stats", http_api.Decorate(s.doCoordStats, log, http_api.V1))
 	router.Handle("GET", "/message/stats", http_api.Decorate(s.doMessageStats, log, http_api.V1))
 	router.Handle("GET", "/message/get", http_api.Decorate(s.doMessageGet, log, http_api.V1))
+	router.Handle("GET", "/message/finish", http_api.Decorate(s.doMessageFinish, log, http_api.V1))
 	router.Handle("GET", "/message/historystats", http_api.Decorate(s.doMessageHistoryStats, log, http_api.V1))
 	router.Handle("POST", "/message/trace/enable", http_api.Decorate(s.enableMessageTrace, log, http_api.V1))
 	router.Handle("POST", "/message/trace/disable", http_api.Decorate(s.disableMessageTrace, log, http_api.V1))
@@ -907,6 +908,51 @@ func (s *httpServer) doMessageStats(w http.ResponseWriter, req *http.Request, ps
 	statStr := t.GetTopicChannelDebugStat(channelName)
 
 	return statStr, nil
+}
+
+func (s *httpServer) doMessageFinish(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to parse request params - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	topicName := reqParams.Get("topic")
+	topicPartStr := reqParams.Get("partition")
+	topicPart, err := strconv.Atoi(topicPartStr)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to get partition - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+	channelName := reqParams.Get("channel")
+
+	t, err := s.ctx.getExistingTopic(topicName, topicPart)
+	if err != nil {
+		return nil, http_api.Err{404, E_TOPIC_NOT_EXIST}
+	}
+
+	ch, err := t.GetExistingChannel(channelName)
+	if err != nil {
+		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+	}
+	msgIDStr := reqParams.Get("msgid")
+	msgID, err := strconv.ParseInt(msgIDStr, 10, 64)
+	if err != nil {
+		nsqd.NsqLogger().LogErrorf("failed to get msgid - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	if !s.ctx.checkForMasterWrite(topicName, topicPart) {
+		nsqd.NsqLogger().Logf("topic %v fin message failed for not leader", topicName)
+		return nil, http_api.Err{400, FailedOnNotLeader}
+	}
+
+	err = s.ctx.FinishMessageForce(ch, nsqd.MessageID(msgID))
+	if err != nil {
+		return nil, http_api.Err{500, err.Error()}
+	}
+
+	nsqd.NsqLogger().Logf("topic %v-%v channel %v msgid %v is finished by api", topicName, topicPart, msgID)
+	return nil, nil
 }
 
 func (s *httpServer) doCoordStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

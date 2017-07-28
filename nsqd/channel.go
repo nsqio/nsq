@@ -784,11 +784,30 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 	return ok
 }
 
-// FinishMessage successfully discards an in-flight message
 func (c *Channel) FinishMessage(clientID int64, clientAddr string,
 	id MessageID) (BackendOffset, int64, bool, *Message, error) {
+	return c.internalFinishMessage(clientID, clientAddr, id, false)
+}
+
+func (c *Channel) FinishMessageForce(clientID int64, clientAddr string,
+	id MessageID, forceFin bool) (BackendOffset, int64, bool, *Message, error) {
+	if forceFin {
+		nsqLog.Logf("topic %v channel %v force finish msg %v", c.GetTopicName(), c.GetName(), id)
+	}
+	return c.internalFinishMessage(clientID, clientAddr, id, forceFin)
+}
+
+// FinishMessage successfully discards an in-flight message
+func (c *Channel) internalFinishMessage(clientID int64, clientAddr string,
+	id MessageID, forceFin bool) (BackendOffset, int64, bool, *Message, error) {
 	c.inFlightMutex.Lock()
 	defer c.inFlightMutex.Unlock()
+	if forceFin {
+		oldMsg, ok := c.inFlightMessages[id]
+		if ok {
+			clientID = oldMsg.GetClientID()
+		}
+	}
 	msg, err := c.popInFlightMessage(clientID, id, true)
 	if err != nil {
 		nsqLog.LogDebugf("channel (%v): message %v fin error: %v from client %v", c.GetName(), id, err,
@@ -801,7 +820,7 @@ func (c *Channel) FinishMessage(clientID int64, clientAddr string,
 		if clientAddr != "" {
 			nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "FIN", msg.TraceID, msg, clientAddr)
 		} else {
-			nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "FIN_DEFER", msg.TraceID, msg, clientAddr)
+			nsqMsgTracer.TraceSub(c.GetTopicName(), c.GetName(), "FIN_INTERNAL", msg.TraceID, msg, clientAddr)
 		}
 	}
 	if c.e2eProcessingLatencyStream != nil {
