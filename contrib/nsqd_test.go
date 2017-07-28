@@ -29,3 +29,9 @@ func TestStartMultipleAddons(t *testing.T) {
 	test.Equal(t, ta1.numStartCalls, 1)
 	test.Equal(t, ta2.numStartCalls, 1)
 }
+
+func TestNewEnabledNSQDAddonsNoAddons(t *testing.T) {
+	var opts []string
+	addons := NewEnabledNSQDAddons(opts, &StubNSQD{})
+	test.Equal(t, addons.addons, []INSQDAddon(nil))
+}
