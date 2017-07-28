@@ -14,7 +14,7 @@ import (
 	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/quantile"
-	"encoding/json"
+	simpleJson "github.com/bitly/go-simplejson"
 )
 
 const (
@@ -1730,18 +1730,13 @@ func parseTagIfAny(msg *Message) (string, error) {
 	var msgTag string
 	var err error
 	switch msg.ExtVer {
+	case ext.TAG_EXT_VER:
+		msgTag = string(msg.ExtBytes)
 	case ext.JSON_HEADER_EXT_VER:
-		var jsonExt map[string]interface{}
-		err = json.Unmarshal(msg.ExtBytes, &jsonExt)
+		var jsonExt *simpleJson.Json
+		jsonExt, err = simpleJson.NewJson(msg.ExtBytes)
 		if err == nil {
-			if iMsgTag, exist := jsonExt[ext.CLEINT_DISPATCH_TAG_KEY]; exist {
-				var ok bool
-				msgTag, ok = iMsgTag.(string)
-				if !ok {
-					err = fmt.Errorf("invalid tag format in jon header")
-				}
-			}
-
+			msgTag, err = jsonExt.Get(ext.CLEINT_DISPATCH_TAG_KEY).String()
 		}
 	}
 	return msgTag, err

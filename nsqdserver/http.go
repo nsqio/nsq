@@ -287,7 +287,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		var err error
 		var traceIDStr string
-
+		var needTraceRsp bool
 		//parse tag name, if target topic is not configured extendable, request should be stopped here
 		var extContent ext.IExtContent
 		isExt := topic.IsExt()
@@ -310,6 +310,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 				if traceIDStr, ok = traceIDI.(string); !ok {
 					return nil, http_api.Err{400, "INVALID_TRACE_ID"}
 				}
+				needTraceRsp = true
 				//set sync as trace id in header is found
 				asyncAction = false
 			}
@@ -318,6 +319,8 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			for hKey, _ := range req.Header {
 				if strings.HasPrefix(hKey, HTTP_EXT_HEADER_PREFIX) {
 					key := strings.TrimPrefix(hKey, HTTP_EXT_HEADER_PREFIX)
+					//key parse from X-Nsqext- will always be convert to lowercase
+					key = strings.ToLower(key)
 					//override parsed kv in json header from header
 					jsonHeaderExt[key] = req.Header.Get(hKey)
 				}
@@ -346,6 +349,8 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			nsqd.NsqLogger().Logf("trace id invalid %v, %v",
 				traceIDStr, err)
 			return nil, http_api.Err{400, "INVALID_TRACE_ID"}
+		} else if enableTrace {
+			needTraceRsp = true
 		}
 
 		id := nsqd.MessageID(0)
@@ -368,7 +373,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 
 		cost := time.Now().UnixNano() - startPub
 		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(body)), cost/1000)
-		if enableTrace {
+		if needTraceRsp {
 			return struct {
 				Status      string `json:"status"`
 				ID          uint64 `json:"id"`

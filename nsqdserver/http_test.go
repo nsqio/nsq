@@ -129,7 +129,7 @@ func TestHTTPPubExt(t *testing.T) {
 	//parse json
 	var jhe map[string]interface{}
 	json.Unmarshal(msgOut.ExtBytes, &jhe)
-	test.Equal(t, "val-http", jhe["Key-Test"])
+	test.Equal(t, "val-http", jhe["key-test"])
 
 	//publish with empty ext
 	jsonHeaderTagEmptyStr := ""

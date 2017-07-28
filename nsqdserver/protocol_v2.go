@@ -22,7 +22,7 @@ import (
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
-	"reflect"
+	simpleJson "github.com/bitly/go-simplejson"
 )
 
 const (
@@ -1234,7 +1234,7 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 
 	topicName := string(params[1])
 	partition := -1
-	if len(params) >= 3 {
+	if len(params) == 3 {
 		partition, err = strconv.Atoi(string(params[2]))
 		if err != nil {
 			return 0, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
@@ -1383,7 +1383,7 @@ func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsq
 }
 
 func isPubExt(pubCmdName []byte) bool {
-	return bytes.Equal(pubCmdName, []byte("PUB_WITH_EXT"))
+	return bytes.Equal(pubCmdName, []byte("PUB_EXT"))
 }
 
 
@@ -1426,9 +1426,11 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 	partition := topic.GetTopicPart()
 	var extJsonLen uint16
 	var traceID uint64
+	var needTraceRsp bool
 	var realBody []byte
 	if traceEnable && !pubExt {
 		traceID = binary.BigEndian.Uint64(messageBody[:nsqd.MsgTraceIDLength])
+		needTraceRsp = true
 		realBody = messageBody[nsqd.MsgTraceIDLength:]
 	} else if pubExt {
 		//read two byte header length
@@ -1436,29 +1438,24 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 		extJsonBytes := messageBody[nsqd.MsgJsonHeaderLength:nsqd.MsgJsonHeaderLength + extJsonLen]
 		jhe, ok := extContent.(*ext.JsonHeaderExt)
 		if !ok {
-			return nil, fmt.Errorf("invalid ext content type, Json Header Ext expected, got %v", reflect.TypeOf(extContent))
+			return nil, fmt.Errorf("invalid ext content type, Json Header Ext expected, got %v", extContent)
 		}
 		//validate json header passin
-		var jsonHeader map[string]interface{}
-		err := json.Unmarshal(extJsonBytes, &jsonHeader)
+		jsonHeader, err := simpleJson.NewJson(extJsonBytes)
 		if err != nil {
 			return nil, protocol.NewClientErr(err, ext.E_INVALID_JSON_HEADER, "fail to parse json header")
 		}
 
 		//parse traceID, if there is any
-		var traceIDStr string
-		traceIDI, exist := jsonHeader[ext.TRACE_ID_KEY]
-		if exist {
-			var ok bool
-			if traceIDStr, ok = traceIDI.(string); !ok {
-				return nil, protocol.NewClientErr(err, "INVALID_TRACE_ID", "fail to parse trace id")
-			}
-
-			traceID, err = strconv.ParseUint(traceIDStr, 10, 0)
+		traceIDJson, existInJsonHeader := jsonHeader.CheckGet(ext.TRACE_ID_KEY)
+		if existInJsonHeader {
+			traceID, err = traceIDJson.Uint64()
 			if err != nil {
 				return nil, protocol.NewClientErr(err, "INVALID_TRACE_ID", "fail to parse trace id")
 			}
+			needTraceRsp = true
 		}
+
 		jhe.SetJsonHeaderBytes(extJsonBytes)
 		realBody = messageBody[nsqd.MsgJsonHeaderLength + extJsonLen:]
 	} else {
@@ -1487,10 +1484,11 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", 1, false)
 		cost := time.Now().UnixNano() - startPub
 		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(realBody)), cost/1000)
-		if !traceEnable {
-			return okBytes, nil
+
+		if needTraceRsp {
+			return getTracedReponse(id, traceID, offset, rawSize)
 		}
-		return getTracedReponse(id, traceID, offset, rawSize)
+		return okBytes, nil
 	} else {
 		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", 1, true)
 		//forward to master of topic

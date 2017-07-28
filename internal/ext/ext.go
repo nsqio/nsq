@@ -7,6 +7,7 @@ import (
 
 const (
 	E_EXT_NOT_SUPPORT = "E_EXT_NOT_SUPPORT"
+	E_BAD_TAG	= "E_BAD_TAG"
 	E_INVALID_JSON_HEADER = "E_INVALID_JSON_HEADER"
 
 	CLEINT_DISPATCH_TAG_KEY = "##client_dispatch_tag"
@@ -42,6 +43,30 @@ func (n NoExt) GetBytes() []byte {
 	return nil
 }
 
+type TagExt []byte
+
+func NewTagExt(tagName []byte) (TagExt, error) {
+	if err:= ValidateTag(string(tagName)); err != nil {
+		return nil, err
+	}
+	return TagExt(tagName), nil
+}
+
+func (tag TagExt) GetTagName() string {
+	return string(tag)
+}
+
+func ValidateTag(beValidated string) error {
+	lenTag := len(beValidated)
+	if lenTag > MAX_TAG_LEN {
+		return fmt.Errorf("invalid tag len %v, exceed limit %v", lenTag, MAX_TAG_LEN)
+	}
+	if !validTagFmt.Match([]byte(beValidated)) {
+		return fmt.Errorf("invalid tag %v", beValidated)
+	}
+	return nil
+}
+
 type JsonHeaderExt struct {
 	bytes []byte
 }
@@ -60,21 +85,6 @@ func (self *JsonHeaderExt) ExtVersion() ExtVer {
 
 func (self *JsonHeaderExt) GetBytes() []byte {
 	return self.bytes
-}
-
-func ValidateTag(beValidated string) error {
-	if valid := _validateTag([]byte(beValidated)); !valid {
-		return fmt.Errorf("invalid tag %v", beValidated)
-	}
-	return nil
-}
-
-//pass in []byte not nil
-func _validateTag(beValidated []byte) bool {
-	if len(beValidated) > MAX_TAG_LEN {
-		return false
-	}
-	return validTagFmt.Match(beValidated)
 }
 
 type IExtContent interface {
