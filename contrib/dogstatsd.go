@@ -54,8 +54,9 @@ func NewNSQDDogStatsd(contribOpts []string, n INSQD) INSQDAddon {
 }
 
 type NSQDDogStatsd struct {
-	nsqd INSQD
-	opts *NSQDDogStatsdOptions
+	nsqd       INSQD
+	opts       *NSQDDogStatsdOptions
+	singleLoop bool
 }
 
 func (dd *NSQDDogStatsd) Enabled() bool {
@@ -229,6 +230,10 @@ func (dd *NSQDDogStatsd) Loop(exitChan chan int) {
 			}
 			lastStats = stats
 			client.Close()
+
+			if dd.singleLoop {
+				goto exit
+			}
 		}
 	}
 
