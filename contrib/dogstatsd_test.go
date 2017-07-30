@@ -116,16 +116,13 @@ func TestLoopSendsCorrectMessages(t *testing.T) {
 		{Name: "channel.clients", A: "channel.clients:0|g|#topic_name:test,channel_name:test_channel"},
 	}
 	for _, tc := range cases {
-		t.Run(tc.Name, func(t *testing.T) {
-			buffer := make([]byte, 128)
+		buffer := make([]byte, 128)
 
-			_, _, err := conn.ReadFromUDP(buffer)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println(string(buffer))
-			test.Equal(t, string(bytes.Trim(buffer, "\x00")), tc.A)
-
-		})
+		_, _, err := conn.ReadFromUDP(buffer)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(buffer))
+		test.Equal(t, string(bytes.Trim(buffer, "\x00")), tc.A)
 	}
 }
