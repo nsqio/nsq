@@ -659,6 +659,22 @@ func createJsonHeaderExtWithTagBenchmark(b *testing.B, tag string) *ext.JsonHead
 	return jhe
 }
 
+func createJsonHeaderExtBenchmark(b *testing.B) *ext.JsonHeaderExt {
+	jsonHeader := make(map[string]interface{})
+	jsonHeader["X-Nsqext-key1"] = "val1"
+	jsonHeader["X-Nsqext-key2"] = "val2"
+	jsonHeader["X-Nsqext-key3"] = "val3"
+	jsonHeader["X-Nsqext-key4"] = "val4"
+	jsonHeader["X-Nsqext-key5"] = "val5"
+	jsonHeaderBytes, err := json.Marshal(&jsonHeader)
+	if err != nil {
+		b.FailNow()
+	}
+	jhe := ext.NewJsonHeaderExt()
+	jhe.SetJsonHeaderBytes(jsonHeaderBytes)
+	return jhe
+}
+
 func TestConsumeTagMessageNormal(t *testing.T) {
 	topicName := "test_tag_normal" + strconv.Itoa(int(time.Now().Unix()))
 
@@ -4345,6 +4361,14 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	msg := make([]byte, size)
 	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopicIgnPart(topicName)
+	topicDynConf := nsqdNs.TopicDynamicConf{
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        false,
+	}
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
+	topic.GetChannel("ch")
+
 	for i := 0; i < b.N; i++ {
 		msg := nsqdNs.NewMessage(0, msg)
 		topic.PutMessage(msg)
@@ -4393,6 +4417,82 @@ func BenchmarkProtocolV2SubExt512k(b *testing.B) { benchmarkProtocolV2SubExt(b, 
 func BenchmarkProtocolV2SubExt1m(b *testing.B)   { benchmarkProtocolV2SubExt(b, 1024*1024) }
 
 func benchmarkProtocolV2SubExt(b *testing.B, size int) {
+	var wg sync.WaitGroup
+	b.StopTimer()
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(b)
+	//opts.Logger = &levellogger.SimpleLogger{}
+	//glog.SetFlags(2, "INFO", "./")
+	opts.LogLevel = 0
+	opts.MemQueueSize = int64(b.N)
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	msg := make([]byte, size)
+	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topicDynConf := nsqdNs.TopicDynamicConf{
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
+	}
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
+	topic.GetChannel("ch")
+
+	workers := runtime.GOMAXPROCS(0)
+	extContent := createJsonHeaderExtBenchmark(b)
+	for i := 0; i < b.N; i++ {
+		msg := nsqdNs.NewMessageWithExt(0, msg, extContent.ExtVersion(), extContent.GetBytes())
+		topic.PutMessage(msg)
+	}
+	topic.ForceFlush()
+	topic.GetChannel("ch").SetTrace(false)
+	b.SetBytes(int64(len(msg) + len(extContent.GetBytes())))
+	goChan := make(chan int)
+	rdyChan := make(chan int)
+	for j := 0; j < workers; j++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			//construct tag param
+			clientParams := make(map[string]interface{})
+			clientId := fmt.Sprintf("client_%v", j)
+			clientParams["client_id"] = clientId
+			clientParams["hostname"] = clientId
+
+			err := subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan, clientParams, true)
+			if err != nil {
+				opts.Logger.Output(1, fmt.Sprintf("%v", err))
+				b.Error(err.Error())
+			}
+		}()
+		<-rdyChan
+	}
+	b.Logf("starting :%v", b.N)
+	b.StartTimer()
+
+	close(goChan)
+	wg.Wait()
+	b.Logf("done : %v", b.N)
+
+	b.StopTimer()
+	nsqdServer.Exit()
+}
+
+func BenchmarkProtocolV2SubExtTag256(b *testing.B)  { benchmarkProtocolV2SubExtTag(b, 256) }
+func BenchmarkProtocolV2SubExtTag512(b *testing.B)  { benchmarkProtocolV2SubExtTag(b, 512) }
+func BenchmarkProtocolV2SubExtTag1k(b *testing.B)   { benchmarkProtocolV2SubExtTag(b, 1024) }
+func BenchmarkProtocolV2SubExtTag2k(b *testing.B)   { benchmarkProtocolV2SubExtTag(b, 2*1024) }
+func BenchmarkProtocolV2SubExtTag4k(b *testing.B)   { benchmarkProtocolV2SubExtTag(b, 4*1024) }
+func BenchmarkProtocolV2SubExtTag8k(b *testing.B)   { benchmarkProtocolV2SubExtTag(b, 8*1024) }
+func BenchmarkProtocolV2SubExtTag16k(b *testing.B)  { benchmarkProtocolV2SubExtTag(b, 16*1024) }
+func BenchmarkProtocolV2SubExtTag32k(b *testing.B)  { benchmarkProtocolV2SubExtTag(b, 32*1024) }
+func BenchmarkProtocolV2SubExtTag64k(b *testing.B)  { benchmarkProtocolV2SubExtTag(b, 64*1024) }
+func BenchmarkProtocolV2SubExtTag128k(b *testing.B) { benchmarkProtocolV2SubExtTag(b, 128*1024) }
+func BenchmarkProtocolV2SubExtTag256k(b *testing.B) { benchmarkProtocolV2SubExtTag(b, 256*1024) }
+func BenchmarkProtocolV2SubExtTag512k(b *testing.B) { benchmarkProtocolV2SubExtTag(b, 512*1024) }
+func BenchmarkProtocolV2SubExtTag1m(b *testing.B)   { benchmarkProtocolV2SubExtTag(b, 1024*1024) }
+
+func benchmarkProtocolV2SubExtTag(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := nsqdNs.NewOptions()

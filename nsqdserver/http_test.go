@@ -168,6 +168,62 @@ func TestHTTPPubExt(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	test.Equal(t, resp.StatusCode, 400)
+
+	jsonHeaderTagTraceStr := "{\"##client_dispatch_tag\":\"test_tag\",\"##trace_id\":\"123456\",\"custome_header1\":\"test_header\",\"custome_h2\":\"test\"}"
+	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagTraceStr)))
+	if err != nil {
+		t.FailNow()
+	}
+	req, err = http.NewRequest("POST", aUrl.String(), strings.NewReader(messageBody))
+	if err != nil {
+		t.FailNow()
+	}
+	req.Header.Set("accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.FailNow()
+	}
+	defer resp.Body.Close()
+	//test.Equal(t, 200, resp.StatusCode)
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.FailNow()
+	}
+	strings.Contains(string(respBytes), "\"trace_id\":\"123456\"")
+	strings.Contains(string(respBytes), "\"status\":\"ok\"")
+
+	msgOut = recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
+	test.NotNil(t, msgOut)
+	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+
+
+	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagStr)))
+	if err != nil {
+		t.FailNow()
+	}
+	req, err = http.NewRequest("POST", aUrl.String(), strings.NewReader(messageBody))
+	if err != nil {
+		t.FailNow()
+	}
+	req.Header.Set("accept", "application/vnd.nsq; version=1.0")
+	req.Header.Set("X-Nsqext-##trace_id", "234567")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.FailNow()
+	}
+	defer resp.Body.Close()
+	//test.Equal(t, 200, resp.StatusCode)
+	respBytes, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.FailNow()
+	}
+	strings.Contains(string(respBytes), "\"trace_id\":\"234567\"")
+	strings.Contains(string(respBytes), "\"status\":\"ok\"")
+
+	msgOut = recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
+	test.NotNil(t, msgOut)
+	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+
 }
 
 func TestHTTPpubpartition(t *testing.T) {

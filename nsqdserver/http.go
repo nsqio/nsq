@@ -287,10 +287,21 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		var err error
 		var traceIDStr string
+		var traceID uint64
 		var needTraceRsp bool
-		//parse tag name, if target topic is not configured extendable, request should be stopped here
 		var extContent ext.IExtContent
 		isExt := topic.IsExt()
+
+		traceIDStr = params.Get("trace_id")
+		traceID, err = strconv.ParseUint(traceIDStr, 10, 0)
+		if err != nil && enableTrace {
+			nsqd.NsqLogger().Logf("trace id invalid %v, %v",
+				traceIDStr, err)
+			return nil, http_api.Err{400, "INVALID_TRACE_ID"}
+		} else if enableTrace {
+			needTraceRsp = true
+		}
+
 		//check if request is PUB_WITH_EXT
 		if isExt && pubExt {
 			//parse json header ext
@@ -298,21 +309,11 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			if err != nil || headerStr == "" {
 				return nil, http_api.Err{400, ext.E_INVALID_JSON_HEADER}
 			}
+
 			var jsonHeaderExt map[string]interface{}
 			err = json.Unmarshal([]byte(headerStr), &jsonHeaderExt)
 			if err != nil {
 				return nil, http_api.Err{400, ext.E_INVALID_JSON_HEADER}
-			}
-			//check trace id
-			traceIDI, exist := jsonHeaderExt[ext.TRACE_ID_KEY]
-			if exist {
-				var ok bool
-				if traceIDStr, ok = traceIDI.(string); !ok {
-					return nil, http_api.Err{400, "INVALID_TRACE_ID"}
-				}
-				needTraceRsp = true
-				//set sync as trace id in header is found
-				asyncAction = false
 			}
 
 			//check header X-Nsqext-XXX:value
@@ -326,10 +327,27 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 				}
 			}
 
+			//check trace id
+			traceIDI, exist := jsonHeaderExt[ext.TRACE_ID_KEY]
+			if exist {
+				var ok bool
+				if traceIDStr, ok = traceIDI.(string); !ok {
+					return nil, http_api.Err{400, "INVALID_TRACE_ID"}
+				}
+				traceID, err = strconv.ParseUint(traceIDStr, 10, 0)
+				if err != nil {
+					nsqd.NsqLogger().Logf("trace id invalid %v, %v",
+						traceIDStr, err)
+					return nil, http_api.Err{400, "INVALID_TRACE_ID"}
+				}
+				needTraceRsp = true
+			}
+
 			jsonHeaderExtBytes, err :=  json.Marshal(&jsonHeaderExt)
 			if err != nil {
 				return nil, http_api.Err{400, ext.E_INVALID_JSON_HEADER}
 			}
+
 			jhe := ext.NewJsonHeaderExt()
 			jhe.SetJsonHeaderBytes(jsonHeaderExtBytes)
 			extContent = jhe
@@ -337,20 +355,6 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{400, ext.E_EXT_NOT_SUPPORT}
 		} else {
 			extContent = ext.NewNoExt()
-		}
-
-		//trace not parsed in ext header & trace is enable, try fetching trace id in params
-		if traceIDStr == "" && !pubExt && enableTrace {
-			traceIDStr = params.Get("trace_id")
-		}
-
-		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
-		if err != nil && enableTrace {
-			nsqd.NsqLogger().Logf("trace id invalid %v, %v",
-				traceIDStr, err)
-			return nil, http_api.Err{400, "INVALID_TRACE_ID"}
-		} else if enableTrace {
-			needTraceRsp = true
 		}
 
 		id := nsqd.MessageID(0)
