@@ -16,11 +16,13 @@ import (
 	"time"
 
 	"github.com/absolute8511/go-nsq"
-	//"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/test"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/absolute8511/nsq/nsqlookupd"
+	"github.com/absolute8511/nsq/internal/ext"
+	"net/url"
+	"strings"
 )
 
 func TestHTTPpub(t *testing.T) {
@@ -70,6 +72,158 @@ func TestHTTPpub(t *testing.T) {
 		break
 	}
 	conn.Close()
+}
+
+func TestHTTPPubExt(t *testing.T) {
+	topicName := "test_json_header_tag_http" + strconv.Itoa(int(time.Now().Unix()))
+
+	opts := nsqd.NewOptions()
+	opts.Logger = newTestLogger(t)
+	tcpAddr, httpAddr, nsqdNs, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+	topic := nsqdNs.GetTopicIgnPart(topicName)
+	topicDynConf := nsqd.TopicDynamicConf{
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        true,
+	}
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
+	topic.GetChannel("ch")
+
+	//subscribe tag client
+	conn1, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	defer conn1.Close()
+	client1Params := make(map[string]interface{})
+	client1Params["client_id"] = "client_w_tag"
+	client1Params["hostname"] = "client_w_tag"
+	client1Params["desired_tag"] = "test_tag"
+	identify(t, conn1, client1Params, frameTypeResponse)
+	sub(t, conn1, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn1)
+	test.Equal(t, err, nil)
+
+	jsonHeaderTagStr := "{\"##client_dispatch_tag\":\"test_tag\",\"##channel_filter_tag\":\"test\",\"custome_header1\":\"test_header\",\"custome_h2\":\"test\"}"
+	messageBody := "test message"
+	aUrl, err := url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagStr)))
+	if err != nil {
+		t.FailNow()
+	}
+	req, err := http.NewRequest("POST", aUrl.String(), strings.NewReader(messageBody))
+	if err != nil {
+		t.FailNow()
+	}
+	req.Header.Set("X-NSQEXT-Key-Test", "val-http")
+	req.Header.Set("accept", "application/vnd.nsq; version=1.0")
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.FailNow()
+	}
+	defer resp.Body.Close()
+	test.Equal(t, 200, resp.StatusCode)
+	msgOut := recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
+	test.NotNil(t, msgOut)
+	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+	//parse json
+	var jhe map[string]interface{}
+	json.Unmarshal(msgOut.ExtBytes, &jhe)
+	test.Equal(t, "val-http", jhe["key-test"])
+
+	//publish with empty ext
+	jsonHeaderTagEmptyStr := ""
+	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagEmptyStr)))
+	if err != nil {
+		t.FailNow()
+	}
+	req, err = http.NewRequest("POST", aUrl.String(), strings.NewReader(messageBody))
+	if err != nil {
+		t.FailNow()
+	}
+	req.Header.Set("X-NSQEXT-Key-Test", "val-http")
+	req.Header.Set("accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.FailNow()
+	}
+	defer resp.Body.Close()
+	test.Equal(t, resp.StatusCode, 400)
+
+	//publish with invalid ext
+	jsonHeaderTagInvalidStr := "{this is invalid json"
+	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagInvalidStr)))
+	if err != nil {
+		t.FailNow()
+	}
+	req, err = http.NewRequest("POST", aUrl.String(), strings.NewReader(messageBody))
+	if err != nil {
+		t.FailNow()
+	}
+	req.Header.Set("X-NSQEXT-Key-Test", "val-http")
+	req.Header.Set("accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.FailNow()
+	}
+	defer resp.Body.Close()
+	test.Equal(t, resp.StatusCode, 400)
+
+	jsonHeaderTagTraceStr := "{\"##client_dispatch_tag\":\"test_tag\",\"##trace_id\":\"123456\",\"custome_header1\":\"test_header\",\"custome_h2\":\"test\"}"
+	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagTraceStr)))
+	if err != nil {
+		t.FailNow()
+	}
+	req, err = http.NewRequest("POST", aUrl.String(), strings.NewReader(messageBody))
+	if err != nil {
+		t.FailNow()
+	}
+	req.Header.Set("accept", "application/vnd.nsq; version=1.0")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.FailNow()
+	}
+	defer resp.Body.Close()
+	//test.Equal(t, 200, resp.StatusCode)
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.FailNow()
+	}
+	strings.Contains(string(respBytes), "\"trace_id\":\"123456\"")
+	strings.Contains(string(respBytes), "\"status\":\"ok\"")
+
+	msgOut = recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
+	test.NotNil(t, msgOut)
+	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+
+
+	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagStr)))
+	if err != nil {
+		t.FailNow()
+	}
+	req, err = http.NewRequest("POST", aUrl.String(), strings.NewReader(messageBody))
+	if err != nil {
+		t.FailNow()
+	}
+	req.Header.Set("accept", "application/vnd.nsq; version=1.0")
+	req.Header.Set("X-Nsqext-##trace_id", "234567")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.FailNow()
+	}
+	defer resp.Body.Close()
+	//test.Equal(t, 200, resp.StatusCode)
+	respBytes, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.FailNow()
+	}
+	strings.Contains(string(respBytes), "\"trace_id\":\"234567\"")
+	strings.Contains(string(respBytes), "\"status\":\"ok\"")
+
+	msgOut = recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
+	test.NotNil(t, msgOut)
+	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+
 }
 
 func TestHTTPpubpartition(t *testing.T) {

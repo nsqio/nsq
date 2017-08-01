@@ -14,6 +14,7 @@ import (
 	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/quantile"
+	simpleJson "github.com/bitly/go-simplejson"
 )
 
 const (
@@ -227,19 +228,18 @@ func (c *Channel) closeClientMsgChannels() {
 	}
 }
 
-func (c *Channel) RemoveTagClientMsgChannel(tag ext.TagExt) {
+func (c *Channel) RemoveTagClientMsgChannel(tag string) {
 	c.tagMsgChansMutex.Lock()
 	defer c.tagMsgChansMutex.Unlock()
 
-	tagStr := string(tag)
-	cnt := c.tagMsgChans[tagStr].ClientCnt
+	cnt := c.tagMsgChans[tag].ClientCnt
 	if cnt-1 > int64(0) {
-		c.tagMsgChans[tagStr].ClientCnt = cnt - 1
+		c.tagMsgChans[tag].ClientCnt = cnt - 1
 	} else {
-		c.tagMsgChans[tagStr].ClientCnt = 0
-		delete(c.tagMsgChans, tagStr)
+		c.tagMsgChans[tag].ClientCnt = 0
+		delete(c.tagMsgChans, tag)
 		select {
-		case c.tagChanRemovedChan <- tagStr:
+		case c.tagChanRemovedChan <- tag:
 		case <-time.After(50 * time.Millisecond):
 			nsqLog.Infof("timeout sending tag channel remove signal for %v", tag)
 		}
@@ -247,10 +247,10 @@ func (c *Channel) RemoveTagClientMsgChannel(tag ext.TagExt) {
 }
 
 //get or create tag message chanel, invoked from protocol_v2.messagePump()
-func (c *Channel) GetOrCreateClientMsgChannel(tag ext.TagExt) chan *Message {
+func (c *Channel) GetOrCreateClientMsgChannel(tag string) chan *Message {
 	c.tagMsgChansMutex.Lock()
 	defer c.tagMsgChansMutex.Unlock()
-	tagMsgChanData, exist := c.tagMsgChans[string(tag)]
+	tagMsgChanData, exist := c.tagMsgChans[tag]
 
 	if exist {
 		tagMsgChanData.ClientCnt = tagMsgChanData.ClientCnt + 1
@@ -261,13 +261,13 @@ func (c *Channel) GetOrCreateClientMsgChannel(tag ext.TagExt) chan *Message {
 			1,
 		}
 		select {
-		case c.tagChanInitChan <- string(tag):
+		case c.tagChanInitChan <- tag:
 		case <-time.After(50 * time.Millisecond):
 			nsqLog.Infof("timeout sending tag channel init signal for %v", tag)
 		}
 	}
 
-	return c.tagMsgChans[string(tag)].MsgChan
+	return c.tagMsgChans[tag].MsgChan
 }
 
 func (c *Channel) GetClientMsgChan() chan *Message {
@@ -277,10 +277,10 @@ func (c *Channel) GetClientMsgChan() chan *Message {
 /**
 get active tag channel or default message channel from tag channel map
 */
-func (c *Channel) GetClientTagMsgChan(tag ext.TagExt) (chan *Message, bool) {
+func (c *Channel) GetClientTagMsgChan(tag string) (chan *Message, bool) {
 	c.tagMsgChansMutex.RLock()
 	defer c.tagMsgChansMutex.RUnlock()
-	msgChanData, exist := c.tagMsgChans[string(tag)]
+	msgChanData, exist := c.tagMsgChans[tag]
 	if !exist {
 		nsqLog.Warningf("tag message channel fo tag %v not found.", tag)
 		return nil, false
@@ -1099,9 +1099,9 @@ func (c *Channel) AddClient(clientID int64, client Consumer) error {
 }
 
 // RemoveClient removes a client from the Channel's client list
-func (c *Channel) RemoveClient(clientID int64, clientTag ext.TagExt) {
+func (c *Channel) RemoveClient(clientID int64, clientTag string) {
 
-	if clientTag != nil {
+	if clientTag != "" {
 		c.RemoveTagClientMsgChannel(clientTag)
 	}
 
@@ -1672,12 +1672,14 @@ LOOP:
 		}
 
 		var msgHasTag bool
-		var msgTag ext.TagExt
 	tagMsgLoop:
 		//deliver according to tag value in message
-		if msg.ExtVer == ext.TAG_EXT_VER {
+		msgTag, err := parseTagIfAny(msg)
+		if err != nil {
+			nsqLog.Errorf("error parse tag from message %v, offset %v", msg.ID, msg.Offset)
+		}
+		if msgTag != "" {
 			msgHasTag = true
-			msgTag = ext.TagExt(msg.ExtBytes)
 			tagMsgChan, chanExist := c.GetClientTagMsgChan(msgTag)
 			if chanExist {
 				select {
@@ -1700,7 +1702,7 @@ LOOP:
 	msgDefaultLoop:
 		select {
 		case newTag := <-c.tagChanInitChan:
-			if msgHasTag && newTag == string(msgTag) {
+			if msgHasTag && newTag == msgTag {
 				nsqLog.Infof("client with tag %v initialized, try deliver in tag loop", newTag)
 				goto tagMsgLoop
 			} else {
@@ -1722,6 +1724,22 @@ exit:
 	nsqLog.Logf("CHANNEL(%s): closing ... messagePump", c.name)
 	close(c.clientMsgChan)
 	close(c.exitSyncChan)
+}
+
+func parseTagIfAny(msg *Message) (string, error) {
+	var msgTag string
+	var err error
+	switch msg.ExtVer {
+	case ext.TAG_EXT_VER:
+		msgTag = string(msg.ExtBytes)
+	case ext.JSON_HEADER_EXT_VER:
+		var jsonExt *simpleJson.Json
+		jsonExt, err = simpleJson.NewJson(msg.ExtBytes)
+		if err == nil {
+			msgTag, err = jsonExt.Get(ext.CLEINT_DISPATCH_TAG_KEY).String()
+		}
+	}
+	return msgTag, err
 }
 
 func (c *Channel) GetChannelDebugStats() string {

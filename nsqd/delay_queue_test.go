@@ -10,6 +10,7 @@ import (
 	"path"
 	"testing"
 	"time"
+	"encoding/json"
 )
 
 func TestDelayQueuePutChannelDelayed(t *testing.T) {
@@ -53,6 +54,16 @@ func TestDelayQueuePutChannelDelayed(t *testing.T) {
 	test.NotNil(t, err)
 }
 
+func createJsonHeaderExtWithTag(t *testing.T, tag string) *ext.JsonHeaderExt {
+	jsonHeader := make(map[string]interface{})
+	jsonHeader[ext.CLEINT_DISPATCH_TAG_KEY] = tag
+	jsonHeaderBytes, err := json.Marshal(&jsonHeader)
+	test.Nil(t, err)
+	jhe := ext.NewJsonHeaderExt()
+	jhe.SetJsonHeaderBytes(jsonHeaderBytes)
+	return jhe
+}
+
 func TestDelayQueueWithExtPutChannelDelayed(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-delay-%d", time.Now().UnixNano()))
 	if err != nil {
@@ -69,12 +80,13 @@ func TestDelayQueueWithExtPutChannelDelayed(t *testing.T) {
 	defer dq.Close()
 	cnt := 10
 	var end BackendOffset
-	tagExt, err := ext.NewTagExt([]byte("exttagdata"))
+	tagName := "exttagdata"
+	tag := createJsonHeaderExtWithTag(t, tagName)
 	test.Nil(t, err)
 	for i := 0; i < cnt; i++ {
 		msg := NewMessage(0, []byte("body"))
-		msg.ExtVer = tagExt.ExtVersion()
-		msg.ExtBytes = tagExt.GetBytes()
+		msg.ExtVer = tag.ExtVersion()
+		msg.ExtBytes = tag.GetBytes()
 		msg.DelayedType = ChannelDelayed
 		msg.DelayedTs = time.Now().Add(time.Millisecond).UnixNano()
 		msg.DelayedChannel = "test"
@@ -98,8 +110,8 @@ func TestDelayQueueWithExtPutChannelDelayed(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, cnt, n)
 	for _, m := range ret {
-		test.Equal(t, tagExt.ExtVersion(), m.ExtVer)
-		test.Equal(t, tagExt.GetBytes(), m.ExtBytes)
+		test.Equal(t, tag.ExtVersion(), m.ExtVer)
+		test.Equal(t, tag.GetBytes(), m.ExtBytes)
 	}
 
 	dq.Delete()

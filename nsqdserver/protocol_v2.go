@@ -22,6 +22,7 @@ import (
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
+	simpleJson "github.com/bitly/go-simplejson"
 )
 
 const (
@@ -384,6 +385,8 @@ func (p *protocolV2) Exec(client *nsqd.ClientV2, params [][]byte) ([]byte, error
 		return p.PUB(client, params)
 	case bytes.Equal(params[0], []byte("PUB_TRACE")):
 		return p.PUBTRACE(client, params)
+	case bytes.Equal(params[0], []byte("PUB_EXT")):
+		return p.PUBEXT(client, params)
 	case bytes.Equal(params[0], []byte("MPUB")):
 		return p.MPUB(client, params)
 	case bytes.Equal(params[0], []byte("MPUB_TRACE")):
@@ -493,7 +496,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				subChannel.GetName())
 			subEventChan = nil
 			tag := client.GetTag()
-			if tag != nil {
+			if tag != "" {
 				client.SetTagMsgChannel(subChannel.GetOrCreateClientMsgChannel(tag))
 			}
 		case identifyData := <-identifyEventChan:
@@ -695,7 +698,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 		AuthRequired:        p.ctx.isAuthEnabled(),
 		OutputBufferSize:    client.OutputBufferSize,
 		OutputBufferTimeout: int64(client.OutputBufferTimeout / time.Millisecond),
-		DesiredTag:          string(client.GetTag()),
+		DesiredTag:          client.GetTag(),
 	})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -928,8 +931,8 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 	channel := topic.GetChannel(channelName)
-	if !topic.IsExt() && client.GetTag() != nil {
-		return nil, protocol.NewFatalClientErr(nil, ext.E_TAG_NOT_SUPPORT, fmt.Sprintf("IDENTIFY before subscribe has a tag %v to topic %v not support tag.", client.Tag, topicName))
+	if !topic.IsExt() && client.GetTag() != "" {
+		return nil, protocol.NewFatalClientErr(nil, ext.E_EXT_NOT_SUPPORT, fmt.Sprintf("IDENTIFY before subscribe has a tag %v to topic %v not support tag.", client.Tag, topicName))
 	}
 
 	err = channel.AddClient(client.ID, client)
@@ -1231,7 +1234,7 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 
 	topicName := string(params[1])
 	partition := -1
-	if len(params) >= 3 {
+	if len(params) == 3 {
 		partition, err = strconv.Atoi(string(params[2]))
 		if err != nil {
 			return 0, nil, nil, protocol.NewFatalClientErr(nil, "E_BAD_PARTITION",
@@ -1276,21 +1279,10 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 			fmt.Sprintf("topic partition is not valid for multi partition: %v", origPart))
 	}
 
-	//parse tag, if there is extra param, else message has no tag
-	var extContent ext.IExtContent
 	isExt := topic.IsExt()
-	if len(params) == 4 && isExt {
-		nsqd.NsqLogger().Infof("create tag out of ext content")
-		extContent, err = ext.NewTagExt(params[3])
-		if err != nil {
-			return 0, nil, nil, protocol.NewFatalClientErr(nil, ext.E_BAD_TAG,
-				fmt.Sprintf("topic tag filter %v is not valid: %v", topicName, err))
-		}
-	} else if len(params) == 4 && !isExt {
-		return 0, nil, nil, protocol.NewFatalClientErr(nil, ext.E_TAG_NOT_SUPPORT,
-			fmt.Sprintf("tag filter %v not supportted in topic %v", extContent, topicName))
-	} else {
-		extContent = ext.NewNoExt()
+	extContent, err := parseExtContent(topicName, isExt, params)
+	if err != nil {
+		return 0, nil, nil, err
 	}
 
 	if err := p.CheckAuth(client, "PUB", topicName, ""); err != nil {
@@ -1298,6 +1290,22 @@ func (p *protocolV2) preparePub(client *nsqd.ClientV2, params [][]byte, maxBody 
 	}
 	// mpub
 	return bodyLen, topic, extContent, nil
+}
+
+func parseExtContent(topicName string, isExt bool, params [][]byte) (ext.IExtContent, error) {
+	var extContent ext.IExtContent
+	var err error
+	pubExt := isPubExt(params[0])
+	if pubExt && isExt {
+		//parse as json header ext, leave outer logic to parse json ext header
+		extContent = ext.NewJsonHeaderExt()
+	} else if pubExt && !isExt {
+		err = protocol.NewClientErr(nil, ext.E_EXT_NOT_SUPPORT,
+			fmt.Sprintf("ext content not supported in topic %v", topicName))
+	} else {
+		extContent = ext.NewNoExt()
+	}
+	return extContent, err
 }
 
 // PUB TRACE data format
@@ -1308,6 +1316,10 @@ func (p *protocolV2) PUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 
 func (p *protocolV2) PUB(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
 	return p.internalPubAndTrace(client, params, false)
+}
+
+func (p *protocolV2) PUBEXT(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
+	return p.internalPubExtAndTrace(client, params, true, false)
 }
 
 func (p *protocolV2) MPUBTRACE(client *nsqd.ClientV2, params [][]byte) ([]byte, error) {
@@ -1370,16 +1382,33 @@ func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsq
 	return info.Err
 }
 
-//func internalPubAsync(clientTimer *time.Timer, msgBody *bytes.Buffer, topic *nsqd.Topic, tag ext.TagFilter) error {
+func isPubExt(pubCmdName []byte) bool {
+	return bytes.Equal(pubCmdName, []byte("PUB_EXT"))
+}
+
+
 func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
+	return p.internalPubExtAndTrace(client, params, false, traceEnable)
+}
+
+/**
+pub ext or pub trace or pub, if pubExt is true, traceEnable is ignored.
+ */
+func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]byte, pubExt bool, traceEnable bool) ([]byte, error) {
 	startPub := time.Now().UnixNano()
 	bodyLen, topic, extContent, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize, false)
 	if err != nil {
 		return nil, err
 	}
+
 	if traceEnable && bodyLen <= nsqd.MsgTraceIDLength {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
 			fmt.Sprintf("invalid body size %d with trace id enabled", bodyLen))
+	}
+
+	if pubExt && bodyLen <= nsqd.MsgJsonHeaderLength {
+		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
+			fmt.Sprintf("invalid body size %d with ext json header enabled", bodyLen))
 	}
 
 	messageBodyBuffer := topic.BufferPoolGet(int(bodyLen))
@@ -1395,11 +1424,40 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 	messageBody := messageBodyBuffer.Bytes()[:bodyLen]
 
 	partition := topic.GetTopicPart()
+	var extJsonLen uint16
 	var traceID uint64
+	var needTraceRsp bool
 	var realBody []byte
-	if traceEnable {
+	if traceEnable && !pubExt {
 		traceID = binary.BigEndian.Uint64(messageBody[:nsqd.MsgTraceIDLength])
+		needTraceRsp = true
 		realBody = messageBody[nsqd.MsgTraceIDLength:]
+	} else if pubExt {
+		//read two byte header length
+		extJsonLen = binary.BigEndian.Uint16(messageBody[:nsqd.MsgJsonHeaderLength])
+		extJsonBytes := messageBody[nsqd.MsgJsonHeaderLength:nsqd.MsgJsonHeaderLength + extJsonLen]
+		jhe, ok := extContent.(*ext.JsonHeaderExt)
+		if !ok {
+			return nil, fmt.Errorf("invalid ext content type, Json Header Ext expected, got %v", extContent)
+		}
+		//validate json header passin
+		jsonHeader, err := simpleJson.NewJson(extJsonBytes)
+		if err != nil {
+			return nil, protocol.NewClientErr(err, ext.E_INVALID_JSON_HEADER, "fail to parse json header")
+		}
+
+		//parse traceID, if there is any
+		traceIDJson, existInJsonHeader := jsonHeader.CheckGet(ext.TRACE_ID_KEY)
+		if existInJsonHeader {
+			traceID, err = traceIDJson.Uint64()
+			if err != nil {
+				return nil, protocol.NewClientErr(err, "INVALID_TRACE_ID", "fail to parse trace id")
+			}
+			needTraceRsp = true
+		}
+
+		jhe.SetJsonHeaderBytes(extJsonBytes)
+		realBody = messageBody[nsqd.MsgJsonHeaderLength + extJsonLen:]
 	} else {
 		realBody = messageBody
 	}
@@ -1426,10 +1484,11 @@ func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte,
 		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", 1, false)
 		cost := time.Now().UnixNano() - startPub
 		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(realBody)), cost/1000)
-		if !traceEnable {
-			return okBytes, nil
+
+		if needTraceRsp {
+			return getTracedReponse(id, traceID, offset, rawSize)
 		}
-		return getTracedReponse(id, traceID, offset, rawSize)
+		return okBytes, nil
 	} else {
 		topic.GetDetailStats().UpdatePubClientStats(client.String(), client.UserAgent, "tcp", 1, true)
 		//forward to master of topic

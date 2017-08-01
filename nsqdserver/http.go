@@ -28,6 +28,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+const HTTP_EXT_HEADER_PREFIX = "X-Nsqext-"
+
 type httpServer struct {
 	ctx         *context
 	tlsEnabled  bool
@@ -56,6 +58,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 
 	// v1 negotiate
 	router.Handle("POST", "/pub", http_api.Decorate(s.doPUB, http_api.NegotiateVersion))
+	router.Handle("POST", "/pub_ext", http_api.Decorate(s.doPUBExt, http_api.NegotiateVersion))
 	router.Handle("POST", "/pubtrace", http_api.Decorate(s.doPUBTrace, http_api.V1))
 	router.Handle("POST", "/mpub", http_api.Decorate(s.doMPUB, http_api.NegotiateVersion))
 	router.Handle("GET", "/stats", http_api.Decorate(s.doStats, log, http_api.NegotiateVersion))
@@ -232,13 +235,17 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (url.Values, *
 }
 
 func (s *httpServer) doPUBTrace(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	return s.internalPUB(w, req, ps, true)
+	return s.internalPUB(w, req, ps, true, false)
 }
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	return s.internalPUB(w, req, ps, false)
+	return s.internalPUB(w, req, ps, false, false)
 }
 
-func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params, enableTrace bool) (interface{}, error) {
+func (s *httpServer) doPUBExt(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	return s.internalPUB(w, req, ps, false, true)
+}
+
+func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params, enableTrace bool, pubExt bool) (interface{}, error) {
 	startPub := time.Now().UnixNano()
 	// do not support chunked for http pub, use tcp pub instead.
 	if req.ContentLength > s.ctx.getOpts().MaxMsgSize {
@@ -279,26 +286,73 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 
 	if s.ctx.checkForMasterWrite(topic.GetTopicName(), topic.GetTopicPart()) {
 		var err error
-		traceIDStr := params.Get("trace_id")
-		traceID, err := strconv.ParseUint(traceIDStr, 10, 0)
-		if enableTrace && err != nil {
+		var traceIDStr string
+		var traceID uint64
+		var needTraceRsp bool
+		var extContent ext.IExtContent
+		isExt := topic.IsExt()
+
+		traceIDStr = params.Get("trace_id")
+		traceID, err = strconv.ParseUint(traceIDStr, 10, 0)
+		if err != nil && enableTrace {
 			nsqd.NsqLogger().Logf("trace id invalid %v, %v",
 				traceIDStr, err)
 			return nil, http_api.Err{400, "INVALID_TRACE_ID"}
+		} else if enableTrace {
+			needTraceRsp = true
 		}
 
-		//parse tag name, if target topic is not configured extendable, request should be stopped here
-		var extContent ext.IExtContent
-		isExt := topic.IsExt()
-		tagParam := getTag(params)
-		if isExt && tagParam != "" {
-			extContent, err = ext.NewTagExt([]byte(tagParam))
-			if err != nil {
-				nsqd.NsqLogger().Logf("parse tag err: %v", err)
-				return nil, http_api.Err{400, ext.E_BAD_TAG}
+		//check if request is PUB_WITH_EXT
+		if isExt && pubExt {
+			//parse json header ext
+			headerStr, err := url.QueryUnescape(params.Get("ext"))
+			if err != nil || headerStr == "" {
+				return nil, http_api.Err{400, ext.E_INVALID_JSON_HEADER}
 			}
-		} else if !isExt && tagParam != "" {
-			return nil, http_api.Err{400, ext.E_TAG_NOT_SUPPORT}
+
+			var jsonHeaderExt map[string]interface{}
+			err = json.Unmarshal([]byte(headerStr), &jsonHeaderExt)
+			if err != nil {
+				return nil, http_api.Err{400, ext.E_INVALID_JSON_HEADER}
+			}
+
+			//check header X-Nsqext-XXX:value
+			for hKey, _ := range req.Header {
+				if strings.HasPrefix(hKey, HTTP_EXT_HEADER_PREFIX) {
+					key := strings.TrimPrefix(hKey, HTTP_EXT_HEADER_PREFIX)
+					//key parse from X-Nsqext- will always be convert to lowercase
+					key = strings.ToLower(key)
+					//override parsed kv in json header from header
+					jsonHeaderExt[key] = req.Header.Get(hKey)
+				}
+			}
+
+			//check trace id
+			traceIDI, exist := jsonHeaderExt[ext.TRACE_ID_KEY]
+			if exist {
+				var ok bool
+				if traceIDStr, ok = traceIDI.(string); !ok {
+					return nil, http_api.Err{400, "INVALID_TRACE_ID"}
+				}
+				traceID, err = strconv.ParseUint(traceIDStr, 10, 0)
+				if err != nil {
+					nsqd.NsqLogger().Logf("trace id invalid %v, %v",
+						traceIDStr, err)
+					return nil, http_api.Err{400, "INVALID_TRACE_ID"}
+				}
+				needTraceRsp = true
+			}
+
+			jsonHeaderExtBytes, err :=  json.Marshal(&jsonHeaderExt)
+			if err != nil {
+				return nil, http_api.Err{400, ext.E_INVALID_JSON_HEADER}
+			}
+
+			jhe := ext.NewJsonHeaderExt()
+			jhe.SetJsonHeaderBytes(jsonHeaderExtBytes)
+			extContent = jhe
+		} else if !isExt && pubExt {
+			return nil, http_api.Err{400, ext.E_EXT_NOT_SUPPORT}
 		} else {
 			extContent = ext.NewNoExt()
 		}
@@ -323,7 +377,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 
 		cost := time.Now().UnixNano() - startPub
 		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(body)), cost/1000)
-		if enableTrace {
+		if needTraceRsp {
 			return struct {
 				Status      string `json:"status"`
 				ID          uint64 `json:"id"`
@@ -353,20 +407,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, err
 	}
 
-	var extContent ext.IExtContent
-	isExt := topic.IsExt()
-	tagParam := getTag(reqParams)
-	if isExt && tagParam != "" {
-		extContent, err = ext.NewTagExt([]byte(tagParam))
-		if err != nil {
-			nsqd.NsqLogger().Logf("parse tag err: %v", err)
-			return nil, http_api.Err{400, ext.E_BAD_TAG}
-		}
-	} else if !isExt && tagParam != "" {
-		return nil, http_api.Err{400, ext.E_TAG_NOT_SUPPORT}
-	} else {
-		extContent = ext.NewNoExt()
-	}
+	extContent := ext.NewNoExt()
 
 	var msgs []*nsqd.Message
 	var buffers []*bytes.Buffer

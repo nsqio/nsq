@@ -6,20 +6,26 @@ import (
 )
 
 const (
-	E_TAG_NOT_SUPPORT = "E_TAG_NOT_SUPPORT"
+	E_EXT_NOT_SUPPORT = "E_EXT_NOT_SUPPORT"
 	E_BAD_TAG	= "E_BAD_TAG"
+	E_INVALID_JSON_HEADER = "E_INVALID_JSON_HEADER"
+
+	CLEINT_DISPATCH_TAG_KEY = "##client_dispatch_tag"
+	TRACE_ID_KEY = "##trace_id"
 )
 
 var MAX_TAG_LEN = 100
-var validTagFmt = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+var validTagFmt = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 type ExtVer uint8
 
 //ext versions
 // version for message has no ext
 var NO_EXT_VER = ExtVer(uint8(0))
-// version fo message has tag ext
+// version for message has tag ext
 var TAG_EXT_VER = ExtVer(uint8(2))
+// version for message has json header ext
+var JSON_HEADER_EXT_VER = ExtVer(uint8(4))
 
 
 var noExt = NoExt{}
@@ -40,8 +46,8 @@ func (n NoExt) GetBytes() []byte {
 type TagExt []byte
 
 func NewTagExt(tagName []byte) (TagExt, error) {
-	if !validateTag(tagName) {
-		return nil, fmt.Errorf("invalid tag %v", tagName)
+	if err:= ValidateTag(string(tagName)); err != nil {
+		return nil, err
 	}
 	return TagExt(tagName), nil
 }
@@ -50,24 +56,35 @@ func (tag TagExt) GetTagName() string {
 	return string(tag)
 }
 
-//pass in []byte not nil
-func validateTag(beValidated []byte) bool {
-	if len(beValidated) > MAX_TAG_LEN {
-		return false
+func ValidateTag(beValidated string) error {
+	lenTag := len(beValidated)
+	if lenTag > MAX_TAG_LEN {
+		return fmt.Errorf("invalid tag len %v, exceed limit %v", lenTag, MAX_TAG_LEN)
 	}
-	return validTagFmt.Match(beValidated)
+	if !validTagFmt.Match([]byte(beValidated)) {
+		return fmt.Errorf("invalid tag %v", beValidated)
+	}
+	return nil
 }
 
-func (tag TagExt) ExtVersion() ExtVer {
-	return TAG_EXT_VER
+type JsonHeaderExt struct {
+	bytes []byte
 }
 
-func (tag TagExt) GetBytes() []byte {
-	return tag
+func NewJsonHeaderExt() *JsonHeaderExt {
+	return &JsonHeaderExt{}
 }
 
-func (tag TagExt) String() string {
-	return string(tag)
+func (self *JsonHeaderExt) SetJsonHeaderBytes(jsonExtBytes []byte) {
+	self.bytes = jsonExtBytes[0:]
+}
+
+func (self *JsonHeaderExt) ExtVersion() ExtVer {
+	return JSON_HEADER_EXT_VER
+}
+
+func (self *JsonHeaderExt) GetBytes() []byte {
+	return self.bytes
 }
 
 type IExtContent interface {

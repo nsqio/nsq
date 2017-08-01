@@ -13,6 +13,7 @@ import (
 const (
 	MsgIDLength       = 16
 	MsgTraceIDLength  = 8
+	MsgJsonHeaderLength = 2
 	minValidMsgLength = MsgIDLength + 8 + 2 // Timestamp + Attempts
 )
 
@@ -324,17 +325,19 @@ func decodeMessage(b []byte, isExt bool) (*Message, error) {
 		msg.ExtVer = extVer
 		switch extVer {
 		case ext.NO_EXT_VER:
+			msg.ExtVer = ext.NO_EXT_VER
 			bodyStart = 27
 		default:
 			if len(b) < 27+2 {
 				return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
 			}
-			tagLen := binary.BigEndian.Uint16(b[27 : 27+2])
-			if len(b) < 27+2+int(tagLen) {
+
+			extLen := binary.BigEndian.Uint16(b[27 : 27+2])
+			if len(b) < 27+2+int(extLen) {
 				return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
 			}
-			msg.ExtBytes = b[29 : 29+tagLen]
-			bodyStart = 29 + int(tagLen)
+			msg.ExtBytes = b[29 : 29+extLen]
+			bodyStart = 29 + int(extLen)
 		}
 	}
 
@@ -385,18 +388,16 @@ func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 		}
 
 		extVer := ext.ExtVer(uint8(b[pos]))
+		msg.ExtVer = extVer
 		pos++
 		switch extVer {
-		case ext.TAG_EXT_VER:
-			tagLen := binary.BigEndian.Uint16(b[pos : pos+2])
-			pos += 2
-			msg.ExtVer = ext.TAG_EXT_VER
-			msg.ExtBytes = b[pos : pos+int(tagLen)]
-			pos += int(tagLen)
 		case ext.NO_EXT_VER:
 			msg.ExtVer = ext.NO_EXT_VER
 		default:
-			return nil, fmt.Errorf("invalid ext version %v", extVer)
+			extLen := binary.BigEndian.Uint16(b[pos : pos+2])
+			pos += 2
+			msg.ExtBytes = b[pos : pos+int(extLen)]
+			pos += int(extLen)
 		}
 	}
 
