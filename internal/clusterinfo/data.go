@@ -1056,7 +1056,7 @@ func (c *ClusterInfo) DeleteTopic(topicName string, lookupdHTTPAddrs []string, n
 
 func (c *ClusterInfo) DeleteChannel(topicName string, channelName string, lookupdHTTPAddrs []string, nsqdHTTPAddrs []string) error {
 	var errs []error
-
+	retry := true
 	producers, partitionProducers, err := c.GetTopicProducers(topicName, lookupdHTTPAddrs, nsqdHTTPAddrs)
 	if err != nil {
 		pe, ok := err.(PartialErr)
@@ -1066,6 +1066,7 @@ func (c *ClusterInfo) DeleteChannel(topicName string, channelName string, lookup
 		errs = append(errs, pe.Errors()...)
 	}
 
+channelDelete:
 	if len(partitionProducers) == 0 {
 		qs := fmt.Sprintf("topic=%s&channel=%s", url.QueryEscape(topicName), url.QueryEscape(channelName))
 		// remove the channel from all the nsqd that produce this topic
@@ -1091,6 +1092,29 @@ func (c *ClusterInfo) DeleteChannel(topicName string, channelName string, lookup
 			}
 		}
 	}
+
+	_, allChannelStats, err := c.GetNSQDStats(producers, topicName, "partition", true)
+	if err != nil {
+		pe, ok := err.(PartialErr)
+		if !ok {
+			return err
+		}
+		errs = append(errs, pe.Errors()...)
+	}
+
+	if _, exist := allChannelStats[channelName]; exist {
+		c.logf("channel %v are not completely deleted", channelName)
+		if retry {
+			//do delete again
+			retry = false;
+			goto channelDelete
+		} else {
+			c.logf("fail to delete channel %v completely", channelName)
+		}
+	} else {
+		c.logf("channel %v deleted", channelName)
+	}
+
 	if len(errs) > 0 {
 		return ErrList(errs)
 	}
