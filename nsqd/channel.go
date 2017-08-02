@@ -202,7 +202,7 @@ func NewChannel(topicName string, part int, channelName string, chEnd BackendQue
 
 	go c.messagePump()
 
-	c.nsqdNotify.NotifyStateChanged(c)
+	c.nsqdNotify.NotifyStateChanged(c, true)
 
 	return c
 }
@@ -433,7 +433,7 @@ func (c *Channel) exit(deleted bool) error {
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
-		c.nsqdNotify.NotifyStateChanged(c)
+		c.nsqdNotify.NotifyStateChanged(c, true)
 	} else {
 		nsqLog.Logf("CHANNEL(%s): closing", c.name)
 	}
@@ -1318,7 +1318,7 @@ func (c *Channel) DisableConsume(disable bool) {
 			}
 		}
 	}
-	c.nsqdNotify.NotifyStateChanged(c)
+	c.nsqdNotify.NotifyStateChanged(c, false)
 }
 
 // should not drain outside of the messagepump loop

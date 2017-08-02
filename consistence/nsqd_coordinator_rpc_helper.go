@@ -68,6 +68,17 @@ func (self *NsqdCoordinator) requestLeaveFromISR(topic string, partition int) *C
 	return c.RequestLeaveFromISR(topic, partition, self.myNode.GetID())
 }
 
+func (self *NsqdCoordinator) requestLeaveFromISRFast(topic string, partition int) *CoordErr {
+	c, err := self.getLookupRemoteProxy()
+	if err != nil {
+		return err
+	}
+	if realC, ok := c.(*NsqLookupRpcClient); ok {
+		return realC.RequestLeaveFromISRFast(topic, partition, self.myNode.GetID())
+	}
+	return c.RequestLeaveFromISR(topic, partition, self.myNode.GetID())
+}
+
 // this should only be called by leader to remove slow node in isr.
 // Be careful to avoid removing most of the isr nodes, should only remove while
 // only small part of isr is slow.

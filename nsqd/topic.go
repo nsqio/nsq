@@ -196,7 +196,7 @@ func NewTopicWithExt(topicName string, part int, ext bool, opt *Options,
 		return nil
 	}
 	t.detailStats = NewDetailStatsInfo(t.TotalDataSize(), t.getHistoryStatsFileName())
-	t.nsqdNotify.NotifyStateChanged(t)
+	t.nsqdNotify.NotifyStateChanged(t, true)
 	nsqLog.LogDebugf("new topic created: %v", t.tname)
 
 	if t.pubLoopFunc != nil {
@@ -331,7 +331,7 @@ func (t *Topic) MarkAsRemoved() (string, error) {
 	nsqLog.Logf("TOPIC(%s): deleting", t.GetFullName())
 	// since we are explicitly deleting a topic (not just at system exit time)
 	// de-register this from the lookupd
-	t.nsqdNotify.NotifyStateChanged(t)
+	t.nsqdNotify.NotifyStateChanged(t, true)
 
 	t.channelLock.Lock()
 	for _, channel := range t.channelMap {
@@ -618,6 +618,7 @@ func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerato
 	}
 	nsqLog.Logf("topic dynamic configure changed to %v", dynamicConf)
 	t.Unlock()
+	t.nsqdNotify.NotifyStateChanged(t, true)
 }
 
 func (t *Topic) nextMsgID() MessageID {
@@ -1020,7 +1021,7 @@ func (t *Topic) exit(deleted bool) error {
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
-		t.nsqdNotify.NotifyStateChanged(t)
+		t.nsqdNotify.NotifyStateChanged(t, true)
 	} else {
 		nsqLog.Logf("TOPIC(%s): closing", t.GetFullName())
 	}
@@ -1090,7 +1091,7 @@ func (t *Topic) DisableForSlave() {
 	}
 	t.channelLock.RUnlock()
 	// notify de-register from lookup
-	t.nsqdNotify.NotifyStateChanged(t)
+	t.nsqdNotify.NotifyStateChanged(t, false)
 }
 
 func (t *Topic) EnableForMaster() {
@@ -1109,7 +1110,7 @@ func (t *Topic) EnableForMaster() {
 	t.channelLock.RUnlock()
 	atomic.StoreInt32(&t.writeDisabled, 0)
 	// notify re-register to lookup
-	t.nsqdNotify.NotifyStateChanged(t)
+	t.nsqdNotify.NotifyStateChanged(t, false)
 }
 
 func (t *Topic) Empty() error {

@@ -1069,7 +1069,8 @@ func (p *protocolV2) requeueToEnd(client *nsqd.ClientV2, oldMsg *nsqd.Message,
 	timeoutDuration time.Duration) error {
 	err := p.ctx.internalRequeueToEnd(client.Channel, oldMsg, timeoutDuration)
 	if err != nil {
-		nsqd.NsqLogger().LogWarningf("[%s] req channel %v failed: %v", client, client.Channel.GetName(), err)
+		nsqd.NsqLogger().LogWarningf("[%s] req channel %v(%v) failed: %v", client,
+			client.Channel.GetName(), client.Channel.GetTopicName(), err)
 		return err
 	}
 	return nil
@@ -1386,14 +1387,13 @@ func isPubExt(pubCmdName []byte) bool {
 	return bytes.Equal(pubCmdName, []byte("PUB_EXT"))
 }
 
-
 func (p *protocolV2) internalPubAndTrace(client *nsqd.ClientV2, params [][]byte, traceEnable bool) ([]byte, error) {
 	return p.internalPubExtAndTrace(client, params, false, traceEnable)
 }
 
 /**
 pub ext or pub trace or pub, if pubExt is true, traceEnable is ignored.
- */
+*/
 func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]byte, pubExt bool, traceEnable bool) ([]byte, error) {
 	startPub := time.Now().UnixNano()
 	bodyLen, topic, extContent, err := p.preparePub(client, params, p.ctx.getOpts().MaxMsgSize, false)
@@ -1435,7 +1435,7 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 	} else if pubExt {
 		//read two byte header length
 		extJsonLen = binary.BigEndian.Uint16(messageBody[:nsqd.MsgJsonHeaderLength])
-		extJsonBytes := messageBody[nsqd.MsgJsonHeaderLength:nsqd.MsgJsonHeaderLength + extJsonLen]
+		extJsonBytes := messageBody[nsqd.MsgJsonHeaderLength : nsqd.MsgJsonHeaderLength+extJsonLen]
 		jhe, ok := extContent.(*ext.JsonHeaderExt)
 		if !ok {
 			return nil, fmt.Errorf("invalid ext content type, Json Header Ext expected, got %v", extContent)
@@ -1457,7 +1457,7 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 		}
 
 		jhe.SetJsonHeaderBytes(extJsonBytes)
-		realBody = messageBody[nsqd.MsgJsonHeaderLength + extJsonLen:]
+		realBody = messageBody[nsqd.MsgJsonHeaderLength+extJsonLen:]
 	} else {
 		realBody = messageBody
 	}

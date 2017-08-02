@@ -2409,14 +2409,15 @@ func (self *NsqdCoordinator) prepareLeavingCluster() {
 			retry := 3
 			for retry > 0 {
 				retry--
-				err := self.requestLeaveFromISR(topicName, pid)
+				err := self.requestLeaveFromISRFast(topicName, pid)
 				if err == nil {
 					break
 				}
 				if err != nil && err.IsEqual(ErrLeavingISRWait) {
 					coordLog.Infof("======= should wait leaving from isr: %v", topicName)
 				} else {
-					coordLog.Infof("======= request leave isr failed: %v", err)
+					coordLog.Infof("======= topic %v request leave isr failed: %v", topicName, err)
+					break
 				}
 				time.Sleep(time.Millisecond * 100)
 			}

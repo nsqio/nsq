@@ -1721,6 +1721,7 @@ func (self *NsqLookupCoordinator) handleLeaveFromISR(topic string, partition int
 		coordLog.Infof("get topic info failed :%v", err)
 		return &CoordErr{err.Error(), RpcCommonErr, CoordCommonErr}
 	}
+	coordLog.Infof("node %v request leave the isr for topic: %v", nodeID, topicInfo.GetTopicDesp())
 	if FindSlice(topicInfo.ISR, nodeID) == -1 {
 		return nil
 	}

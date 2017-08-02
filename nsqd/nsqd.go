@@ -50,7 +50,7 @@ const (
 
 type INsqdNotify interface {
 	NotifyDeleteTopic(*Topic)
-	NotifyStateChanged(v interface{})
+	NotifyStateChanged(v interface{}, needPersist bool)
 	ReqToEnd(*Channel, *Message, time.Duration) error
 	NotifyScanDelayed(*Channel)
 }
@@ -709,7 +709,7 @@ func (n *NSQD) NotifyScanDelayed(ch *Channel) {
 	}
 }
 
-func (n *NSQD) NotifyStateChanged(v interface{}) {
+func (n *NSQD) NotifyStateChanged(v interface{}, needPersist bool) {
 	// since the in-memory metadata is incomplete,
 	// should not persist metadata while loading it.
 	// nsqd will call `PersistMetadata` it after loading
@@ -720,7 +720,7 @@ func (n *NSQD) NotifyStateChanged(v interface{}) {
 		select {
 		case <-n.exitChan:
 		case n.MetaNotifyChan <- v:
-			if !persist {
+			if !persist || !needPersist {
 				return
 			}
 			tmpMap := n.GetTopicMapCopy()

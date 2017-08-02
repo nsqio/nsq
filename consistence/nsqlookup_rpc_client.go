@@ -84,6 +84,11 @@ func (self *NsqLookupRpcClient) Reconnect() error {
 	return nil
 }
 
+func (self *NsqLookupRpcClient) CallFast(method string, arg interface{}) (interface{}, error) {
+	reply, err := self.dc.CallTimeout(method, arg, time.Second/2)
+	return reply, err
+}
+
 func (self *NsqLookupRpcClient) CallWithRetry(method string, arg interface{}) (interface{}, error) {
 	retry := 0
 	var err error
@@ -157,6 +162,15 @@ func (self *NsqLookupRpcClient) RequestLeaveFromISR(topic string, partition int,
 	req.TopicName = topic
 	req.TopicPartition = partition
 	ret, err := self.CallWithRetry("RequestLeaveFromISR", &req)
+	return convertRpcError(err, ret)
+}
+
+func (self *NsqLookupRpcClient) RequestLeaveFromISRFast(topic string, partition int, nid string) *CoordErr {
+	var req RpcReqLeaveFromISR
+	req.NodeID = nid
+	req.TopicName = topic
+	req.TopicPartition = partition
+	ret, err := self.CallFast("RequestLeaveFromISR", &req)
 	return convertRpcError(err, ret)
 }
 
