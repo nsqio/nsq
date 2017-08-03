@@ -1435,7 +1435,12 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 	} else if pubExt {
 		//read two byte header length
 		extJsonLen = binary.BigEndian.Uint16(messageBody[:nsqd.MsgJsonHeaderLength])
-		extJsonBytes := messageBody[nsqd.MsgJsonHeaderLength : nsqd.MsgJsonHeaderLength+extJsonLen]
+		//check json length, make sure it does not exceed slice length
+		if bodyLen <= nsqd.MsgJsonHeaderLength + int32(extJsonLen) {
+			return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
+				fmt.Sprintf("invalid body size %d in ext json header content length", bodyLen))
+		}
+		extJsonBytes := messageBody[nsqd.MsgJsonHeaderLength : nsqd.MsgJsonHeaderLength + extJsonLen]
 		jhe, ok := extContent.(*ext.JsonHeaderExt)
 		if !ok {
 			return nil, fmt.Errorf("invalid ext content type, Json Header Ext expected, got %v", extContent)
