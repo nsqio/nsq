@@ -1736,7 +1736,9 @@ func parseTagIfAny(msg *Message) (string, error) {
 		var jsonExt *simpleJson.Json
 		jsonExt, err = simpleJson.NewJson(msg.ExtBytes)
 		if err == nil {
-			msgTag, err = jsonExt.Get(ext.CLEINT_DISPATCH_TAG_KEY).String()
+			if tagJson, exist := jsonExt.CheckGet(ext.CLEINT_DISPATCH_TAG_KEY); exist {
+				msgTag, err = tagJson.String()
+			}
 		}
 	}
 	return msgTag, err
