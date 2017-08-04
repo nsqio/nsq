@@ -22,6 +22,7 @@ import (
 	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
@@ -356,6 +357,9 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 		} else {
 			extContent = ext.NewNoExt()
 		}
+		if needTraceRsp || atomic.LoadInt32(&topic.EnableTrace) == 1 {
+			asyncAction = false
+		}
 
 		id := nsqd.MessageID(0)
 		offset := nsqd.BackendOffset(0)
@@ -375,6 +379,9 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{503, err.Error()}
 		}
 
+		if traceID != 0 || atomic.LoadInt32(&topic.EnableTrace) == 1 || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
+			nsqd.GetMsgTracer().TracePubClient(topic.GetTopicName(), topic.GetTopicPart(), traceID, id, offset, req.RemoteAddr)
+		}
 		cost := time.Now().UnixNano() - startPub
 		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(body)), cost/1000)
 		if needTraceRsp {

@@ -1436,11 +1436,11 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 		//read two byte header length
 		extJsonLen = binary.BigEndian.Uint16(messageBody[:nsqd.MsgJsonHeaderLength])
 		//check json length, make sure it does not exceed slice length
-		if bodyLen <= nsqd.MsgJsonHeaderLength + int32(extJsonLen) {
+		if bodyLen <= nsqd.MsgJsonHeaderLength+int32(extJsonLen) {
 			return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
 				fmt.Sprintf("invalid body size %d in ext json header content length", bodyLen))
 		}
-		extJsonBytes := messageBody[nsqd.MsgJsonHeaderLength : nsqd.MsgJsonHeaderLength + extJsonLen]
+		extJsonBytes := messageBody[nsqd.MsgJsonHeaderLength : nsqd.MsgJsonHeaderLength+extJsonLen]
 		jhe, ok := extContent.(*ext.JsonHeaderExt)
 		if !ok {
 			return nil, fmt.Errorf("invalid ext content type, Json Header Ext expected, got %v", extContent)
@@ -1466,6 +1466,9 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 	} else {
 		realBody = messageBody
 	}
+	if needTraceRsp || atomic.LoadInt32(&topic.EnableTrace) == 1 {
+		asyncAction = false
+	}
 	if p.ctx.checkForMasterWrite(topicName, partition) {
 		id := nsqd.MessageID(0)
 		offset := nsqd.BackendOffset(0)
@@ -1490,6 +1493,9 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 		cost := time.Now().UnixNano() - startPub
 		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(realBody)), cost/1000)
 
+		if traceID != 0 || atomic.LoadInt32(&topic.EnableTrace) == 1 || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
+			nsqd.GetMsgTracer().TracePubClient(topic.GetTopicName(), topic.GetTopicPart(), traceID, id, offset, client.String())
+		}
 		if needTraceRsp {
 			return getTracedReponse(id, traceID, offset, rawSize)
 		}

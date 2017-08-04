@@ -3,12 +3,13 @@ package nsqdserver
 import (
 	"crypto/tls"
 	"errors"
-	"github.com/absolute8511/nsq/consistence"
-	"github.com/absolute8511/nsq/internal/ext"
-	"github.com/absolute8511/nsq/nsqd"
 	"net"
 	"sync/atomic"
 	"time"
+
+	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/internal/ext"
+	"github.com/absolute8511/nsq/nsqd"
 )
 
 const (
