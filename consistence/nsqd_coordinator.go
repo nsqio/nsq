@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/absolute8511/nsq/nsqd"
 	"io"
 	"net"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/absolute8511/nsq/nsqd"
 )
 
 const (
@@ -95,7 +96,7 @@ type ILocalLogQueue interface {
 	TotalMessageCnt() uint64
 	TotalDataSize() int64
 
-	PutMessageOnReplica(msgs *nsqd.Message, offset nsqd.BackendOffset) (nsqd.BackendQueueEnd, error)
+	PutMessageOnReplica(msgs *nsqd.Message, offset nsqd.BackendOffset, checkSize int64) (nsqd.BackendQueueEnd, error)
 	TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanOffset nsqd.BackendOffset) (nsqd.BackendQueueEnd, error)
 }
 
@@ -1591,7 +1592,8 @@ func (self *NsqdCoordinator) pullCatchupDataFromLeader(tc *TopicCoordinator,
 			}
 			var queueEnd nsqd.BackendQueueEnd
 			if len(newMsgs) == 1 {
-				queueEnd, localErr = localLogQ.PutMessageOnReplica(newMsgs[0], nsqd.BackendOffset(l.MsgOffset))
+				queueEnd, localErr = localLogQ.PutMessageOnReplica(newMsgs[0],
+					nsqd.BackendOffset(l.MsgOffset), int64(l.MsgSize))
 				if localErr != nil {
 					coordLog.Warningf("topic %v Failed to put message on slave: %v, offset: %v, need to be fixed",
 						localTopic.GetFullName(), localErr, l.MsgOffset)
@@ -1603,7 +1605,8 @@ func (self *NsqdCoordinator) pullCatchupDataFromLeader(tc *TopicCoordinator,
 			} else {
 				// delayed queue has no batch write, so this must be topic normal queue
 				coordLog.Debugf("got batch messages: %v", len(newMsgs))
-				queueEnd, localErr = localTopic.PutMessagesOnReplica(newMsgs, nsqd.BackendOffset(l.MsgOffset))
+				queueEnd, localErr = localTopic.PutMessagesOnReplica(newMsgs,
+					nsqd.BackendOffset(l.MsgOffset), int64(l.MsgSize))
 				if localErr != nil {
 					coordLog.Warningf("Failed to batch put messages on slave: %v, offset: %v, need to be fixed", localErr, l.MsgOffset)
 					localTopic.SetDataFixState(true)

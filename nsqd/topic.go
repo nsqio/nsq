@@ -42,6 +42,18 @@ func writeMessageToBackend(writeExt bool, buf *bytes.Buffer, msg *Message, bq *d
 	return bq.PutV2(buf.Bytes())
 }
 
+func writeMessageToBackendWithCheck(writeExt bool, buf *bytes.Buffer, msg *Message, checkSize int64, bq *diskQueueWriter) (BackendOffset, int32, diskQueueEndInfo, error) {
+	buf.Reset()
+	wsize, err := msg.WriteTo(buf, writeExt)
+	if err != nil {
+		return 0, 0, diskQueueEndInfo{}, err
+	}
+	if checkSize > 0 && wsize != checkSize {
+		return 0, 0, diskQueueEndInfo{}, fmt.Errorf("message write size mismatch %v vs %v", checkSize, wsize)
+	}
+	return bq.PutV2(buf.Bytes())
+}
+
 type MsgIDGenerator interface {
 	NextID() uint64
 	Reset(uint64)
@@ -810,7 +822,7 @@ func (t *Topic) PutMessageNoLock(m *Message) (MessageID, BackendOffset, int32, B
 		return 0, 0, 0, nil, ErrInvalidMessageID
 	}
 
-	id, offset, writeBytes, dend, err := t.put(m, true)
+	id, offset, writeBytes, dend, err := t.put(m, true, 0)
 	return id, offset, writeBytes, &dend, err
 }
 
@@ -835,7 +847,7 @@ func (t *Topic) flushForChannels() {
 	}
 }
 
-func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) (BackendQueueEnd, error) {
+func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset, checkSize int64) (BackendQueueEnd, error) {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return nil, ErrExiting
 	}
@@ -844,14 +856,14 @@ func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset) (BackendQu
 		nsqLog.LogErrorf("topic %v: write offset mismatch: %v, %v", t.GetFullName(), offset, wend)
 		return nil, ErrWriteOffsetMismatch
 	}
-	_, _, _, dend, err := t.put(m, false)
+	_, _, _, dend, err := t.put(m, false, checkSize)
 	if err != nil {
 		return nil, err
 	}
 	return &dend, nil
 }
 
-func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) (BackendQueueEnd, error) {
+func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset, checkSize int64) (BackendQueueEnd, error) {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return nil, ErrExiting
 	}
@@ -866,12 +878,19 @@ func (t *Topic) PutMessagesOnReplica(msgs []*Message, offset BackendOffset) (Bac
 
 	var dend diskQueueEndInfo
 	var err error
+	wsize := int32(0)
+	wsizeTotal := int32(0)
 	for _, m := range msgs {
-		_, _, _, dend, err = t.put(m, false)
+		_, _, wsize, dend, err = t.put(m, false, 0)
 		if err != nil {
 			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return nil, err
 		}
+		wsizeTotal += wsize
+	}
+	if checkSize > 0 && int64(wsizeTotal) != checkSize {
+		t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
+		return nil, fmt.Errorf("batch message size mismatch: %v vs %v", checkSize, wsizeTotal)
 	}
 
 	return &dend, nil
@@ -894,7 +913,7 @@ func (t *Topic) PutMessagesNoLock(msgs []*Message) (MessageID, BackendOffset, in
 			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return 0, 0, 0, 0, nil, ErrInvalidMessageID
 		}
-		id, offset, bytes, end, err := t.put(m, true)
+		id, offset, bytes, end, err := t.put(m, true, 0)
 		if err != nil {
 			t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 			return firstMsgID, firstOffset, batchBytes, firstCnt, &diskEnd, err
@@ -918,11 +937,11 @@ func (t *Topic) PutMessages(msgs []*Message) (MessageID, BackendOffset, int32, i
 	return firstMsgID, firstOffset, batchBytes, totalCnt, dend, err
 }
 
-func (t *Topic) put(m *Message, trace bool) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
+func (t *Topic) put(m *Message, trace bool, checkSize int64) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
 	if m.ID <= 0 {
 		m.ID = t.nextMsgID()
 	}
-	offset, writeBytes, dend, err := writeMessageToBackend(t.IsExt(), &t.putBuffer, m, t.backend)
+	offset, writeBytes, dend, err := writeMessageToBackendWithCheck(t.IsExt(), &t.putBuffer, m, checkSize, t.backend)
 	atomic.StoreInt32(&t.needFlush, 1)
 	if err != nil {
 		nsqLog.LogErrorf(

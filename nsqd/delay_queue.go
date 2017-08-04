@@ -4,8 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"github.com/absolute8511/nsq/internal/levellogger"
-	"github.com/boltdb/bolt"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -14,6 +13,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/boltdb/bolt"
 )
 
 var (
@@ -36,12 +38,16 @@ const (
 
 type RecentKeyList [][]byte
 
-func writeDelayedMessageToBackend(buf *bytes.Buffer, msg *Message, bq *diskQueueWriter,
+func writeDelayedMessageToBackendWithCheck(buf *bytes.Buffer, msg *Message,
+	checkSize int64, bq *diskQueueWriter,
 	isExt bool) (BackendOffset, int32, diskQueueEndInfo, error) {
 	buf.Reset()
-	_, err := msg.WriteDelayedTo(buf, isExt)
+	wsize, err := msg.WriteDelayedTo(buf, isExt)
 	if err != nil {
 		return 0, 0, diskQueueEndInfo{}, err
+	}
+	if checkSize > 0 && checkSize != wsize {
+		return 0, 0, diskQueueEndInfo{}, fmt.Errorf("write message size mismatch: %v vs %v", checkSize, wsize)
 	}
 	return bq.PutV2(buf.Bytes())
 }
@@ -559,11 +565,11 @@ func (q *DelayQueue) PutDelayMessage(m *Message) (MessageID, BackendOffset, int3
 		return 0, 0, 0, nil, errors.New("invalid delayed message")
 	}
 
-	id, offset, writeBytes, dend, err := q.put(m, true)
+	id, offset, writeBytes, dend, err := q.put(m, true, 0)
 	return id, offset, writeBytes, &dend, err
 }
 
-func (q *DelayQueue) PutMessageOnReplica(m *Message, offset BackendOffset) (BackendQueueEnd, error) {
+func (q *DelayQueue) PutMessageOnReplica(m *Message, offset BackendOffset, checkSize int64) (BackendQueueEnd, error) {
 	if atomic.LoadInt32(&q.exitFlag) == 1 {
 		return nil, ErrExiting
 	}
@@ -575,19 +581,20 @@ func (q *DelayQueue) PutMessageOnReplica(m *Message, offset BackendOffset) (Back
 	if !IsValidDelayedMessage(m) {
 		return nil, errors.New("invalid delayed message")
 	}
-	_, _, _, dend, err := q.put(m, false)
+	_, _, _, dend, err := q.put(m, false, checkSize)
 	if err != nil {
 		return nil, err
 	}
 	return &dend, nil
 }
 
-func (q *DelayQueue) put(m *Message, trace bool) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
+func (q *DelayQueue) put(m *Message, trace bool, checkSize int64) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
 	if m.ID <= 0 {
 		m.ID = q.nextMsgID()
 	}
 
-	offset, writeBytes, dend, err := writeDelayedMessageToBackend(&q.putBuffer, m, q.backend, q.isExt)
+	offset, writeBytes, dend, err := writeDelayedMessageToBackendWithCheck(&q.putBuffer,
+		m, checkSize, q.backend, q.isExt)
 	atomic.StoreInt32(&q.needFlush, 1)
 	if err != nil {
 		nsqLog.LogErrorf(

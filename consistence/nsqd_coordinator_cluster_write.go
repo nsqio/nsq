@@ -2,11 +2,12 @@ package consistence
 
 import (
 	"errors"
-	"github.com/absolute8511/nsq/internal/levellogger"
-	"github.com/absolute8511/nsq/nsqd"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/nsqd"
 )
 
 type localWriteFunc func(*coordData) *CoordErr
@@ -568,12 +569,14 @@ func (self *NsqdCoordinator) putMessageOnSlave(coord *TopicCoordinator, logData 
 		if putDelayed {
 			delayQ, err := topic.GetOrCreateDelayedQueueNoLock(logMgr)
 			if err == nil {
-				queueEnd, localErr = delayQ.PutMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
+				queueEnd, localErr = delayQ.PutMessageOnReplica(msg,
+					nsqd.BackendOffset(logData.MsgOffset), int64(logData.MsgSize))
 			} else {
 				localErr = err
 			}
 		} else {
-			queueEnd, localErr = topic.PutMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset))
+			queueEnd, localErr = topic.PutMessageOnReplica(msg, nsqd.BackendOffset(logData.MsgOffset),
+				int64(logData.MsgSize))
 		}
 		topic.Unlock()
 		if localErr != nil {
@@ -666,7 +669,8 @@ func (self *NsqdCoordinator) putMessagesOnSlave(coord *TopicCoordinator, logData
 			}
 		}
 
-		queueEnd, localErr = topic.PutMessagesOnReplica(msgs, nsqd.BackendOffset(logData.MsgOffset))
+		queueEnd, localErr = topic.PutMessagesOnReplica(msgs,
+			nsqd.BackendOffset(logData.MsgOffset), int64(logData.MsgSize))
 		if checkCost {
 			cost2 := time.Now().Sub(start)
 			if cost2 > time.Millisecond {
