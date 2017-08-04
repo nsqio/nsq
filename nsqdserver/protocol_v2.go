@@ -1454,9 +1454,13 @@ func (p *protocolV2) internalPubExtAndTrace(client *nsqd.ClientV2, params [][]by
 		//parse traceID, if there is any
 		traceIDJson, existInJsonHeader := jsonHeader.CheckGet(ext.TRACE_ID_KEY)
 		if existInJsonHeader {
-			traceID, err = traceIDJson.Uint64()
+			traceIDStr, err := traceIDJson.String()
 			if err != nil {
-				return nil, protocol.NewClientErr(err, "INVALID_TRACE_ID", "fail to parse trace id")
+				return nil, protocol.NewClientErr(err, "INVALID_TRACE_ID", "passin trace id should be string")
+			}
+			traceID, err = strconv.ParseUint(traceIDStr, 10, 0)
+			if err != nil {
+				return nil, protocol.NewClientErr(err, "INVALID_TRACE_ID", "invalid trace id")
 			}
 			needTraceRsp = true
 		}

@@ -333,6 +333,8 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			if exist {
 				var ok bool
 				if traceIDStr, ok = traceIDI.(string); !ok {
+					nsqd.NsqLogger().Logf("trace id invalid %v should be string, %v",
+						traceIDStr, err)
 					return nil, http_api.Err{400, "INVALID_TRACE_ID"}
 				}
 				traceID, err = strconv.ParseUint(traceIDStr, 10, 0)
