@@ -46,8 +46,8 @@ func writeDelayedMessageToBackendWithCheck(buf *bytes.Buffer, msg *Message,
 	if err != nil {
 		return 0, 0, diskQueueEndInfo{}, err
 	}
-	if checkSize > 0 && checkSize != wsize {
-		return 0, 0, diskQueueEndInfo{}, fmt.Errorf("write message size mismatch: %v vs %v", checkSize, wsize)
+	if checkSize > 0 && checkSize != wsize+4 {
+		return 0, 0, diskQueueEndInfo{}, fmt.Errorf("write message size mismatch: %v vs %v", checkSize, wsize+4)
 	}
 	return bq.PutV2(buf.Bytes())
 }

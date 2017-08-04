@@ -48,8 +48,9 @@ func writeMessageToBackendWithCheck(writeExt bool, buf *bytes.Buffer, msg *Messa
 	if err != nil {
 		return 0, 0, diskQueueEndInfo{}, err
 	}
-	if checkSize > 0 && wsize != checkSize {
-		return 0, 0, diskQueueEndInfo{}, fmt.Errorf("message write size mismatch %v vs %v", checkSize, wsize)
+	// there are 4bytes data length on disk.
+	if checkSize > 0 && wsize+4 != checkSize {
+		return 0, 0, diskQueueEndInfo{}, fmt.Errorf("message write size mismatch %v vs %v", checkSize, wsize+4)
 	}
 	return bq.PutV2(buf.Bytes())
 }
