@@ -172,6 +172,35 @@ func TestHTTPmpubBinary(t *testing.T) {
 	test.Equal(t, int64(5), topic.Depth())
 }
 
+func TestHTTPmpubForNonNormalizedBinaryParam(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_http_mpub_bin" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+
+	mpub := make([][]byte, 5)
+	for i := range mpub {
+		mpub[i] = make([]byte, 100)
+	}
+	cmd, _ := nsq.MultiPublish(topicName, mpub)
+	buf := bytes.NewBuffer(cmd.Body)
+
+	url := fmt.Sprintf("http://%s/mpub?topic=%s&binary=non_normalized_binary_param", httpAddr, topicName)
+	resp, err := http.Post(url, "application/octet-stream", buf)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	test.Equal(t, "OK", string(body))
+
+	time.Sleep(5 * time.Millisecond)
+
+	test.Equal(t, int64(5), topic.Depth())
+}
+
 func TestHTTPpubDefer(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
