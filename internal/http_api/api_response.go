@@ -100,6 +100,17 @@ func V1(f APIHandler) APIHandler {
 	}
 }
 
+func V1Stream(f APIHandler) APIHandler {
+	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+		_, err := f(w, req, ps)
+		if err != nil {
+			RespondV1(w, err.(Err).Code, err)
+			return nil, nil
+		}
+		return nil, nil
+	}
+}
+
 func Respond(w http.ResponseWriter, statusCode int, statusTxt string, data interface{}) {
 	var response []byte
 	var err error

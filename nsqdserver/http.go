@@ -22,6 +22,7 @@ import (
 	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/http_api"
+	"github.com/absolute8511/nsq/internal/levellogger"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
@@ -81,7 +82,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/delayqueue/enable", http_api.Decorate(s.doEnableDelayedQueue, log, http_api.V1))
-	router.Handle("GET", "/delayqueue/backupto", http_api.Decorate(s.doDelayedQueueBackupTo, log, http_api.V1))
+	router.Handle("GET", "/delayqueue/backupto", http_api.Decorate(s.doDelayedQueueBackupTo, log, http_api.V1Stream))
 
 	//router.Handle("POST", "/topic/delete", http_api.Decorate(s.doDeleteTopic, http_api.DeprecatedAPI, log, http_api.V1))
 
@@ -345,7 +346,7 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 				needTraceRsp = true
 			}
 
-			jsonHeaderExtBytes, err :=  json.Marshal(&jsonHeaderExt)
+			jsonHeaderExtBytes, err := json.Marshal(&jsonHeaderExt)
 			if err != nil {
 				return nil, http_api.Err{400, ext.E_INVALID_JSON_HEADER}
 			}
@@ -357,6 +358,9 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{400, ext.E_EXT_NOT_SUPPORT}
 		} else {
 			extContent = ext.NewNoExt()
+		}
+		if needTraceRsp || atomic.LoadInt32(&topic.EnableTrace) == 1 {
+			asyncAction = false
 		}
 
 		id := nsqd.MessageID(0)
@@ -377,6 +381,9 @@ func (s *httpServer) internalPUB(w http.ResponseWriter, req *http.Request, ps ht
 			return nil, http_api.Err{503, err.Error()}
 		}
 
+		if traceID != 0 || atomic.LoadInt32(&topic.EnableTrace) == 1 || nsqd.NsqLogger().Level() >= levellogger.LOG_DETAIL {
+			nsqd.GetMsgTracer().TracePubClient(topic.GetTopicName(), topic.GetTopicPart(), traceID, id, offset, req.RemoteAddr)
+		}
 		cost := time.Now().UnixNano() - startPub
 		topic.GetDetailStats().UpdateTopicMsgStats(int64(len(body)), cost/1000)
 		if needTraceRsp {
