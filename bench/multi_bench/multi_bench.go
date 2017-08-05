@@ -1149,7 +1149,7 @@ func (c *consumeHandler) HandleMessage(message *nsq.Message) error {
 		log.Printf("got message body size mismatch : %v \n", len(message.Body))
 	}
 	newCount := atomic.AddInt64(&totalSubMsgCount, 1)
-	if newCount < 2 && !c.checkDelay {
+	if newCount < 2 && !c.checkDelay && !(*ordered) {
 		return errors.New("failed by need.")
 	}
 	return nil

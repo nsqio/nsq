@@ -1346,7 +1346,7 @@ func getTracedReponse(id nsqd.MessageID, traceID uint64, offset nsqd.BackendOffs
 	binary.BigEndian.PutUint32(buf[pos:pos+4], uint32(rawSize))
 
 	if nsqd.NsqLogger().Level() >= levellogger.LOG_DEBUG {
-		nsqd.NsqLogger().Logf("pub traced %v (%v) response : %v", id, offset, buf)
+		nsqd.NsqLogger().Logf("pub traced %v (%v, %v) response : %v", id, offset, rawSize, buf)
 	}
 	return buf, nil
 }
