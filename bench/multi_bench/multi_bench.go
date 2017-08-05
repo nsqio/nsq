@@ -1000,6 +1000,7 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 	endTime := time.Now().Add(td)
 	traceIDs := make([]uint64, len(batch))
 	var traceResp pubResp
+	pubIDCounter := int64(0)
 	for {
 		if time.Now().After(endTime) {
 			break
@@ -1007,6 +1008,10 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 		if (*sleepfor).Nanoseconds() > int64(10000) {
 			time.Sleep(*sleepfor)
 		}
+
+		traceID := atomic.AddInt64(&pubIDCounter, 1)
+		traceData := make([]byte, 8)
+		binary.BigEndian.PutUint64(traceData, uint64(traceID))
 
 		singleMsg := batch[0]
 		if testDelay && atomic.LoadInt64(&currentMsgCount)%int64(*delayPercent) == 0 {
@@ -1016,14 +1021,13 @@ func pubWorker(td time.Duration, globalPubMgr *nsq.TopicProducerMgr, topicName s
 				atomic.StoreInt64(&maxDelayTs, int64(delayTs))
 			}
 			singleMsg = []byte("delay-" + strconv.Itoa(delayTs))
-			batch[0] = singleMsg
 		}
 		if *trace {
 			if batchSize == 1 {
 				if *ordered {
-					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishOrdered(topicName, batch[0], singleMsg)
+					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishOrdered(topicName, traceData, singleMsg)
 				} else {
-					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, traceIDs[0], singleMsg)
+					traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.PublishAndTrace(topicName, uint64(traceID), singleMsg)
 				}
 			} else {
 				traceResp.id, traceResp.offset, traceResp.rawSize, err = pubMgr.MultiPublishAndTrace(topicName, traceIDs, batch)
