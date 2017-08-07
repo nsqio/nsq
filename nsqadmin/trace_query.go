@@ -30,7 +30,7 @@ type TraceLogQueryInfo struct {
 }
 
 func NewLogQueryInfo(appID string, appName string, logStoreID string,
-	logStoreName string, span time.Duration, indexFields IndexFieldsQuery) *TraceLogQueryInfo {
+	logStoreName string, span time.Duration, indexFields IndexFieldsQuery, pageCnt int) *TraceLogQueryInfo {
 	q := &TraceLogQueryInfo{
 		Sort:         "score",
 		AppID:        appID,
@@ -44,7 +44,7 @@ func NewLogQueryInfo(appID string, appName string, logStoreID string,
 	d, _ := json.Marshal(indexFields)
 	q.IndexFields = string(d)
 	q.PageNumber = 1
-	q.PageSize = 60
+	q.PageSize = pageCnt
 	return q
 }
 
@@ -75,14 +75,16 @@ type TraceLog struct {
 	TotalCount  int            `json:"totalCount"`
 }
 
-func (self *TraceLog) Len() int {
-	return len(self.LogDataDtos)
+type TLListT []TraceLogData
+
+func (l TLListT) Len() int {
+	return len(l)
 }
-func (self *TraceLog) Swap(i, j int) {
-	self.LogDataDtos[i], self.LogDataDtos[j] = self.LogDataDtos[j], self.LogDataDtos[i]
+func (l TLListT) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
 }
-func (self *TraceLog) Less(i, j int) bool {
-	return self.LogDataDtos[i].Timestamp < self.LogDataDtos[j].Timestamp
+func (l TLListT) Less(i, j int) bool {
+	return l[i].Timestamp < l[j].Timestamp
 }
 
 type TraceLogResp struct {

@@ -16,12 +16,13 @@ import (
 	"time"
 
 	"bytes"
+	"sort"
+
 	"github.com/absolute8511/nsq/internal/clusterinfo"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/julienschmidt/httprouter"
-	"sort"
 )
 
 func maybeWarnMsg(msgs []string) string {
@@ -577,6 +578,7 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 	var queryParam struct {
 		Topic     string `json:"topic"`
 		Partition string `json:"partition_id"`
+		Channel   string `json:"channel"`
 		MsgID     string `json:"msgid"`
 		TraceID   string `json:"traceid"`
 		Hours     string `json:"hours"`
@@ -645,7 +647,7 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 		s.ctx.nsqadmin.opts.TraceLogIndexID,
 		s.ctx.nsqadmin.opts.TraceLogIndexName,
 		time.Hour*time.Duration(recentHour),
-		filters)
+		filters, s.ctx.nsqadmin.opts.TraceLogPageCount)
 	d, _ := json.Marshal(queryBody)
 
 	s.ctx.nsqadmin.logf("search body: %v", string(d))
@@ -710,6 +712,9 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 			}
 		}
 		item := items[0]
+		if queryParam.Channel != "" && item.Channel != queryParam.Channel {
+			continue
+		}
 		resultList.LogDataDtos[index].TraceLogItemInfo = item
 		pid := GetPartitionFromMsgID(int64(item.MsgID))
 		if len(partitionProducers[strconv.Itoa(pid)]) == 0 {
@@ -728,7 +733,16 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 		}
 		resultList.LogDataDtos[index].RawMsgData = msgBody
 	}
-	sort.Sort(&resultList)
+	s.ctx.nsqadmin.logf("get msg trace data : %v", resultList.LogDataDtos)
+	logDataFilterEmpty := make(TLListT, 0, len(resultList.LogDataDtos))
+	for _, v := range resultList.LogDataDtos {
+		if v.MsgID == 0 {
+			continue
+		}
+		logDataFilterEmpty = append(logDataFilterEmpty, v)
+	}
+	sort.Sort(logDataFilterEmpty)
+	s.ctx.nsqadmin.logf("sorted msg trace data : %v", logDataFilterEmpty)
 	var requestMsg string
 	if needGetRequestMsg && requestMsgID > 0 {
 		pid := GetPartitionFromMsgID(int64(requestMsgID))
@@ -758,7 +772,7 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 		TotalCount  int            `json:"totalCount"`
 		RequestMsg  string         `json:"request_msg"`
 		Message     string         `json:"message"`
-	}{resultList.LogDataDtos, resultList.TotalCount, requestMsg, maybeWarnMsg(warnMessages)}, nil
+	}{logDataFilterEmpty, resultList.TotalCount, requestMsg, maybeWarnMsg(warnMessages)}, nil
 }
 
 func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -953,8 +967,8 @@ func (s *httpServer) topicChannelAction(req *http.Request, topicName string, cha
 				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 			if err == nil {
 				err = s.ci.EmptyChannel(topicName, channelName,
-				s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
-				s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
+					s.ctx.nsqadmin.opts.NSQLookupdHTTPAddresses,
+					s.ctx.nsqadmin.opts.NSQDHTTPAddresses)
 			}
 			s.notifyAdminAction("skip_channel", topicName, channelName, "", req)
 		}

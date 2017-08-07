@@ -636,7 +636,6 @@ func TestSkipping(t *testing.T) {
 	test.Equal(t, msgOut.Body, []byte("test body3"))
 }
 
-
 func createJsonHeaderExtWithTag(t *testing.T, tag string) *ext.JsonHeaderExt {
 	jsonHeader := make(map[string]interface{})
 	jsonHeader[ext.CLEINT_DISPATCH_TAG_KEY] = tag
@@ -2504,9 +2503,10 @@ func testDelayManyMessagesToQueueEnd(t *testing.T, changedLeader bool) {
 						atomic.AddInt32(&reqCnt, 1)
 						continue
 					} else if now-delayTs > int(opts.QueueScanInterval*3+500*time.Millisecond) {
+						t.Logf("\033[31m got delayed message too late: %v (id %v), now: %v\033[39m\n\n", string(msgOut.Body), msgOut.ID, now)
 						if msgOut.Attempts > 1 {
 							t.Errorf("\033[31m got delayed message too late: %v (id %v), now: %v\033[39m\n\n", string(msgOut.Body), msgOut.ID, now)
-						} else if now-delayTs > int(opts.QueueScanInterval*3+time.Second) {
+						} else if now-delayTs > int(opts.QueueScanInterval*3+time.Second*10) {
 							t.Errorf("\033[31m got delayed message too late: %v (id %v), now: %v\033[39m\n\n", string(msgOut.Body), msgOut.ID, now)
 						}
 					}

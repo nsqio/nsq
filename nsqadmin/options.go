@@ -1,8 +1,9 @@
 package nsqadmin
 
 import (
-	"github.com/absolute8511/nsq/internal/levellogger"
 	"time"
+
+	"github.com/absolute8511/nsq/internal/levellogger"
 )
 
 type Options struct {
@@ -32,9 +33,10 @@ type Options struct {
 	TraceAppName             string `flag:"trace-app-name"`
 	TraceLogIndexID          string `flag:"trace-log-index-id"`
 	TraceLogIndexName        string `flag:"trace-log-index-name"`
+	TraceLogPageCount        int    `flag:"trace-log-page-count"`
 
-	ChannelCreationRetry	int	`flag:"channel-create-retry"`
-	ChannelCreationBackoffInterval	int `flag:"channel-create-backoff-interval"`
+	ChannelCreationRetry           int `flag:"channel-create-retry"`
+	ChannelCreationBackoffInterval int `flag:"channel-create-backoff-interval"`
 
 	LogDir string `flag:"log-dir" cfg:"log_dir"`
 	Logger levellogger.Logger
@@ -42,14 +44,15 @@ type Options struct {
 
 func NewOptions() *Options {
 	return &Options{
-		HTTPAddress:         "0.0.0.0:4171",
-		UseStatsdPrefixes:   true,
-		StatsdPrefix:        "nsq.%s",
-		StatsdCounterFormat: "stats.counters.%s.count",
-		StatsdGaugeFormat:   "stats.gauges.%s",
-		StatsdInterval:      60 * time.Second,
-		ChannelCreationRetry:3,
-		ChannelCreationBackoffInterval:1000,
-		Logger:              &levellogger.GLogger{},
+		HTTPAddress:                    "0.0.0.0:4171",
+		UseStatsdPrefixes:              true,
+		StatsdPrefix:                   "nsq.%s",
+		StatsdCounterFormat:            "stats.counters.%s.count",
+		StatsdGaugeFormat:              "stats.gauges.%s",
+		StatsdInterval:                 60 * time.Second,
+		ChannelCreationRetry:           3,
+		ChannelCreationBackoffInterval: 1000,
+		Logger:            &levellogger.GLogger{},
+		TraceLogPageCount: 60,
 	}
 }

@@ -23,6 +23,7 @@ var SearchView = BaseView.extend({
         $('#loadingmessage').show();
         var topic = $(e.target.form.elements['topic']).val();
         var partition_id = $(e.target.form.elements['partition_id']).val();
+        var channel = $(e.target.form.elements['channel']).val();
         var msgid = $(e.target.form.elements['msgid']).val();
         var traceid = $(e.target.form.elements['traceid']).val();
         var hours = $(e.target.form.elements['hours']).val();
@@ -30,6 +31,7 @@ var SearchView = BaseView.extend({
         $.post(AppState.url('/search/messages'), JSON.stringify({
                 'topic': topic,
                 'partition_id': partition_id,
+                'channel': channel,
                 'msgid': msgid,
                 'traceid': traceid,
                 'ishashed': ishashed,
