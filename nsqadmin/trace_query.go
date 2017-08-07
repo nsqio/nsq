@@ -2,6 +2,7 @@ package nsqadmin
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 )
 
@@ -57,6 +58,26 @@ type TraceLogItemInfo struct {
 	Action    string `json:"action"`
 }
 
+func (tl TraceLogItemInfo) ToJsJson() TraceLogItemInfoForJs {
+	return TraceLogItemInfoForJs{
+		MsgID:     strconv.FormatUint(tl.MsgID, 10),
+		TraceID:   strconv.FormatUint(tl.TraceID, 10),
+		Topic:     tl.Topic,
+		Channel:   tl.Channel,
+		Timestamp: strconv.FormatInt(tl.Timestamp, 10),
+		Action:    tl.Action,
+	}
+}
+
+type TraceLogItemInfoForJs struct {
+	MsgID     string `json:"msgid"`
+	TraceID   string `json:"traceid"`
+	Topic     string `json:"topic"`
+	Channel   string `json:"channel"`
+	Timestamp string `json:"timestamp"`
+	Action    string `json:"action"`
+}
+
 type TraceLogData struct {
 	ID       string `json:"id"`
 	Time     string `json:"time"`
@@ -67,6 +88,10 @@ type TraceLogData struct {
 	Extra    string `json:"extra"`
 	Extra1   string `json:"extra1"`
 	TraceLogItemInfo
+	RawMsgData string `json:"raw_msg_data"`
+}
+type TraceLogDataForJs struct {
+	TraceLogItemInfoForJs
 	RawMsgData string `json:"raw_msg_data"`
 }
 

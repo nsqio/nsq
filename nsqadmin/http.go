@@ -742,6 +742,14 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 		logDataFilterEmpty = append(logDataFilterEmpty, v)
 	}
 	sort.Sort(logDataFilterEmpty)
+	// js can not handle int64 in json, we convert int64 to string for showing.
+	logDataForJs := make([]TraceLogDataForJs, 0, len(logDataFilterEmpty))
+	for _, v := range logDataFilterEmpty {
+		var jsv TraceLogDataForJs
+		jsv.TraceLogItemInfoForJs = v.ToJsJson()
+		jsv.RawMsgData = v.RawMsgData
+		logDataForJs = append(logDataForJs, jsv)
+	}
 	s.ctx.nsqadmin.logf("sorted msg trace data : %v", logDataFilterEmpty)
 	var requestMsg string
 	if needGetRequestMsg && requestMsgID > 0 {
@@ -768,11 +776,11 @@ func (s *httpServer) searchMessageTrace(w http.ResponseWriter, req *http.Request
 	}
 
 	return struct {
-		LogDataDtos []TraceLogData `json:"logDataDtos"`
-		TotalCount  int            `json:"totalCount"`
-		RequestMsg  string         `json:"request_msg"`
-		Message     string         `json:"message"`
-	}{logDataFilterEmpty, resultList.TotalCount, requestMsg, maybeWarnMsg(warnMessages)}, nil
+		LogDataDtos []TraceLogDataForJs `json:"logDataDtos"`
+		TotalCount  int                 `json:"totalCount"`
+		RequestMsg  string              `json:"request_msg"`
+		Message     string              `json:"message"`
+	}{logDataForJs, resultList.TotalCount, requestMsg, maybeWarnMsg(warnMessages)}, nil
 }
 
 func (s *httpServer) createTopicChannelHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
