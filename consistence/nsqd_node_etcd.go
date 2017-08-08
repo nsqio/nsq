@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/client"
-	etcdlock "github.com/reechou/xlock2"
+	etcdlock "github.com/absolute8511/xlock2"
 	"golang.org/x/net/context"
 )
 
