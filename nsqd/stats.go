@@ -145,6 +145,37 @@ func (n *NSQD) GetStats() []TopicStats {
 	return topics
 }
 
+func (n *NSQD) GetTopicStats(topic string) TopicStats {
+	n.RLock()
+	var realTopic *Topic
+	for _, t := range n.topicMap {
+		if topic == t.name {
+			realTopic = t
+			break
+		}
+	}
+	n.RUnlock()
+	realTopic.RLock()
+	realChannels := make([]*Channel, 0, len(realTopic.channelMap))
+	for _, c := range realTopic.channelMap {
+		realChannels = append(realChannels, c)
+	}
+	realTopic.RUnlock()
+	sort.Sort(ChannelsByName{realChannels})
+	channels := make([]ChannelStats, 0, len(realChannels))
+	for _, c := range realChannels {
+		c.RLock()
+		clients := make([]ClientStats, 0, len(c.clients))
+		for _, client := range c.clients {
+			clients = append(clients, client.Stats())
+		}
+		c.RUnlock()
+		channels = append(channels, NewChannelStats(c, clients))
+	}
+	topics := NewTopicStats(realTopic, channels)
+	return topics
+}
+
 type memStats struct {
 	HeapObjects       uint64 `json:"heap_objects"`
 	HeapIdleBytes     uint64 `json:"heap_idle_bytes"`

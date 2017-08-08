@@ -38,6 +38,12 @@ func TestStats(t *testing.T) {
 	test.Equal(t, 1, len(stats))
 	test.Equal(t, 1, len(stats[0].Channels))
 	test.Equal(t, 1, len(stats[0].Channels[0].Clients))
+
+	topicstat := nsqd.GetTopicStats(topicName)
+	t.Logf("topic stats: %+v", topicstat)
+
+	test.Equal(t, 1, len(topicstat.Channels))
+	test.Equal(t, 1, len(topicstat.Channels[0].Clients))
 }
 
 func TestClientAttributes(t *testing.T) {

@@ -494,7 +494,12 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	channelName, _ := reqParams.Get("channel")
 	jsonFormat := formatString == "json"
 
-	stats := s.ctx.nsqd.GetStats()
+	var stats []TopicStats
+	if topicName == "" {
+		stats = s.ctx.nsqd.GetStats()
+	} else {
+		stats = []TopicStats{s.ctx.nsqd.GetTopicStats(topicName)}
+	}
 	health := s.ctx.nsqd.GetHealth()
 	startTime := s.ctx.nsqd.GetStartTime()
 	uptime := time.Since(startTime)

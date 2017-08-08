@@ -7,6 +7,6 @@ $.ajaxPrefilter(function(options) {
         'X-UserAgent': USER_AGENT,
         'Accept': 'application/vnd.nsq; version=1.0'
     });
-    options['timeout'] = 20 * 1000;
+    options['timeout'] = 120 * 1000;
     options['contentType'] = 'application/json';
 });
