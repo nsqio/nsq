@@ -445,3 +445,10 @@ func (c *context) internalRequeueToEnd(ch *nsqd.Channel,
 	err = c.FinishMessage(ch, oldMsg.GetClientID(), "", oldMsg.ID)
 	return err
 }
+
+func (c *context) GreedyCleanTopicOldData(topic *nsqd.Topic) error {
+	if c.nsqdCoord != nil {
+		return c.nsqdCoord.GreedyCleanTopicOldData(topic)
+	}
+	return nil
+}

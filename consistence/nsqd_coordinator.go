@@ -308,48 +308,68 @@ func (self *NsqdCoordinator) Stop() {
 	self.lookupMutex.Unlock()
 }
 
-func (self *NsqdCoordinator) checkAndCleanOldData() {
-	defer self.wg.Done()
-	ticker := time.NewTicker(time.Minute * 30)
-	doLogQClean := func(tcData *coordData, localTopic *nsqd.Topic, retentionSize int64, fromDelayedQueue bool) {
-		localLogQ, logMgr := getCommitLogAndLocalLogQ(tcData, localTopic, fromDelayedQueue)
-		if localLogQ == nil || logMgr == nil {
+func doLogQClean(tcData *coordData, localTopic *nsqd.Topic, retentionSize int64, fromDelayedQueue bool) {
+	localLogQ, logMgr := getCommitLogAndLocalLogQ(tcData, localTopic, fromDelayedQueue)
+	if localLogQ == nil || logMgr == nil {
+		return
+	}
+	// first clean we just check the clean offset
+	// then we clean the commit log to make sure no access from log index
+	// after that, we clean the real queue data
+	cleanEndInfo, err := localLogQ.TryCleanOldData(retentionSize, true, 0)
+	if err != nil {
+		coordLog.Infof("failed to get clean end: %v", err)
+	}
+	coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
+	if cleanEndInfo != nil {
+		matchIndex, matchOffset, l, err := logMgr.SearchLogDataByMsgOffset(int64(cleanEndInfo.Offset()))
+		if err != nil {
+			coordLog.Infof("search log failed: %v", err)
 			return
 		}
-		cleanEndInfo, err := localLogQ.TryCleanOldData(retentionSize, true, 0)
-		if err != nil {
-			coordLog.Infof("failed to get clean end: %v", err)
+		coordLog.Infof("clean commit log at : %v, %v, %v", matchIndex, matchOffset, l)
+		if l.MsgOffset > int64(cleanEndInfo.Offset()) {
+			coordLog.Warningf("search log clean position exceed the clean end, something wrong")
+			return
 		}
-		coordLog.Infof("topic %v try clean to : %v", tcData.topicInfo.GetTopicDesp(), cleanEndInfo)
-		if cleanEndInfo != nil {
-			matchIndex, matchOffset, l, err := logMgr.SearchLogDataByMsgOffset(int64(cleanEndInfo.Offset()))
+		maxCleanOffset := cleanEndInfo.Offset()
+		if l.MsgOffset < int64(cleanEndInfo.Offset()) {
+			// the commit log is in the middle of the batch put,
+			// it may happen that the batch across the end of the segment of data file,
+			// so we should not clean the segment at the middle of the batch.
+			maxCleanOffset = nsqd.BackendOffset(l.MsgOffset)
+		}
+		err = logMgr.CleanOldData(matchIndex, matchOffset)
+		if err != nil {
+			coordLog.Infof("clean commit log err : %v", err)
+		} else {
+			_, err := localLogQ.TryCleanOldData(retentionSize, false, maxCleanOffset)
 			if err != nil {
-				coordLog.Infof("search log failed: %v", err)
-				return
-			}
-			coordLog.Infof("clean commit log at : %v, %v, %v", matchIndex, matchOffset, l)
-			if l.MsgOffset > int64(cleanEndInfo.Offset()) {
-				coordLog.Warningf("search log clean position exceed the clean end, something wrong")
-				return
-			}
-			maxCleanOffset := cleanEndInfo.Offset()
-			if l.MsgOffset < int64(cleanEndInfo.Offset()) {
-				// the commit log is in the middle of the batch put,
-				// it may happen that the batch across the end of the segment of data file,
-				// so we should not clean the segment at the middle of the batch.
-				maxCleanOffset = nsqd.BackendOffset(l.MsgOffset)
-			}
-			err = logMgr.CleanOldData(matchIndex, matchOffset)
-			if err != nil {
-				coordLog.Infof("clean commit log err : %v", err)
-			} else {
-				_, err := localLogQ.TryCleanOldData(retentionSize, false, maxCleanOffset)
-				if err != nil {
-					coordLog.Infof("failed to clean disk queue: %v", err)
-				}
+				coordLog.Infof("failed to clean disk queue: %v", err)
 			}
 		}
 	}
+}
+
+func (self *NsqdCoordinator) GreedyCleanTopicOldData(localTopic *nsqd.Topic) error {
+	tcData, err := self.getTopicCoordData(localTopic.GetTopicName(), localTopic.GetTopicPart())
+	if err != nil {
+		return err.ToErrorType()
+	}
+
+	retentionDay := tcData.topicInfo.RetentionDay
+	if retentionDay == 0 {
+		retentionDay = int32(nsqd.DEFAULT_RETENTION_DAYS)
+	}
+	retentionSize := (MAX_TOPIC_RETENTION_SIZE_PER_DAY / 16) * int64(retentionDay)
+	doLogQClean(tcData, localTopic, retentionSize, false)
+	doLogQClean(tcData, localTopic, retentionSize, true)
+	return nil
+}
+
+func (self *NsqdCoordinator) checkAndCleanOldData() {
+	defer self.wg.Done()
+	ticker := time.NewTicker(time.Minute * 30)
 
 	doCheckAndCleanOld := func(checkRetentionDay bool) {
 		tmpCoords := make(map[string]map[int]*TopicCoordinator)
@@ -382,9 +402,6 @@ func (self *NsqdCoordinator) checkAndCleanOldData() {
 				if checkRetentionDay {
 					retentionSize = 0
 				}
-				// first clean we just check the clean offset
-				// then we clean the commit log to make sure no access from log index
-				// after that, we clean the real queue data
 				doLogQClean(tcData, localTopic, retentionSize, false)
 				doLogQClean(tcData, localTopic, retentionSize, true)
 			}
