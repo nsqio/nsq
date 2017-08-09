@@ -494,12 +494,24 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	channelName, _ := reqParams.Get("channel")
 	jsonFormat := formatString == "json"
 
-	var stats []TopicStats
+	var (
+		state TopicStats
+		stats []TopicStats
+	)
 	if topicName == "" {
 		stats = s.ctx.nsqd.GetStats()
+	} else if channelName == "" {
+		state, err = s.ctx.nsqd.GetTopicStats(topicName)
 	} else {
-		stats = []TopicStats{s.ctx.nsqd.GetTopicStats(topicName)}
+		state, err = s.ctx.nsqd.GetChannelStats(topicName, channelName)
 	}
+	if nil != err {
+		s.ctx.nsqd.logf(LOG_ERROR, "failed to get stats - %s", err)
+		return nil, http_api.Err{404, "topic/channel is not found"}
+	} else if nil == stats {
+		stats = []TopicStats{state}
+	}
+
 	health := s.ctx.nsqd.GetHealth()
 	startTime := s.ctx.nsqd.GetStartTime()
 	uptime := time.Since(startTime)

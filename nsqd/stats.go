@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"errors"
 	"runtime"
 	"sort"
 	"sync/atomic"
@@ -145,7 +146,7 @@ func (n *NSQD) GetStats() []TopicStats {
 	return topics
 }
 
-func (n *NSQD) GetTopicStats(topic string) TopicStats {
+func (n *NSQD) GetTopicStats(topic string) (TopicStats, error) {
 	n.RLock()
 	var realTopic *Topic
 	for _, t := range n.topicMap {
@@ -155,25 +156,63 @@ func (n *NSQD) GetTopicStats(topic string) TopicStats {
 		}
 	}
 	n.RUnlock()
-	realTopic.RLock()
-	realChannels := make([]*Channel, 0, len(realTopic.channelMap))
-	for _, c := range realTopic.channelMap {
-		realChannels = append(realChannels, c)
-	}
-	realTopic.RUnlock()
-	sort.Sort(ChannelsByName{realChannels})
-	channels := make([]ChannelStats, 0, len(realChannels))
-	for _, c := range realChannels {
-		c.RLock()
-		clients := make([]ClientStats, 0, len(c.clients))
-		for _, client := range c.clients {
-			clients = append(clients, client.Stats())
+
+	if nil == realTopic {
+		return TopicStats{}, errors.New("the topic is not found.")
+	} else {
+		realTopic.RLock()
+		realChannels := make([]*Channel, 0, len(realTopic.channelMap))
+		for _, c := range realTopic.channelMap {
+			realChannels = append(realChannels, c)
 		}
-		c.RUnlock()
-		channels = append(channels, NewChannelStats(c, clients))
+		realTopic.RUnlock()
+		sort.Sort(ChannelsByName{realChannels})
+		channels := make([]ChannelStats, 0, len(realChannels))
+		for _, c := range realChannels {
+			channels = append(channels, NewChannelStats(c, nil))
+		}
+		topics := NewTopicStats(realTopic, channels)
+		return topics, nil
 	}
-	topics := NewTopicStats(realTopic, channels)
-	return topics
+}
+
+func (n *NSQD) GetChannelStats(topic, channel string) (TopicStats, error) {
+	n.RLock()
+	var realTopic *Topic
+	for _, t := range n.topicMap {
+		if topic == t.name {
+			realTopic = t
+			break
+		}
+	}
+	n.RUnlock()
+
+	if nil == realTopic {
+		return TopicStats{}, errors.New("the topic is not found.")
+	} else {
+		realTopic.RLock()
+		realChannels := make([]*Channel, 0, len(realTopic.channelMap))
+		for _, c := range realTopic.channelMap {
+			realChannels = append(realChannels, c)
+		}
+		realTopic.RUnlock()
+		sort.Sort(ChannelsByName{realChannels})
+		channels := make([]ChannelStats, 0, 1)
+		for _, c := range realChannels {
+			if c.name == channel {
+				c.RLock()
+				clients := make([]ClientStats, 0, len(c.clients))
+				for _, client := range c.clients {
+					clients = append(clients, client.Stats())
+				}
+				c.RUnlock()
+				channels = append(channels, NewChannelStats(c, clients))
+				break
+			}
+		}
+		topics := NewTopicStats(realTopic, channels)
+		return topics, nil
+	}
 }
 
 type memStats struct {
