@@ -799,10 +799,17 @@ func checkAndFixLocalLogQueueEnd(tc *coordData,
 								localErr = localLogQ.ResetBackendEndNoLock(nsqd.BackendOffset(logData.MsgOffset+int64(logData.MsgSize)),
 									logData.MsgCnt+int64(logData.MsgNum)-1)
 								if localErr != nil {
-									coordLog.Errorf("topic %v reset local queue failed: %v", tname, localErr)
+									coordLog.Infof("topic %v reset local queue failed: %v at %v:%v", tname, localErr, logIndex, logOffset)
 								} else {
-									coordLog.Warningf("topic %v fix local queue to: %v", tname, localErr)
-									return nil
+									coordLog.Warningf("topic %v fix local queue to: %v, %v, commit log: %v:%v:%v", tname,
+										logData, realEnd, logIndex, logOffset, cntNum)
+									_, localErr = logMgr.TruncateToOffsetV2(logIndex, logOffset+int64(GetLogDataSize()))
+									if localErr != nil {
+										coordLog.Errorf("topic %v reset local queue failed: %v, at %v:%v", tname,
+											localErr, logIndex, logOffset)
+									} else {
+										return nil
+									}
 								}
 							}
 						}
