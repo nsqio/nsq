@@ -3,13 +3,14 @@ package nsqd
 import (
 	"crypto/md5"
 	"crypto/tls"
-	"github.com/absolute8511/nsq/internal/levellogger"
 	"hash/crc32"
 	"io"
 	"log"
 	"net"
 	"os"
 	"time"
+
+	"github.com/absolute8511/nsq/internal/levellogger"
 )
 
 const (
@@ -91,7 +92,8 @@ type Options struct {
 	Logger       levellogger.Logger
 	RemoteTracer string `flag:"remote-tracer"`
 
-	RetentionDays int32 `flag:"retention-days" cfg:"retention_days"`
+	RetentionDays  int32 `flag:"retention-days" cfg:"retention_days"`
+	StartAsFixMode bool  `flag:"start-as-fix-mode"`
 }
 
 func NewOptions() *Options {

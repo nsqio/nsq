@@ -154,6 +154,7 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.String("log-dir", opts.LogDir, "directory for logs")
 	flagSet.String("remote-tracer", opts.RemoteTracer, "server for message tracing")
 	flagSet.Int("retention-days", int(opts.RetentionDays), "the default retention days for topic data")
+	flagSet.Bool("start-as-fix-mode", opts.StartAsFixMode, "enable data fix at start")
 
 	return flagSet
 }

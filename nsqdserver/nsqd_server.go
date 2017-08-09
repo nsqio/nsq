@@ -4,13 +4,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"github.com/absolute8511/nsq/consistence"
-	"github.com/absolute8511/nsq/nsqd"
 	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
 	"sync/atomic"
+
+	"github.com/absolute8511/nsq/consistence"
+	"github.com/absolute8511/nsq/nsqd"
 
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
@@ -82,6 +83,10 @@ func buildTLSConfig(opts *nsqd.Options) (*tls.Config, error) {
 
 func NewNsqdServer(opts *nsqd.Options) (*nsqd.NSQD, *NsqdServer) {
 	ip := opts.DecideBroadcast()
+	if opts.StartAsFixMode {
+		consistence.ForceFixLeaderData = true
+		nsqd.NsqLogger().LogWarningf("starting in data fix mode...")
+	}
 
 	nsqdInstance := nsqd.New(opts)
 

@@ -145,3 +145,6 @@ log_dir = "./"
 
 ## the time period (in hour) that the auto clean is allowed.
 auto_clean_interval = ["2", "4"]
+
+## whether we should fix the data if only one ISR is available
+start_as_fix_mode = true
