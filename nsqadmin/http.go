@@ -359,7 +359,11 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 	var totalMessages int64
 	for _, ts := range topicStats {
 		for _, cs := range ts.Channels {
-			totalClients += int64(len(cs.Clients))
+			if len(cs.Clients) > 0 {
+				totalClients += int64(len(cs.Clients))
+			} else {
+				totalClients += int64(cs.ClientCount)
+			}
 		}
 		totalMessages += ts.MessageCount
 	}

@@ -41,6 +41,7 @@ type ChannelStats struct {
 	DeferredCount int           `json:"deferred_count"`
 	MessageCount  uint64        `json:"message_count"`
 	RequeueCount  uint64        `json:"requeue_count"`
+	ClientCount   int           `json:"client_count"`
 	TimeoutCount  uint64        `json:"timeout_count"`
 	Clients       []ClientStats `json:"clients"`
 	Paused        bool          `json:"paused"`
@@ -57,6 +58,7 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		DeferredCount: len(c.deferredMessages),
 		MessageCount:  atomic.LoadUint64(&c.messageCount),
 		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
+		ClientCount:   len(c.clients),
 		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
 		Clients:       clients,
 		Paused:        c.IsPaused(),
