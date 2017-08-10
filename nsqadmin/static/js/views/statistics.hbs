@@ -14,12 +14,12 @@
                 {{#if top10.length}}
                     <table class="table table-condensed table-bordered">
                         <tr>
-                            <th>Topic Name</th>
+                            <th>Name</th>
                             <th>#</th>
                         </tr>
                         {{#each top10}}
                             <tr>
-                                <td><a class="link" href="/topics/{{urlencode topic_name}}">{{topic_name}}</a></td>
+                                <td><a class="link" href="/topics/{{name}}">{{name}}</a></td>
                                 <td>{{rank_value}}</td>
                             </tr>
                         {{/each}}

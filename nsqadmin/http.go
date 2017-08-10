@@ -110,7 +110,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.Handle("GET", "/api/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
 	router.Handle("GET", "/api/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
 	router.Handle("GET", "/api/statistics", http_api.Decorate(s.statisticsHandler, log, http_api.V1))
-	router.Handle("GET", "/api/statistics/:filter", http_api.Decorate(s.statisticsHandler, log, http_api.V1))
+	router.Handle("GET", "/api/statistics/:sortBy", http_api.Decorate(s.statisticsHandler, log, http_api.V1))
 	router.Handle("GET", "/api/cluster/stats", http_api.Decorate(s.clusterStatsHandler, log, http_api.V1))
 
 	return s
@@ -1036,10 +1036,13 @@ type counterStats struct {
 }
 
 type rankStats struct {
-	TopicName         string `json:"topic_name"`
-	TotalChannelDepth int64  `json:"total_channel_depth"`
-	MessageCount      int64  `json:"message_count"`
-	HourlyPubSize     int64  `json:"hourly_pubsize"`
+	Name         string 	 `json:"name"`
+	TotalChannelDepth int64  `json:"total_channel_depth,omitempty"`
+	MessageCount      int64  `json:"message_count,omitempty"`
+	HourlyPubSize     int64  `json:"hourly_pubsize,omitempty"`
+
+	RequeueCount	  int64	 `json:"requeue_count,omitempty"`
+	TimeoutCount      int64  `json:"timeout_count,omitempty"`
 }
 
 type RankList []*rankStats
@@ -1047,13 +1050,33 @@ type RankList []*rankStats
 func (t RankList) Len() int      { return len(t) }
 func (t RankList) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
 
+type ChannelByTimeout struct {
+	RankList
+}
+
+func (c ChannelByTimeout) Less(i, j int) bool {
+	channeli := c.RankList[i]
+	channelj := c.RankList[j]
+	return channeli.TimeoutCount > channelj.TimeoutCount
+}
+
+type ChannelByRequeue struct {
+	RankList
+}
+
+func (c ChannelByRequeue) Less(i, j int) bool {
+	channeli := c.RankList[i]
+	channelj := c.RankList[j]
+	return channeli.RequeueCount > channelj.RequeueCount
+}
+
 type TopicsByChannelDepth struct {
 	RankList
 }
 
 func (c TopicsByChannelDepth) Less(i, j int) bool {
 	if c.RankList[i].TotalChannelDepth == c.RankList[j].TotalChannelDepth {
-		return c.RankList[i].TopicName < c.RankList[j].TopicName
+		return c.RankList[i].Name < c.RankList[j].Name
 	}
 	l := c.RankList[i].TotalChannelDepth
 	r := c.RankList[j].TotalChannelDepth
@@ -1066,7 +1089,7 @@ type TopicsByHourlyPubsize struct {
 
 func (c TopicsByHourlyPubsize) Less(i, j int) bool {
 	if c.RankList[i].HourlyPubSize == c.RankList[j].HourlyPubSize {
-		return c.RankList[i].TopicName < c.RankList[j].TopicName
+		return c.RankList[i].Name < c.RankList[j].Name
 	}
 	l := c.RankList[i].HourlyPubSize
 	r := c.RankList[j].HourlyPubSize
@@ -1100,19 +1123,23 @@ func (s *httpServer) clusterStatsHandler(w http.ResponseWriter, req *http.Reques
 func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	var messages []string
 
-	filter := ps.ByName("filter")
-	s.ctx.nsqadmin.logf("filter passed in statisticsHandler: " + filter)
-	if "" == filter {
-		filter_str := []string{"channel-depth", "hourly-pubsize"}
+	sortBy := ps.ByName("sortBy")
+	s.ctx.nsqadmin.logf("sortBy filter passed in statisticsHandler: " + sortBy)
+	if "" == sortBy {
+		sortByStr := []string{"channel-depth", "hourly-pubsize", "channel-timeout", "channel-requeue"}
 		return struct {
 			Filter []string `json:"filters"`
-		}{filter_str}, nil
+		}{sortByStr}, nil
 	}
 
 	var rankName string
-	switch filter {
+	switch sortBy {
 	case "channel-depth":
 		rankName = "Top10 topics in Total Channel Depth"
+	case "channel-timeout":
+		rankName = "Top10 channels in Timeout"
+	case "channel-requeue":
+		rankName = "Top10 channels in Requeue"
 	default:
 		rankName = "Top10 topics in Hourly Pub Size(in bytes)"
 	}
@@ -1128,7 +1155,7 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 		messages = append(messages, pe.Error())
 	}
 	//get topic channel sortted by partition depth
-	topicStatsList, _, err := s.ci.GetNSQDStats(producers, "", filter, true)
+	topicStatsList, channelStatMap, err := s.ci.GetNSQDStats(producers, "", sortBy, true)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
@@ -1139,51 +1166,71 @@ func (s *httpServer) statisticsHandler(w http.ResponseWriter, req *http.Request,
 		messages = append(messages, pe.Error())
 	}
 
-	nodeMsgHistoryMap, err := s.ci.GetNSQDAllMessageHistoryStats(producers)
-	if err != nil {
-		_, ok := err.(clusterinfo.PartialErr)
-		if !ok {
-			s.ctx.nsqadmin.logf("ERROR: failed to get producer topic message history - %s", err)
-		}
-		s.ctx.nsqadmin.logf("WARNING: %s", err)
-		//Do not append errors to messages for compatibility with old nsqd
-	}
-
-	//merge nodes under topic
+	var rank []*rankStats
 	topicMap := make(map[string]*rankStats)
-
-	for _, topicStat := range topicStatsList {
-		item, ok := topicMap[topicStat.TopicName]
-		if !ok {
-			item = &rankStats{
-				TopicName:         topicStat.TopicName,
-				TotalChannelDepth: 0,
-				MessageCount:      0,
+	switch sortBy {
+	case "channel-depth":
+		fallthrough
+	case "hourly-pubsize":
+		nodeMsgHistoryMap, err := s.ci.GetNSQDAllMessageHistoryStats(producers)
+		if err != nil {
+			_, ok := err.(clusterinfo.PartialErr)
+			if !ok {
+				s.ctx.nsqadmin.logf("ERROR: failed to get producer topic message history - %s", err)
 			}
-			topicMap[topicStat.TopicName] = item
+			s.ctx.nsqadmin.logf("WARNING: %s", err)
+			//Do not append errors to messages for compatibility with old nsqd
 		}
 
-		item.TotalChannelDepth += topicStat.TotalChannelDepth
-		item.MessageCount += topicStat.MessageCount
-		if nodeMsgHistoryMap != nil && !ok {
-			hpSize, ok := nodeMsgHistoryMap[item.TopicName]
-			if ok {
-				item.HourlyPubSize = hpSize
+		//merge nodes under topic
+		for _, topicStat := range topicStatsList {
+			item, ok := topicMap[topicStat.TopicName]
+			if !ok {
+				item = &rankStats{
+					Name:         topicStat.TopicName,
+					TotalChannelDepth: 0,
+					MessageCount:      0,
+				}
+				topicMap[topicStat.TopicName] = item
+			}
+
+			item.TotalChannelDepth += topicStat.TotalChannelDepth
+			item.MessageCount += topicStat.MessageCount
+			if nodeMsgHistoryMap != nil && !ok {
+				hpSize, ok := nodeMsgHistoryMap[item.Name]
+				if ok {
+					item.HourlyPubSize = hpSize
+				}
 			}
 		}
-	}
 
-	rank := make([]*rankStats, 0, len(topicMap))
+		for _, item := range topicMap {
+			rank = append(rank, item)
+		}
+	case "channel-timeout":
+		fallthrough
+	case "channel-requeue":
+		for key, channelStat := range channelStatMap {
+			item := &rankStats{
+				Name:         key,
+				RequeueCount: channelStat.RequeueCount,
+				TimeoutCount: channelStat.TimeoutCount,
+			}
+			rank = append(rank, item)
+		}
 
-	for _, item := range topicMap {
-		rank = append(rank, item)
 	}
 
 	//sort by filter
-	if filter == "channel-depth" {
+	switch sortBy {
+	case "channel-depth":
 		sort.Sort(TopicsByChannelDepth{rank})
-	} else {
+	case "hourly-pubsize":
 		sort.Sort(TopicsByHourlyPubsize{rank})
+	case "channel-timeout":
+		sort.Sort(ChannelByTimeout{rank})
+	case "channel-requeue":
+		sort.Sort(ChannelByRequeue{rank})
 	}
 
 	maxLen := 0

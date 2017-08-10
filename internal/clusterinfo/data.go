@@ -835,6 +835,8 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, so
 							StatsdName:     topic.StatsdName,
 							ChannelName:    channel.ChannelName,
 							IsMultiOrdered: topic.IsMultiOrdered,
+							RequeueCount:	channel.RequeueCount,
+							TimeoutCount:	channel.TimeoutCount,
 						}
 						channelStatsMap[key] = channelStats
 					}

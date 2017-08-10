@@ -24,10 +24,21 @@ var Rank = Backbone.Model.extend({
                 case 'hourly-pubsize':
                     data['rank_value'] = data['hourly_pubsize'];
                     break;
+                case 'channel-requeue':
+                    data['name'] = data['name'].replace(':', '/');
+                    data['rank_value'] = data['requeue_count'];
+                    break;
+                case 'channel-timeout':
+                    data['name'] = data['name'].replace(':', '/');
+                    data['rank_value'] = data['timeout_count'];
+                    break;
                 default:
                     data['rank_value'] = data['message_count'];
             }
             return data;
+        });
+        resp['top10'] = _.filter(resp['top10'], function(data){
+            return (null !== data['rank_value'] && data['rank_value'] > 0);
         });
         return resp;
     }
