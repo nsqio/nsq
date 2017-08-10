@@ -151,7 +151,7 @@ type ChannelStats struct {
 	RequeueCount  int64           `json:"requeue_count"`
 	TimeoutCount  int64           `json:"timeout_count"`
 	MessageCount  int64           `json:"message_count"`
-	ClientCount   int             `json:"-"`
+	ClientCount   int             `json:"client_count"`
 	Selected      bool            `json:"-"`
 	NodeStats     []*ChannelStats `json:"nodes"`
 	Clients       []*ClientStats  `json:"clients"`
