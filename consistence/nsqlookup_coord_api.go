@@ -2,10 +2,11 @@ package consistence
 
 import (
 	"errors"
-	"github.com/absolute8511/nsq/internal/protocol"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/absolute8511/nsq/internal/protocol"
 )
 
 const (
@@ -98,7 +99,7 @@ func (self *NsqLookupCoordinator) SetClusterUpgradeState(upgrading bool) error {
 				}
 			}
 		}
-		self.triggerCheckTopics("", 0, time.Second)
+		go self.triggerCheckTopics("", 0, time.Second)
 	}
 	return nil
 }
@@ -343,7 +344,7 @@ func (self *NsqLookupCoordinator) deleteTopicPartition(topic string, pid int) er
 }
 
 func (self *NsqLookupCoordinator) ChangeTopicMetaParam(topic string,
-	newSyncEvery int, newRetentionDay int, newReplicator int) error {
+	newSyncEvery int, newRetentionDay int, newReplicator int, upgradeExt string) error {
 	if self.leaderNode.GetID() != self.myNode.GetID() {
 		coordLog.Infof("not leader while create topic")
 		return ErrNotNsqLookupLeader
@@ -397,10 +398,24 @@ func (self *NsqLookupCoordinator) ChangeTopicMetaParam(topic string,
 		if newReplicator > 0 {
 			meta.Replica = newReplicator
 		}
+		// change to ext only, can not change ext to non-ext
+		needDisableWrite := false
+		if upgradeExt == "true" && !meta.Ext {
+			meta.Ext = true
+			needDisableWrite = true
+		}
+		if needDisableWrite {
+			if !atomic.CompareAndSwapInt32(&self.isUpgrading, 0, 1) {
+				coordLog.Infof("the cluster state is already upgrading")
+				return errors.New("the cluster is upgrading.")
+			}
+			defer atomic.StoreInt32(&self.isUpgrading, 0)
+		}
 		err = self.updateTopicMeta(currentNodes, topic, meta, oldGen)
 		if err != nil {
 			return err
 		}
+
 		for i := 0; i < meta.PartitionNum; i++ {
 			topicInfo, err := self.leadership.GetTopicInfo(topic, i)
 			if err != nil {
@@ -413,15 +428,22 @@ func (self *NsqLookupCoordinator) ChangeTopicMetaParam(topic string,
 				coordLog.Infof("failed update info for topic : %v-%v, %v", topic, i, err)
 				continue
 			}
+			if needDisableWrite {
+				self.notifyLeaderDisableTopicWrite(topicInfo)
+				self.notifyISRDisableTopicWrite(topicInfo)
+			}
 			rpcErr := self.notifyTopicMetaInfo(topicInfo)
 			if rpcErr != nil {
 				coordLog.Warningf("failed notify topic info : %v", rpcErr)
 			} else {
 				coordLog.Infof("topic %v update successful.", topicInfo)
+				if needDisableWrite {
+					self.notifyEnableTopicWrite(topicInfo)
+				}
 			}
 		}
 
-		self.triggerCheckTopics("", 0, 0)
+		go self.triggerCheckTopics("", 0, 0)
 	}
 	return nil
 }

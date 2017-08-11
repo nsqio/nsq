@@ -310,6 +310,14 @@ func (c *Channel) GetDelayedQueue() *DelayQueue {
 	return dq
 }
 
+func (c *Channel) SetExt(isExt bool) {
+	if isExt {
+		atomic.StoreInt32(&c.Ext, 1)
+	} else {
+		atomic.StoreInt32(&c.Ext, 0)
+	}
+}
+
 func (c *Channel) IsExt() bool {
 	return atomic.LoadInt32(&c.Ext) == 1
 }

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/absolute8511/nsq/internal/util"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/absolute8511/nsq/internal/util"
 )
 
 const (
@@ -129,7 +130,24 @@ func (d *diskQueueWriter) PutV2(data []byte) (BackendOffset, int32, diskQueueEnd
 		d.Unlock()
 		return 0, 0, diskQueueEndInfo{}, errors.New("exiting")
 	}
-	offset, writeBytes, dend, werr := d.writeOne(data)
+	offset, writeBytes, dend, werr := d.writeOne(data, false, 0)
+	var e diskQueueEndInfo
+	if dend != nil {
+		e = *dend
+	}
+	d.needSync = true
+	d.Unlock()
+	return offset, writeBytes, e, werr
+}
+
+func (d *diskQueueWriter) PutRawV2(data []byte, msgCnt int32) (BackendOffset, int32, diskQueueEndInfo, error) {
+	d.Lock()
+
+	if d.exitFlag == 1 {
+		d.Unlock()
+		return 0, 0, diskQueueEndInfo{}, errors.New("exiting")
+	}
+	offset, writeBytes, dend, werr := d.writeOne(data, true, msgCnt)
 	var e diskQueueEndInfo
 	if dend != nil {
 		e = *dend
@@ -147,7 +165,7 @@ func (d *diskQueueWriter) Put(data []byte) (BackendOffset, int32, int64, error) 
 		d.Unlock()
 		return 0, 0, 0, errors.New("exiting")
 	}
-	offset, writeBytes, dend, werr := d.writeOne(data)
+	offset, writeBytes, dend, werr := d.writeOne(data, false, 0)
 	var e diskQueueEndInfo
 	if dend != nil {
 		e = *dend
@@ -607,7 +625,7 @@ func (d *diskQueueWriter) internalGetQueueReadEnd() *diskQueueEndInfo {
 
 // writeOne performs a low level filesystem write for a single []byte
 // while advancing write positions and rolling files, if necessary
-func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int32, *diskQueueEndInfo, error) {
+func (d *diskQueueWriter) writeOne(data []byte, isRaw bool, msgCnt int32) (BackendOffset, int32, *diskQueueEndInfo, error) {
 	var err error
 
 	if d.writeFile == nil {
@@ -635,22 +653,22 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int32, *diskQueu
 	}
 
 	dataLen := int32(len(data))
-
-	if dataLen < d.minMsgSize || dataLen > d.maxMsgSize {
-		return 0, 0, nil, fmt.Errorf("invalid message write size (%d) maxMsgSize=%d", dataLen, d.maxMsgSize)
-	}
-
-	err = binary.Write(d.bufferWriter, binary.BigEndian, dataLen)
-	if err != nil {
-		d.sync()
-		if d.writeFile != nil {
-			d.writeFile.Close()
-			d.writeFile = nil
+	if !isRaw {
+		if dataLen < d.minMsgSize || dataLen > d.maxMsgSize {
+			return 0, 0, nil, fmt.Errorf("invalid message write size (%d) maxMsgSize=%d", dataLen, d.maxMsgSize)
 		}
-		nsqLog.Logf("DISKQUEUE(%s): writeOne() faled %s", d.name, err)
-		return 0, 0, nil, err
-	}
 
+		err = binary.Write(d.bufferWriter, binary.BigEndian, dataLen)
+		if err != nil {
+			d.sync()
+			if d.writeFile != nil {
+				d.writeFile.Close()
+				d.writeFile = nil
+			}
+			nsqLog.Logf("DISKQUEUE(%s): writeOne() faled %s", d.name, err)
+			return 0, 0, nil, err
+		}
+	}
 	_, err = d.bufferWriter.Write(data)
 	if err != nil {
 		d.sync()
@@ -663,10 +681,17 @@ func (d *diskQueueWriter) writeOne(data []byte) (BackendOffset, int32, *diskQueu
 	}
 
 	writeOffset := d.diskWriteEnd.Offset()
-	totalBytes := int64(4 + dataLen)
+	totalBytes := int64(dataLen)
+	if !isRaw {
+		totalBytes += 4
+	}
 	d.diskWriteEnd.EndOffset.Pos += totalBytes
 	d.diskWriteEnd.virtualEnd += BackendOffset(totalBytes)
-	atomic.AddInt64(&d.diskWriteEnd.totalMsgCnt, 1)
+	if !isRaw {
+		atomic.AddInt64(&d.diskWriteEnd.totalMsgCnt, 1)
+	} else {
+		atomic.AddInt64(&d.diskWriteEnd.totalMsgCnt, int64(msgCnt))
+	}
 
 	if d.diskWriteEnd.EndOffset.Pos >= d.maxBytesPerFile {
 		// sync every time we start writing to a new file

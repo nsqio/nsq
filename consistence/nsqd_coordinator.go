@@ -2,7 +2,6 @@ package consistence
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -57,36 +56,6 @@ func (self *TopicPartitionID) String() string {
 	return self.TopicName + "-" + strconv.Itoa(self.TopicPartition)
 }
 
-func DecodeMessagesFromRaw(data []byte, msgs []*nsqd.Message, ext bool, tmpbuf []byte, fromDelayed bool) ([]*nsqd.Message, error) {
-	msgs = msgs[:0]
-	size := int32(len(data))
-	current := int32(0)
-	var err error
-	for current < size {
-		if size-current < 4 {
-			return msgs, io.ErrUnexpectedEOF
-		}
-		msgSize := int32(binary.BigEndian.Uint32(data[current : current+4]))
-		current += 4
-		if current+msgSize > size {
-			return msgs, io.ErrUnexpectedEOF
-		}
-		buf := data[current : current+msgSize]
-		var msg *nsqd.Message
-		if !fromDelayed {
-			msg, err = nsqd.DecodeMessage(buf, ext)
-		} else {
-			msg, err = nsqd.DecodeDelayedMessage(buf, ext)
-		}
-		if err != nil {
-			return msgs, err
-		}
-		current += msgSize
-		msgs = append(msgs, msg)
-	}
-	return msgs, nil
-}
-
 type ILocalLogQueue interface {
 	IsDataNeedFix() bool
 	SetDataFixState(bool)
@@ -97,6 +66,7 @@ type ILocalLogQueue interface {
 	TotalMessageCnt() uint64
 	TotalDataSize() int64
 
+	PutRawDataOnReplica(rawData []byte, offset nsqd.BackendOffset, checkSize int64, msgNum int32) (nsqd.BackendQueueEnd, error)
 	PutMessageOnReplica(msgs *nsqd.Message, offset nsqd.BackendOffset, checkSize int64) (nsqd.BackendQueueEnd, error)
 	TryCleanOldData(retentionSize int64, noRealClean bool, maxCleanOffset nsqd.BackendOffset) (nsqd.BackendQueueEnd, error)
 }
@@ -1587,9 +1557,6 @@ func (self *NsqdCoordinator) pullCatchupDataFromLeader(tc *TopicCoordinator,
 	}
 
 	synced := false
-	newMsgs := make([]*nsqd.Message, 0)
-	tmpBuf := make([]byte, 1000)
-	isExt := topicInfo.Ext
 	retryCnt := 0
 
 	c, coordErr := self.acquireRpcClient(topicInfo.Leader)
@@ -1634,50 +1601,21 @@ func (self *NsqdCoordinator) pullCatchupDataFromLeader(tc *TopicCoordinator,
 		var lastCommitOffset nsqd.BackendQueueEnd
 		for i, l := range logs {
 			d := dataList[i]
-			// read and decode all messages
-			newMsgs, localErr = DecodeMessagesFromRaw(d, newMsgs, isExt, tmpBuf, fromDelayedQueue)
-			if localErr != nil || len(newMsgs) == 0 {
-				coordLog.Warningf("Failed to decode message: %v, rawData: %v, %v, decoded len: %v", localErr, len(d), d, len(newMsgs))
-				hasErr = true
-				break
-			}
-			lastMsgLogID := int64(newMsgs[len(newMsgs)-1].ID)
-			if fromDelayedQueue && len(newMsgs) > 1 {
-				hasErr = true
-				localErr = errors.New("invalid batch messages for delayed queue")
-				break
-			}
+			// while the topic is upgraded from old version, it may happen in one topic we got the old message
+			// and the new extended message. We need handle this while sync leader data.
+
 			var queueEnd nsqd.BackendQueueEnd
-			if len(newMsgs) == 1 {
-				queueEnd, localErr = localLogQ.PutMessageOnReplica(newMsgs[0],
-					nsqd.BackendOffset(l.MsgOffset), int64(l.MsgSize))
-				if localErr != nil {
-					coordLog.Warningf("topic %v Failed to put message on slave: %v, offset: %v, need to be fixed",
-						localTopic.GetFullName(), localErr, l.MsgOffset)
-					localLogQ.SetDataFixState(true)
-					hasErr = true
-					break
-				}
-				lastCommitOffset = queueEnd
-			} else {
-				// delayed queue has no batch write, so this must be topic normal queue
-				coordLog.Debugf("got batch messages: %v", len(newMsgs))
-				queueEnd, localErr = localTopic.PutMessagesOnReplica(newMsgs,
-					nsqd.BackendOffset(l.MsgOffset), int64(l.MsgSize))
-				if localErr != nil {
-					coordLog.Warningf("Failed to batch put messages on slave: %v, offset: %v, need to be fixed", localErr, l.MsgOffset)
-					localTopic.SetDataFixState(true)
-					hasErr = true
-					break
-				}
-				lastCommitOffset = queueEnd
-			}
-			if l.LastMsgLogID != lastMsgLogID {
-				coordLog.Infof("Failed to put message on slave since last log id mismatch %v, %v", l, lastMsgLogID)
-				localErr = ErrCommitLogWrongLastID
+			queueEnd, localErr = localLogQ.PutRawDataOnReplica(d,
+				nsqd.BackendOffset(l.MsgOffset), int64(l.MsgSize), l.MsgNum)
+			if localErr != nil {
+				coordLog.Warningf("topic %v Failed to put raw message data on slave: %v, offset: %v, need to be fixed",
+					localTopic.GetFullName(), localErr, l.MsgOffset)
+				localLogQ.SetDataFixState(true)
 				hasErr = true
 				break
 			}
+			lastCommitOffset = queueEnd
+
 			localErr = logMgr.AppendCommitLog(&l, true)
 			if localErr != nil {
 				coordLog.Errorf("Failed to append local log: %v, need to be fixed ", localErr)

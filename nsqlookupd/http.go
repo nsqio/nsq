@@ -8,13 +8,14 @@ import (
 	"sync/atomic"
 
 	"errors"
+	"runtime"
+	"strconv"
+
 	"github.com/absolute8511/nsq/consistence"
 	"github.com/absolute8511/nsq/internal/http_api"
 	"github.com/absolute8511/nsq/internal/protocol"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/julienschmidt/httprouter"
-	"runtime"
-	"strconv"
 )
 
 const (
@@ -387,8 +388,8 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 		return map[string]interface{}{
 			"channels": channels,
 			"meta": map[string]interface{}{
-				"partition_num": meta.PartitionNum,
-				"replica":       meta.Replica,
+				"partition_num":  meta.PartitionNum,
+				"replica":        meta.Replica,
 				"extend_support": meta.Ext,
 			},
 			"producers":  peers,
@@ -622,8 +623,10 @@ func (s *httpServer) doChangeTopicDynamicParam(w http.ResponseWriter, req *http.
 			return nil, http_api.Err{400, err.Error()}
 		}
 	}
+	upgradeExtStr := reqParams.Get("upgradeext")
 
-	err = s.ctx.nsqlookupd.coordinator.ChangeTopicMetaParam(topicName, syncEvery, retentionDays, replicator)
+	err = s.ctx.nsqlookupd.coordinator.ChangeTopicMetaParam(topicName, syncEvery,
+		retentionDays, replicator, upgradeExtStr)
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}

@@ -271,7 +271,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 	if client.Channel != nil {
 		client.Channel.RequeueClientMessages(client.ID, client.String())
-		client.Channel.RemoveClient(client.ID, client.GetTag())
+		client.Channel.RemoveClient(client.ID, client.GetDesiredTag())
 	}
 	client.FinalClose()
 
@@ -320,19 +320,12 @@ func handleRequestReponseForClient(client *nsqd.ClientV2, response []byte, err e
 
 func SendMessage(client *nsqd.ClientV2, msg *nsqd.Message, writeExt bool, buf *bytes.Buffer, needFlush bool) error {
 	buf.Reset()
-	if !client.EnableTrace {
-		_, err := msg.WriteTo(buf, writeExt)
-		if err != nil {
-			return err
-		}
-	} else {
-		_, err := msg.WriteToWithDetail(buf, writeExt)
-		if err != nil {
-			return err
-		}
+	_, err := msg.WriteToClient(buf, writeExt, client.EnableTrace)
+	if err != nil {
+		return err
 	}
 
-	err := internalSend(client, frameTypeMessage, buf.Bytes(), needFlush)
+	err = internalSend(client, frameTypeMessage, buf.Bytes(), needFlush)
 	if err != nil {
 		return err
 	}
@@ -495,7 +488,7 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 				subChannel.GetTopicName(),
 				subChannel.GetName())
 			subEventChan = nil
-			tag := client.GetTag()
+			tag := client.GetDesiredTag()
 			if tag != "" {
 				client.SetTagMsgChannel(subChannel.GetOrCreateClientMsgChannel(tag))
 			}
@@ -585,6 +578,12 @@ func (p *protocolV2) messagePump(client *nsqd.ClientV2, startedChan chan bool,
 
 			lastActiveTime = time.Now()
 			client.SendingMessage()
+			if subChannel.IsExt() && !client.ExtendSupport() {
+				// while the topic upgraded to the ext, we should close all the old client
+				// which not support the ext.
+				err = errors.New("client should reconnect with extend support since the topic is upgraded to ext")
+				goto exit
+			}
 			err = SendMessage(client, msg, subChannel.IsExt(), &buf, subChannel.IsOrdered())
 			if err != nil {
 				goto exit
@@ -698,7 +697,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 		AuthRequired:        p.ctx.isAuthEnabled(),
 		OutputBufferSize:    client.OutputBufferSize,
 		OutputBufferTimeout: int64(client.OutputBufferTimeout / time.Millisecond),
-		DesiredTag:          client.GetTag(),
+		DesiredTag:          client.GetDesiredTag(),
 	})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -924,6 +923,15 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 	if topic.IsOrdered() && !ordered {
 		return nil, protocol.NewFatalClientErr(nil, "E_SUB_ORDER_IS_MUST", "this topic is configured only allow ordered sub")
 	}
+	if topic.IsExt() {
+		if !client.ExtendSupport() {
+			return nil, protocol.NewFatalClientErr(nil, "E_SUB_EXTEND_NEED", "this topic is extended and should identify as extend support.")
+		}
+	} else {
+		if client.ExtendSupport() {
+			return nil, protocol.NewFatalClientErr(nil, "E_SUB_EXTEND_FORBIDDON", "this topic is not extended and should not identify as extend support.")
+		}
+	}
 	if !p.ctx.checkForMasterWrite(topicName, partition) {
 		nsqd.NsqLogger().Logf("sub failed on not leader: %v-%v, remote is : %v", topicName, partition, client.String())
 		// we need disable topic here to trigger a notify, maybe we failed to notify lookup last time.
@@ -931,8 +939,9 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 		return nil, protocol.NewFatalClientErr(nil, FailedOnNotLeader, "")
 	}
 	channel := topic.GetChannel(channelName)
-	if !topic.IsExt() && client.GetTag() != "" {
-		return nil, protocol.NewFatalClientErr(nil, ext.E_EXT_NOT_SUPPORT, fmt.Sprintf("IDENTIFY before subscribe has a tag %v to topic %v not support tag.", client.Tag, topicName))
+	if !topic.IsExt() && client.GetDesiredTag() != "" {
+		return nil, protocol.NewFatalClientErr(nil, ext.E_EXT_NOT_SUPPORT,
+			fmt.Sprintf("IDENTIFY before subscribe has a tag %v to topic %v not support tag.", client.GetDesiredTag(), topicName))
 	}
 
 	err = channel.AddClient(client.ID, client)

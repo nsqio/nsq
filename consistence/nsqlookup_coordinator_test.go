@@ -2,9 +2,6 @@ package consistence
 
 import (
 	"errors"
-	"github.com/absolute8511/glog"
-	"github.com/absolute8511/nsq/internal/levellogger"
-	"github.com/absolute8511/nsq/internal/test"
 	"math/rand"
 	"net/http"
 	"os"
@@ -14,6 +11,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/absolute8511/glog"
+	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/internal/test"
 )
 
 const (
@@ -1113,7 +1114,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	waitClusterStable(lookupCoord, time.Second*5)
 
 	// test increase replicator and decrease the replicator
-	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, -1, -1, 3)
+	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, -1, -1, 3, "")
 	lookupCoord.triggerCheckTopics("", 0, 0)
 	waitClusterStable(lookupCoord, time.Second*5)
 	time.Sleep(time.Second * 5)
@@ -1125,7 +1126,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 		test.Equal(t, tmeta.Replica, len(info.ISR))
 	}
 
-	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, -1, -1, 2)
+	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, -1, -1, 2, "")
 	lookupCoord.triggerCheckTopics("", 0, 0)
 	waitClusterStable(lookupCoord, time.Second*5)
 	time.Sleep(time.Second * 3)
@@ -1137,7 +1138,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 		test.Equal(t, tmeta.Replica, len(info.ISR))
 	}
 
-	err = lookupCoord.ChangeTopicMetaParam(topic_p2_r1, -1, -1, 2)
+	err = lookupCoord.ChangeTopicMetaParam(topic_p2_r1, -1, -1, 2, "")
 	lookupCoord.triggerCheckTopics("", 0, 0)
 	waitClusterStable(lookupCoord, time.Second*5)
 	time.Sleep(time.Second * 5)
@@ -1150,10 +1151,10 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	}
 
 	// should fail
-	err = lookupCoord.ChangeTopicMetaParam(topic_p2_r1, -1, -1, 3)
+	err = lookupCoord.ChangeTopicMetaParam(topic_p2_r1, -1, -1, 3, "")
 	test.NotNil(t, err)
 
-	err = lookupCoord.ChangeTopicMetaParam(topic_p2_r1, -1, -1, 1)
+	err = lookupCoord.ChangeTopicMetaParam(topic_p2_r1, -1, -1, 1, "")
 	waitClusterStable(lookupCoord, time.Second*5)
 	lookupCoord.triggerCheckTopics("", 0, 0)
 	time.Sleep(time.Second * 3)
@@ -1166,7 +1167,7 @@ func TestNsqLookupUpdateTopicMeta(t *testing.T) {
 	}
 
 	// test update the sync and retention , all partition and replica should be updated
-	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, 1234, 3, -1)
+	err = lookupCoord.ChangeTopicMetaParam(topic_p1_r1, 1234, 3, -1, "")
 	test.Nil(t, err)
 	waitClusterStable(lookupCoord, time.Second*5)
 	time.Sleep(time.Second)

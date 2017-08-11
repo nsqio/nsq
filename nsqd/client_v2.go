@@ -44,7 +44,8 @@ type IdentifyDataV2 struct {
 	SampleRate          int32  `json:"sample_rate"`
 	UserAgent           string `json:"user_agent"`
 	MsgTimeout          int    `json:"msg_timeout"`
-	Tag                 string `json:"desired_tag,omitempty"`
+	DesiredTag          string `json:"desired_tag,omitempty"`
+	ExtendSupport       bool   `json:"extend_support"`
 }
 
 type identifyEvent struct {
@@ -122,8 +123,9 @@ type ClientV2 struct {
 	subErrCnt          int64
 	lastConsumeTimeout int64
 
-	Tag           string
-	TagMsgChannel chan *Message
+	DesiredTag      string
+	IsExtendSupport bool
+	TagMsgChannel   chan *Message
 }
 
 func NewClientV2(id int64, conn net.Conn, opts *Options, tls *tls.Config) *ClientV2 {
@@ -268,9 +270,12 @@ func (c *ClientV2) Identify(data IdentifyDataV2) error {
 		return err
 	}
 
-	err = c.SetTag(data.Tag)
+	err = c.SetDesiredTag(data.DesiredTag)
 	if err != nil {
 		return err
+	}
+	if data.ExtendSupport {
+		c.SetExtendSupport()
 	}
 
 	ie := identifyEvent{
@@ -328,7 +333,7 @@ func (c *ClientV2) Stats() ClientStats {
 		Authed:          c.HasAuthorizations(),
 		AuthIdentity:    identity,
 		AuthIdentityURL: identityURL,
-		DesiredTag:      c.GetTag(),
+		DesiredTag:      c.GetDesiredTag(),
 	}
 	if stats.TLS {
 		p := prettyConnectionState{c.tlsConn.ConnectionState()}
@@ -576,10 +581,23 @@ func (c *ClientV2) SetSampleRate(sampleRate int32) error {
 	return nil
 }
 
-func (c *ClientV2) GetTag() string {
+func (c *ClientV2) GetDesiredTag() string {
 	c.LockRead()
 	defer c.UnlockRead()
-	return c.Tag
+	return c.DesiredTag
+}
+
+func (c *ClientV2) ExtendSupport() bool {
+	c.LockRead()
+	es := c.IsExtendSupport
+	c.UnlockRead()
+	return es
+}
+
+func (c *ClientV2) SetExtendSupport() {
+	c.LockWrite()
+	c.IsExtendSupport = true
+	c.UnlockWrite()
 }
 
 func (c *ClientV2) SetMsgTimeout(msgTimeout int) error {
@@ -599,7 +617,7 @@ func (c *ClientV2) SetMsgTimeout(msgTimeout int) error {
 	return nil
 }
 
-func (c *ClientV2) SetTag(tagStr string) error {
+func (c *ClientV2) SetDesiredTag(tagStr string) error {
 	if tagStr == "" {
 		return nil
 	}
@@ -610,8 +628,8 @@ func (c *ClientV2) SetTag(tagStr string) error {
 
 	c.LockWrite()
 	defer c.UnlockWrite()
-	if tagStr != "" && c.Tag != tagStr {
-		c.Tag = tagStr
+	if tagStr != "" && c.DesiredTag != tagStr {
+		c.DesiredTag = tagStr
 	}
 	return nil
 }

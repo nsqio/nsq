@@ -565,8 +565,29 @@ func (q *DelayQueue) PutDelayMessage(m *Message) (MessageID, BackendOffset, int3
 		return 0, 0, 0, nil, errors.New("invalid delayed message")
 	}
 
-	id, offset, writeBytes, dend, err := q.put(m, true, 0)
+	id, offset, writeBytes, dend, err := q.put(m, nil, true, 0)
 	return id, offset, writeBytes, &dend, err
+}
+
+func (q *DelayQueue) PutRawDataOnReplica(rawData []byte, offset BackendOffset, checkSize int64, msgNum int32) (BackendQueueEnd, error) {
+	if atomic.LoadInt32(&q.exitFlag) == 1 {
+		return nil, ErrExiting
+	}
+	wend := q.backend.GetQueueWriteEnd()
+	if wend.Offset() != offset {
+		nsqLog.LogErrorf("topic %v: write offset mismatch: %v, %v", q.GetFullName(), offset, wend)
+		return nil, ErrWriteOffsetMismatch
+	}
+	if msgNum != 1 {
+		return nil, errors.New("delayed raw message number must be 1.")
+	}
+	var m Message
+	_, _, _, dend, err := q.put(&m, rawData, false, checkSize)
+	if err != nil {
+		q.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
+		return nil, err
+	}
+	return &dend, nil
 }
 
 func (q *DelayQueue) PutMessageOnReplica(m *Message, offset BackendOffset, checkSize int64) (BackendQueueEnd, error) {
@@ -581,20 +602,41 @@ func (q *DelayQueue) PutMessageOnReplica(m *Message, offset BackendOffset, check
 	if !IsValidDelayedMessage(m) {
 		return nil, errors.New("invalid delayed message")
 	}
-	_, _, _, dend, err := q.put(m, false, checkSize)
+	_, _, _, dend, err := q.put(m, nil, false, checkSize)
 	if err != nil {
+		q.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
 		return nil, err
 	}
 	return &dend, nil
 }
 
-func (q *DelayQueue) put(m *Message, trace bool, checkSize int64) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
+func (q *DelayQueue) put(m *Message, rawData []byte, trace bool, checkSize int64) (MessageID, BackendOffset, int32, diskQueueEndInfo, error) {
+	var err error
+	var dend diskQueueEndInfo
+	if rawData != nil {
+		if len(rawData) < 4 {
+			return 0, 0, 0, dend, fmt.Errorf("invalid raw message data: %v", rawData)
+		}
+		m, err = DecodeDelayedMessage(rawData[4:], q.isExt)
+		if err != nil {
+			return 0, 0, 0, dend, err
+		}
+	}
 	if m.ID <= 0 {
 		m.ID = q.nextMsgID()
 	}
 
-	offset, writeBytes, dend, err := writeDelayedMessageToBackendWithCheck(&q.putBuffer,
-		m, checkSize, q.backend, q.isExt)
+	var offset BackendOffset
+	var writeBytes int32
+	if rawData != nil {
+		offset, writeBytes, dend, err = q.backend.PutRawV2(rawData, 1)
+		if checkSize > 0 && checkSize != int64(writeBytes) {
+			return 0, 0, 0, dend, err
+		}
+	} else {
+		offset, writeBytes, dend, err = writeDelayedMessageToBackendWithCheck(&q.putBuffer,
+			m, checkSize, q.backend, q.isExt)
+	}
 	atomic.StoreInt32(&q.needFlush, 1)
 	if err != nil {
 		nsqLog.LogErrorf(

@@ -15,14 +15,15 @@ import (
 	"testing"
 	"time"
 
+	"net/url"
+	"strings"
+
 	"github.com/absolute8511/go-nsq"
+	"github.com/absolute8511/nsq/internal/ext"
 	"github.com/absolute8511/nsq/internal/test"
 	"github.com/absolute8511/nsq/internal/version"
 	"github.com/absolute8511/nsq/nsqd"
 	"github.com/absolute8511/nsq/nsqlookupd"
-	"github.com/absolute8511/nsq/internal/ext"
-	"net/url"
-	"strings"
 )
 
 func TestHTTPpub(t *testing.T) {
@@ -99,6 +100,7 @@ func TestHTTPPubExt(t *testing.T) {
 	client1Params["client_id"] = "client_w_tag"
 	client1Params["hostname"] = "client_w_tag"
 	client1Params["desired_tag"] = "test_tag"
+	client1Params["extend_support"] = true
 	identify(t, conn1, client1Params, frameTypeResponse)
 	sub(t, conn1, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn1)
@@ -195,7 +197,6 @@ func TestHTTPPubExt(t *testing.T) {
 	msgOut = recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
 	test.NotNil(t, msgOut)
 	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
-
 
 	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagStr)))
 	if err != nil {

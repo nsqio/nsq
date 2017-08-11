@@ -700,6 +700,7 @@ func TestConsumeTagMessageNormal(t *testing.T) {
 	client1Params["client_id"] = "client_w_tag"
 	client1Params["hostname"] = "client_w_tag"
 	client1Params["desired_tag"] = tagName
+	client1Params["extend_support"] = true
 	identify(t, conn1, client1Params, frameTypeResponse)
 	sub(t, conn1, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn1)
@@ -711,6 +712,7 @@ func TestConsumeTagMessageNormal(t *testing.T) {
 	client2Params := make(map[string]interface{})
 	client2Params["client_id"] = "client_wo_tag"
 	client2Params["hostname"] = "client_wo_tag"
+	client2Params["extend_support"] = true
 	identify(t, conn2, client2Params, frameTypeResponse)
 	sub(t, conn2, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn2)
@@ -776,6 +778,10 @@ func TestConsumeJsonHeaderMessageNormal(t *testing.T) {
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
+	if testing.Verbose() {
+		opts.LogLevel = 4
+		nsqdNs.SetLogger(opts.Logger)
+	}
 	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqdServer.Exit()
@@ -795,6 +801,7 @@ func TestConsumeJsonHeaderMessageNormal(t *testing.T) {
 	client1Params := make(map[string]interface{})
 	client1Params["client_id"] = "client_w_tag"
 	client1Params["hostname"] = "client_w_tag"
+	client1Params["extend_support"] = true
 	identify(t, conn1, client1Params, frameTypeResponse)
 	sub(t, conn1, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn1)
@@ -847,6 +854,7 @@ func TestConsumeJsonHeaderMessageTag(t *testing.T) {
 	client1Params["client_id"] = "client_w_tag"
 	client1Params["hostname"] = "client_w_tag"
 	client1Params["desired_tag"] = "test_tag"
+	client1Params["extend_support"] = true
 	identify(t, conn1, client1Params, frameTypeResponse)
 	sub(t, conn1, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn1)
@@ -858,6 +866,7 @@ func TestConsumeJsonHeaderMessageTag(t *testing.T) {
 	client2Params := make(map[string]interface{})
 	client2Params["client_id"] = "client_wo_tag"
 	client2Params["hostname"] = "client_wo_tag"
+	client2Params["extend_support"] = true
 	identify(t, conn2, client2Params, frameTypeResponse)
 	sub(t, conn2, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn2)
@@ -905,6 +914,111 @@ func TestConsumeJsonHeaderMessageTag(t *testing.T) {
 	time.Sleep(1 * time.Second)
 }
 
+func TestConsumeMessageWhileUpgrade(t *testing.T) {
+	topicName := "test_ext_topic_upgrade" + strconv.Itoa(int(time.Now().Unix()))
+
+	opts := nsqdNs.NewOptions()
+	opts.Logger = newTestLogger(t)
+	if testing.Verbose() {
+		opts.LogLevel = 3
+		nsqdNs.SetLogger(opts.Logger)
+	}
+	tcpAddr, _, nsqd, nsqdServer := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqdServer.Exit()
+	topic := nsqd.GetTopicIgnPart(topicName)
+	topicDynConf := nsqdNs.TopicDynamicConf{
+		AutoCommit: 1,
+		SyncEvery:  1,
+		Ext:        false,
+	}
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
+	topic.GetChannel("ch")
+
+	conn1, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	client1Params := make(map[string]interface{})
+	client1Params["client_id"] = "client_w_tag"
+	client1Params["hostname"] = "client_w_tag"
+	client1Params["extend_support"] = false
+	identify(t, conn1, client1Params, frameTypeResponse)
+	sub(t, conn1, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn1)
+	test.Equal(t, err, nil)
+
+	conn2, err := mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	client2Params := make(map[string]interface{})
+	client2Params["client_id"] = "client_wo_tag"
+	client2Params["hostname"] = "client_wo_tag"
+	client2Params["extend_support"] = true
+	identify(t, conn2, client2Params, frameTypeResponse)
+	subFail(t, conn2, topicName, "ch")
+
+	msgBody := []byte("test body")
+	for i := 0; i < 10; i++ {
+		msg := nsqdNs.NewMessage(0, msgBody)
+		topic.GetChannel("ch")
+		_, _, _, _, putErr := topic.PutMessage(msg)
+		test.Nil(t, putErr)
+	}
+	// use old conn consume old message
+	for i := 0; i < 5; i++ {
+		msgOut := recvNextMsgAndCheckExt(t, conn1, len(msgBody), 0, true, false)
+		test.NotNil(t, msgOut)
+		test.Equal(t, msgBody, msgOut.Body)
+	}
+	t.Logf("begin upgrade topic")
+
+	topicDynConf.Ext = true
+	topic.SetDynamicInfo(topicDynConf, nil, nil)
+	jsonHeaderStr := "{\"##channel_filter_tag\":\"test\",\"custome_header1\":\"test_header\",\"custome_h2\":\"test\"}"
+	jhe := ext.NewJsonHeaderExt()
+	jhe.SetJsonHeaderBytes([]byte(jsonHeaderStr))
+	for i := 0; i < 10; i++ {
+		msg := nsqdNs.NewMessageWithExt(0, msgBody, jhe.ExtVersion(), jhe.GetBytes())
+		topic.GetChannel("ch")
+		_, _, _, _, putErr := topic.PutMessage(msg)
+		test.Nil(t, putErr)
+	}
+	conn1.Close()
+	conn2.Close()
+	t.Logf("end write upgrade topic")
+	// all connection should be closed after upgrade, we need reconnect
+	conn1, err = mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	identify(t, conn1, client1Params, frameTypeResponse)
+	subFail(t, conn1, topicName, "ch")
+
+	t.Logf("old conn should fail")
+	conn2, err = mustConnectNSQD(tcpAddr)
+	test.Equal(t, err, nil)
+	identify(t, conn2, client2Params, frameTypeResponse)
+	sub(t, conn2, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn2)
+	test.Equal(t, err, nil)
+	// use new conn consume old message
+	t.Logf("receiving old messages using new conn")
+	for i := 0; i < 5; i++ {
+		msgOut := recvNextMsgAndCheckExt(t, conn2, len(msgBody), 0, true, true)
+		test.NotNil(t, msgOut)
+		test.Equal(t, ext.NO_EXT_VER, msgOut.ExtVer)
+		test.Equal(t, msgBody, msgOut.Body)
+	}
+
+	t.Logf("receiving extend messages using new conn")
+	//  use new conn consume new message
+	for i := 0; i < 10; i++ {
+		msgOut := recvNextMsgAndCheckExt(t, conn2, len(msgBody), 0, true, true)
+		test.NotNil(t, msgOut)
+		test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+		test.Equal(t, []byte(jsonHeaderStr), msgOut.ExtBytes)
+		test.Equal(t, msgBody, msgOut.Body)
+	}
+	conn2.Close()
+	time.Sleep(1 * time.Second)
+}
+
 func TestConsumeMultiTagMessages(t *testing.T) {
 	topicName := "test_tag_multiTag" + strconv.Itoa(int(time.Now().Unix()))
 
@@ -932,6 +1046,7 @@ func TestConsumeMultiTagMessages(t *testing.T) {
 
 	tagName1 := "TAG1"
 	client1Params["desired_tag"] = tagName1
+	client1Params["extend_support"] = true
 	identify(t, conn1, client1Params, frameTypeResponse)
 	sub(t, conn1, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn1)
@@ -946,6 +1061,7 @@ func TestConsumeMultiTagMessages(t *testing.T) {
 
 	tagName2 := "TAG2"
 	client2Params["desired_tag"] = tagName2
+	client2Params["extend_support"] = true
 	identify(t, conn2, client2Params, frameTypeResponse)
 	sub(t, conn2, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn2)
@@ -957,6 +1073,7 @@ func TestConsumeMultiTagMessages(t *testing.T) {
 	clientParams := make(map[string]interface{})
 	clientParams["client_id"] = "client_wo_tag"
 	clientParams["hostname"] = "client_wo_tag"
+	clientParams["extend_support"] = true
 	identify(t, conn, clientParams, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn)
@@ -1042,6 +1159,7 @@ func TestRemoveTagClientWhileConsuming(t *testing.T) {
 	client1Params["client_id"] = "client_w_tag"
 	client1Params["hostname"] = "client_w_tag"
 	client1Params["desired_tag"] = tagName
+	client1Params["extend_support"] = true
 	identify(t, conn, client1Params, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn)
@@ -1102,6 +1220,7 @@ func TestRemoveTagClientWhileConsuming(t *testing.T) {
 	client2Params["client_id"] = "client_w_tag2"
 	client2Params["hostname"] = "client_w_tag2"
 	client2Params["desired_tag"] = "TAG"
+	client2Params["extend_support"] = true
 	identify(t, conn2, client2Params, frameTypeResponse)
 	sub(t, conn2, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn2)
@@ -1157,9 +1276,11 @@ func TestInvalidTagSub(t *testing.T) {
 	client1Params["client_id"] = "client_w_tag1"
 	client1Params["hostname"] = "client_w_tag1"
 	client1Params["desired_tag"] = "valid_tag_123"
+	client1Params["extend_support"] = true
 	identify(t, conn, client1Params, frameTypeResponse)
 
 	client1Params["desired_tag"] = "this should be invalid"
+	client1Params["extend_support"] = true
 	identify(t, conn, client1Params, frameTypeError)
 }
 
@@ -1340,6 +1461,7 @@ func consumeTagConcurrent(t *testing.T, producerFirst bool, ticker *time.Ticker)
 		client1Params["client_id"] = "client_w_tag1"
 		client1Params["hostname"] = "client_w_tag1"
 		client1Params["desired_tag"] = tagName1
+		client1Params["extend_support"] = true
 		identify(t, conn, client1Params, frameTypeResponse)
 		sub(t, conn, topicName, "ch")
 		_, err = nsq.Ready(1).WriteTo(conn)
@@ -1381,6 +1503,7 @@ func consumeTagConcurrent(t *testing.T, producerFirst bool, ticker *time.Ticker)
 		client1Params["client_id"] = "client_w_tag2"
 		client1Params["hostname"] = "client_w_tag2"
 		client1Params["desired_tag"] = tagName2
+		client1Params["extend_support"] = true
 		identify(t, conn, client1Params, frameTypeResponse)
 		sub(t, conn, topicName, "ch")
 		_, err = nsq.Ready(1).WriteTo(conn)
@@ -1422,6 +1545,7 @@ func consumeTagConcurrent(t *testing.T, producerFirst bool, ticker *time.Ticker)
 		client1Params["client_id"] = "client_w_tag3"
 		client1Params["hostname"] = "client_w_tag3"
 		client1Params["desired_tag"] = tagName3
+		client1Params["extend_support"] = true
 		identify(t, conn, client1Params, frameTypeResponse)
 		sub(t, conn, topicName, "ch")
 		_, err = nsq.Ready(1).WriteTo(conn)
@@ -1463,6 +1587,7 @@ func consumeTagConcurrent(t *testing.T, producerFirst bool, ticker *time.Ticker)
 		client1Params := make(map[string]interface{})
 		client1Params["client_id"] = "client_wo_tag"
 		client1Params["hostname"] = "client_wo_tag"
+		client1Params["extend_support"] = true
 		//client1Params["desired_tag"] = "tag3"
 		identify(t, conn, client1Params, frameTypeResponse)
 		sub(t, conn, topicName, "ch")
@@ -1585,6 +1710,7 @@ func TestWriteAndConsumeTagMix(t *testing.T) {
 	clientParams["client_id"] = "client_w_tag"
 	clientParams["hostname"] = "client_w_tag"
 	clientParams["desired_tag"] = tagName
+	clientParams["extend_support"] = true
 	identify(t, conn, clientParams, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn)
@@ -1596,6 +1722,7 @@ func TestWriteAndConsumeTagMix(t *testing.T) {
 	client1Params := make(map[string]interface{})
 	client1Params["client_id"] = "client_wo_tag"
 	client1Params["hostname"] = "client_wo_tag"
+	client1Params["extend_support"] = true
 	identify(t, conn1, client1Params, frameTypeResponse)
 	sub(t, conn1, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn1)
@@ -1672,6 +1799,7 @@ func TestStuckOnAnotherTag(t *testing.T) {
 	client1Params["client_id"] = "client_w_tag1"
 	client1Params["hostname"] = "client_w_tag1"
 	client1Params["desired_tag"] = tagName1
+	client1Params["extend_support"] = true
 	identify(t, conn1, client1Params, frameTypeResponse)
 	sub(t, conn1, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn1)
@@ -1704,6 +1832,7 @@ func TestStuckOnAnotherTag(t *testing.T) {
 	client2Params["client_id"] = "client_w_tag2"
 	client2Params["hostname"] = "client_w_tag2"
 	client2Params["desired_tag"] = tagName2
+	client2Params["extend_support"] = true
 	identify(t, conn2, client2Params, frameTypeResponse)
 	sub(t, conn2, topicName, "ch")
 	_, err = nsq.Ready(1).WriteTo(conn2)
@@ -4537,6 +4666,7 @@ func benchmarkProtocolV2SubExtTag(b *testing.B, size int) {
 			clientParams["desired_tag"] = tag
 			clientParams["client_id"] = clientId
 			clientParams["hostname"] = clientId
+			clientParams["extend_support"] = true
 
 			err := subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan, clientParams, true)
 			if err != nil {

@@ -2,14 +2,15 @@ package consistence
 
 import (
 	"errors"
-	"github.com/absolute8511/gorpc"
-	"github.com/absolute8511/nsq/internal/levellogger"
-	"github.com/absolute8511/nsq/nsqd"
 	"net"
 	"runtime"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/absolute8511/gorpc"
+	"github.com/absolute8511/nsq/internal/levellogger"
+	"github.com/absolute8511/nsq/nsqd"
 )
 
 type ErrRPCRetCode int
@@ -603,14 +604,17 @@ type RpcChannelOffsetArg struct {
 
 type RpcPutMessages struct {
 	RpcTopicData
-	LogData       CommitLogData
-	TopicMessages []*nsqd.Message
+	LogData         CommitLogData
+	TopicMessages   []*nsqd.Message
+	// raw message data will include the size header 
+	TopicRawMessage []byte
 }
 
 type RpcPutMessage struct {
 	RpcTopicData
-	LogData      CommitLogData
-	TopicMessage *nsqd.Message
+	LogData         CommitLogData
+	TopicMessage    *nsqd.Message
+	TopicRawMessage []byte
 }
 
 type RpcCommitLogReq struct {
@@ -797,7 +801,11 @@ func (self *NsqdCoordRpcServer) PutDelayedMessage(info *RpcPutMessage) *CoordErr
 		return &ret
 	}
 	// do local pub message
-	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage, true)
+	if len(info.TopicRawMessage) > 0 {
+		err = self.nsqdCoord.putRawDataOnSlave(tc, info.LogData, info.TopicRawMessage, true)
+	} else {
+		err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage, true)
+	}
 	if err != nil {
 		ret = *err
 		return &ret
@@ -826,7 +834,11 @@ func (self *NsqdCoordRpcServer) PutMessage(info *RpcPutMessage) *CoordErr {
 		return &ret
 	}
 	// do local pub message
-	err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage, false)
+	if len(info.TopicRawMessage) > 0 {
+		err = self.nsqdCoord.putRawDataOnSlave(tc, info.LogData, info.TopicRawMessage, false)
+	} else {
+		err = self.nsqdCoord.putMessageOnSlave(tc, info.LogData, info.TopicMessage, false)
+	}
 	if err != nil {
 		ret = *err
 		return &ret
@@ -853,7 +865,11 @@ func (self *NsqdCoordRpcServer) PutMessages(info *RpcPutMessages) *CoordErr {
 		return &ret
 	}
 	// do local pub message
-	err = self.nsqdCoord.putMessagesOnSlave(tc, info.LogData, info.TopicMessages)
+	if len(info.TopicRawMessage) > 0 {
+		err = self.nsqdCoord.putRawDataOnSlave(tc, info.LogData, info.TopicRawMessage, false)
+	} else {
+		err = self.nsqdCoord.putMessagesOnSlave(tc, info.LogData, info.TopicMessages)
+	}
 	if err != nil {
 		ret = *err
 		return &ret

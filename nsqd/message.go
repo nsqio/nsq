@@ -4,17 +4,20 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/absolute8511/nsq/internal/ext"
 	"io"
 	"sync/atomic"
 	"time"
+
+	"github.com/absolute8511/nsq/internal/ext"
 )
 
 const (
-	MsgIDLength       = 16
-	MsgTraceIDLength  = 8
+	MsgIDLength         = 16
+	MsgTraceIDLength    = 8
 	MsgJsonHeaderLength = 2
-	minValidMsgLength = MsgIDLength + 8 + 2 // Timestamp + Attempts
+	minValidMsgLength   = MsgIDLength + 8 + 2 // Timestamp + Attempts
+	maxAttempts         = 4000
+	extMsgHighBits      = 0xa000
 )
 
 // the new message total id will be ID+TraceID, the length is same with old id
@@ -126,8 +129,8 @@ func (m *Message) GetClientID() int64 {
 	return 0
 }
 
-func (m *Message) WriteToWithDetail(w io.Writer, writeExt bool) (int64, error) {
-	return m.internalWriteTo(w, writeExt, true)
+func (m *Message) WriteToClient(w io.Writer, writeExt bool, writeDetail bool) (int64, error) {
+	return m.internalWriteTo(w, writeExt, writeDetail)
 }
 
 func (m *Message) WriteTo(w io.Writer, writeExt bool) (int64, error) {
@@ -139,7 +142,14 @@ func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeDetail bool) 
 	var total int64
 
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
-	binary.BigEndian.PutUint16(buf[8:10], m.Attempts)
+	if m.Attempts > maxAttempts {
+		m.Attempts = maxAttempts
+	}
+	combined := m.Attempts
+	if writeExt {
+		combined += uint16(extMsgHighBits)
+	}
+	binary.BigEndian.PutUint16(buf[8:10], combined)
 
 	n, err := w.Write(buf[:10])
 	total += int64(n)
@@ -200,11 +210,19 @@ func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeDetail bool) 
 }
 
 func (m *Message) WriteDelayedTo(w io.Writer, writeExt bool) (int64, error) {
+	if m.Attempts > maxAttempts {
+		m.Attempts = maxAttempts
+	}
+	combined := m.Attempts
+	if writeExt {
+		combined += uint16(extMsgHighBits)
+	}
+
 	var buf [32]byte
 	var total int64
 
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
-	binary.BigEndian.PutUint16(buf[8:10], m.Attempts)
+	binary.BigEndian.PutUint16(buf[8:10], combined)
 
 	n, err := w.Write(buf[:10])
 	total += int64(n)
@@ -311,13 +329,31 @@ func decodeMessage(b []byte, isExt bool) (*Message, error) {
 	}
 
 	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
-	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
+	combined := binary.BigEndian.Uint16(b[8:10])
 	msg.ID = MessageID(binary.BigEndian.Uint64(b[10:18]))
 	msg.TraceID = binary.BigEndian.Uint64(b[18:26])
+	// we reused high 4-bits of attempts for message version to make it compatible with ext message and any other future change.
+	// there some cases
+	// 1. no ext topic, all high 4-bits should be 0
+	// 2. ext topic, during update some old message has all high 4-bits with 0, and new message should equal 0xa for ext.
+	// 3. do we need handle new message with ext but have all high 4-bits with 0?
+	// 4. do we need handle some old attempts which maybe exceed the maxAttempts? (very small possible)
+	// 5. if any future change, hight 4-bits can be 0xb, 0xc, 0xd, 0xe (0x1~0x9 should be reserved for future)
+	var highBits uint16
+	if combined > maxAttempts {
+		highBits = combined & uint16(0xF000)
+		msg.Attempts = combined & uint16(0x0FFF)
+	} else {
+		msg.Attempts = combined
+	}
 
 	bodyStart := 26
+	if highBits == extMsgHighBits && !isExt {
+		// may happened while upgrading and the channel read the new data while ext flag not setting
+		return nil, fmt.Errorf("invalid message, has the ext high bits but not decode as ext data: %v", b)
+	}
 
-	if isExt {
+	if isExt && highBits == extMsgHighBits {
 		if len(b) < 27 {
 			return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
 		}
@@ -355,7 +391,7 @@ func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 	pos := 0
 	msg.Timestamp = int64(binary.BigEndian.Uint64(b[pos:8]))
 	pos += 8
-	msg.Attempts = binary.BigEndian.Uint16(b[pos : pos+2])
+	combined := binary.BigEndian.Uint16(b[pos : pos+2])
 	pos += 2
 	msg.ID = MessageID(binary.BigEndian.Uint64(b[pos : pos+8]))
 	pos += 8
@@ -381,8 +417,19 @@ func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 
 	msg.DelayedChannel = string(b[pos : pos+int(nameLen)])
 	pos += int(nameLen)
+	var highBits uint16
+	if combined > maxAttempts {
+		highBits = combined & uint16(0xF000)
+		msg.Attempts = combined & uint16(0x0FFF)
+	} else {
+		msg.Attempts = combined
+	}
 
-	if isExt {
+	if highBits == extMsgHighBits && !isExt {
+		return nil, fmt.Errorf("invalid message, has the ext high bits but not decode as ext data: %v", b)
+	}
+
+	if isExt && highBits == extMsgHighBits {
 		if len(b) < pos+1 {
 			return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
 		}
@@ -394,8 +441,14 @@ func DecodeDelayedMessage(b []byte, isExt bool) (*Message, error) {
 		case ext.NO_EXT_VER:
 			msg.ExtVer = ext.NO_EXT_VER
 		default:
+			if len(b) < pos+2 {
+				return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
+			}
 			extLen := binary.BigEndian.Uint16(b[pos : pos+2])
 			pos += 2
+			if len(b) < pos+int(extLen) {
+				return nil, fmt.Errorf("invalid delayed message buffer size (%d)", len(b))
+			}
 			msg.ExtBytes = b[pos : pos+int(extLen)]
 			pos += int(extLen)
 		}

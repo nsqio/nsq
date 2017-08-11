@@ -630,6 +630,11 @@ func (t *Topic) SetDynamicInfo(dynamicConf TopicDynamicConf, idGen MsgIDGenerato
 		t.setExt()
 	}
 	nsqLog.Logf("topic dynamic configure changed to %v", dynamicConf)
+	t.channelLock.RLock()
+	for _, ch := range t.channelMap {
+		ch.SetExt(dynamicConf.Ext)
+	}
+	t.channelLock.RUnlock()
 	t.Unlock()
 	t.nsqdNotify.NotifyStateChanged(t, true)
 }
@@ -846,6 +851,32 @@ func (t *Topic) flushForChannels() {
 		t.backend.FlushBuffer()
 		t.updateChannelsEnd(false)
 	}
+}
+
+func (t *Topic) PutRawDataOnReplica(rawData []byte, offset BackendOffset, checkSize int64, msgNum int32) (BackendQueueEnd, error) {
+	if atomic.LoadInt32(&t.exitFlag) == 1 {
+		return nil, ErrExiting
+	}
+	wend := t.backend.GetQueueWriteEnd()
+	if wend.Offset() != offset {
+		nsqLog.LogErrorf("topic %v: write offset mismatch: %v, %v", t.GetFullName(), offset, wend)
+		return nil, ErrWriteOffsetMismatch
+	}
+	_, writeBytes, dend, err := t.backend.PutRawV2(rawData, msgNum)
+	if err != nil {
+		nsqLog.LogErrorf("topic %v: write to disk error: %v, %v", t.GetFullName(), offset, err.Error())
+		return &dend, err
+	}
+	if checkSize > 0 && int64(writeBytes) != checkSize {
+		t.ResetBackendEndNoLock(wend.Offset(), wend.TotalMsgCnt())
+		return &dend, fmt.Errorf("message write size mismatch %v vs %v", checkSize, writeBytes)
+	}
+	atomic.StoreInt32(&t.needFlush, 1)
+	if atomic.LoadInt32(&t.dynamicConf.AutoCommit) == 1 {
+		t.UpdateCommittedOffset(&dend)
+	}
+
+	return &dend, nil
 }
 
 func (t *Topic) PutMessageOnReplica(m *Message, offset BackendOffset, checkSize int64) (BackendQueueEnd, error) {
