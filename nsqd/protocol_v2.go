@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"math/rand"
 	"net"
 	"sync/atomic"
@@ -394,12 +393,12 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 
 	tlsv1 := p.ctx.nsqd.tlsConfig != nil && identifyData.TLSv1
 	deflate := p.ctx.nsqd.getOpts().DeflateEnabled && identifyData.Deflate
-	deflateLevel := 0
-	if deflate {
-		if identifyData.DeflateLevel <= 0 {
-			deflateLevel = 6
-		}
-		deflateLevel = int(math.Min(float64(deflateLevel), float64(p.ctx.nsqd.getOpts().MaxDeflateLevel)))
+	deflateLevel := 6
+	if deflate && identifyData.DeflateLevel > 0 {
+		deflateLevel = identifyData.DeflateLevel
+	}
+	if max := p.ctx.nsqd.getOpts().MaxDeflateLevel; max < deflateLevel {
+		deflateLevel = max
 	}
 	snappy := p.ctx.nsqd.getOpts().SnappyEnabled && identifyData.Snappy
 
@@ -472,7 +471,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if deflate {
-		p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] upgrading connection to deflate", client)
+		p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] upgrading connection to deflate (level %d)", client, deflateLevel)
 		err = client.UpgradeDeflate(deflateLevel)
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
