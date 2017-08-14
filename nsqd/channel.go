@@ -642,6 +642,8 @@ func (c *Channel) ConfirmBackendQueueOnSlave(offset BackendOffset, cnt int64, al
 			}
 		} else {
 			_, err = c.backend.SkipReadToOffset(offset, cnt)
+			c.confirmedMsgs.DeleteLower(int64(offset))
+			atomic.StoreInt32(&c.waitingConfirm, int32(c.confirmedMsgs.Len()))
 		}
 	}
 	if err != nil {
@@ -724,6 +726,10 @@ func (c *Channel) ConfirmBackendQueue(msg *Message) (BackendOffset, int64, bool)
 			}
 			return curConfirm.Offset(), curConfirm.TotalMsgCnt(), reduced
 		} else {
+			if nsqLog.Level() >= levellogger.LOG_DEBUG {
+				nsqLog.Logf("channel %v merge msg %v( %v) to interval %v, confirmed to %v", c.GetName(),
+					msg.Offset, msg.queueCntIndex, mergedInterval, newConfirmed)
+			}
 			c.confirmedMsgs.DeleteInterval(mergedInterval)
 			atomic.StoreInt32(&c.waitingConfirm, int32(c.confirmedMsgs.Len()))
 		}
@@ -778,7 +784,7 @@ func (c *Channel) IsConfirmed(msg *Message) bool {
 		return false
 	}
 	c.confirmMutex.Lock()
-	ok := c.confirmedMsgs.IsCompleteOnverlap(&queueInterval{start: int64(msg.Offset),
+	ok := c.confirmedMsgs.IsCompleteOverlap(&queueInterval{start: int64(msg.Offset),
 		end:    int64(msg.Offset) + int64(msg.RawMoveSize),
 		endCnt: uint64(msg.queueCntIndex)})
 	c.confirmMutex.Unlock()
@@ -1334,12 +1340,17 @@ func (c *Channel) DisableConsume(disable bool) {
 func (c *Channel) drainChannelWaiting(clearConfirmed bool, lastDataNeedRead *bool, origReadChan chan ReadResult) error {
 	nsqLog.Logf("draining channel %v waiting %v", c.GetName(), clearConfirmed)
 	c.initPQ()
+	c.confirmMutex.Lock()
 	if clearConfirmed {
-		c.confirmMutex.Lock()
 		c.confirmedMsgs = NewIntervalHash()
 		atomic.StoreInt32(&c.waitingConfirm, 0)
-		c.confirmMutex.Unlock()
+	} else {
+		curConfirm := c.GetConfirmed()
+		c.confirmedMsgs.DeleteLower(int64(curConfirm.Offset()))
+		atomic.StoreInt32(&c.waitingConfirm, int32(c.confirmedMsgs.Len()))
+		nsqLog.Logf("channel %v current confirmed interval %v ", c.GetName(), c.confirmedMsgs.ToString())
 	}
+	c.confirmMutex.Unlock()
 	atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
 
 	if c.Exiting() {

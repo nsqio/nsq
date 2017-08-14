@@ -180,7 +180,7 @@ func recvNextMsgAndCheckClientMsg(t *testing.T, conn io.ReadWriter, expLen int, 
 	}
 }
 
-func recvNextMsgAndCheckExcept4EOF(t *testing.T, conn io.ReadWriter, expLen int, expTraceID uint64, autoFin bool, ext bool) (*nsqdNs.Message, bool) {
+func recvNextMsgAndCheckExcept4EOF(t *testing.T, conn io.ReadWriter, expLen int, expTraceID uint64, autoFin bool, ext bool) (*nsq.Message, bool) {
 	for {
 		resp, err := nsq.ReadResponse(conn)
 		if err != nil {
@@ -206,15 +206,16 @@ func recvNextMsgAndCheckExcept4EOF(t *testing.T, conn io.ReadWriter, expLen int,
 			continue
 		}
 		test.Equal(t, frameTypeMessage, frameType)
-		msgOut, err := nsqdNs.DecodeMessage(data, ext)
+		msgOut, err := nsq.DecodeMessageWithExt(data, ext)
 		test.Nil(t, err)
 		if expLen > 0 {
 			test.Equal(t, expLen, len(msgOut.Body))
 		}
 		if expTraceID > 0 {
-			traceID := msgOut.TraceID
+			traceID := binary.BigEndian.Uint64(msgOut.ID[8:])
 			test.Equal(t, expTraceID, traceID)
 		}
+		test.Assert(t, msgOut.Attempts <= 4000, "attempts should less than 4000")
 		if autoFin {
 			_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
 			test.Nil(t, err)
@@ -224,12 +225,12 @@ func recvNextMsgAndCheckExcept4EOF(t *testing.T, conn io.ReadWriter, expLen int,
 }
 
 func recvNextMsgAndCheck(t *testing.T, conn io.ReadWriter,
-	expLen int, expTraceID uint64, autoFin bool) *nsqdNs.Message {
+	expLen int, expTraceID uint64, autoFin bool) *nsq.Message {
 	return recvNextMsgAndCheckExt(t, conn, expLen, expTraceID, autoFin, false)
 }
 
 func recvNextMsgAndCheckExt(t *testing.T, conn io.ReadWriter,
-	expLen int, expTraceID uint64, autoFin bool, ext bool) *nsqdNs.Message {
+	expLen int, expTraceID uint64, autoFin bool, ext bool) *nsq.Message {
 	for {
 		resp, err := nsq.ReadResponse(conn)
 		if err != nil {
@@ -255,15 +256,16 @@ func recvNextMsgAndCheckExt(t *testing.T, conn io.ReadWriter,
 			continue
 		}
 		test.Equal(t, frameTypeMessage, frameType)
-		msgOut, err := nsqdNs.DecodeMessage(data, ext)
+		msgOut, err := nsq.DecodeMessageWithExt(data, ext)
 		test.Nil(t, err)
 		if expLen > 0 {
 			test.Equal(t, expLen, len(msgOut.Body))
 		}
 		if expTraceID > 0 {
-			traceID := msgOut.TraceID
+			traceID := binary.BigEndian.Uint64(msgOut.ID[8:])
 			test.Equal(t, expTraceID, traceID)
 		}
+		test.Assert(t, msgOut.Attempts <= 4000, "attempts should less than 4000")
 		if autoFin {
 			_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
 			test.Nil(t, err)
@@ -274,7 +276,7 @@ func recvNextMsgAndCheckExt(t *testing.T, conn io.ReadWriter,
 }
 
 func recvNextMsgAndCheckWithCloseChan(t *testing.T, conn io.ReadWriter,
-	expLen int, expTraceID uint64, autoFin bool, ext bool, closeChan chan int) *nsqdNs.Message {
+	expLen int, expTraceID uint64, autoFin bool, ext bool, closeChan chan int) *nsq.Message {
 	for {
 		select {
 		case <-closeChan:
@@ -301,15 +303,16 @@ func recvNextMsgAndCheckWithCloseChan(t *testing.T, conn io.ReadWriter,
 			continue
 		}
 		test.Equal(t, frameTypeMessage, frameType)
-		msgOut, err := nsqdNs.DecodeMessage(data, ext)
+		msgOut, err := nsq.DecodeMessageWithExt(data, ext)
 		test.Nil(t, err)
 		if expLen > 0 {
 			test.Equal(t, expLen, len(msgOut.Body))
 		}
 		if expTraceID > 0 {
-			traceID := msgOut.TraceID
+			traceID := binary.BigEndian.Uint64(msgOut.ID[8:])
 			test.Equal(t, expTraceID, traceID)
 		}
+		test.Assert(t, msgOut.Attempts <= 4000, "attempts should less than 4000")
 		if autoFin {
 			_, err = nsq.Finish(nsq.MessageID(msgOut.GetFullMsgID())).WriteTo(conn)
 			test.Nil(t, err)
@@ -356,19 +359,10 @@ func TestBasicV2(t *testing.T) {
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, true)
 	test.NotNil(t, msgOut)
-	//resp, err := nsq.ReadResponse(conn)
-	//test.Equal(t, err, nil)
-	//frameType, data, err := nsq.UnpackResponse(resp)
-	//t.Logf("data %v", string(data))
-	//test.Nil(t, err)
-	//msgOut, _ := nsqdNs.DecodeMessage(data, false)
-	//test.Equal(t, frameType, frameTypeMessage)
-	//test.Equal(t, msgOut.ID, msg.ID)
-	//test.Equal(t, msgOut.Body, msg.Body)
 }
 
 func TestMultipleConsumerV2(t *testing.T) {
-	msgChan := make(chan *nsqdNs.Message)
+	msgChan := make(chan *nsq.Message)
 
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
@@ -398,16 +392,17 @@ func TestMultipleConsumerV2(t *testing.T) {
 		go func(c net.Conn) {
 			resp, _ := nsq.ReadResponse(c)
 			_, data, _ := nsq.UnpackResponse(resp)
-			recvdMsg, _ := nsqdNs.DecodeMessage(data, false)
+			recvdMsg, _ := nsq.DecodeMessageWithExt(data, false)
 			msgChan <- recvdMsg
 		}(conn)
 	}
 
 	msgOut := <-msgChan
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	test.Equal(t, msgOut.Body, msg.Body)
 	msgOut = <-msgChan
-	test.Equal(t, msgOut.ID, msg.ID)
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	test.Equal(t, msgOut.Body, msg.Body)
 }
 
@@ -822,7 +817,7 @@ func TestConsumeJsonHeaderMessageNormal(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		msgOut := recvNextMsgAndCheckExt(t, conn1, len(msgBody), 0, true, true)
 		test.NotNil(t, msgOut)
-		test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+		test.Equal(t, uint8(ext.JSON_HEADER_EXT_VER), msgOut.ExtVer)
 		test.Assert(t, bytes.Equal(msgOut.ExtBytes, []byte(jsonHeaderStr)), "json header from message not equals, expected: %v, got: %v", jsonHeaderStr, string(msgOut.ExtBytes))
 	}
 
@@ -897,7 +892,7 @@ func TestConsumeJsonHeaderMessageTag(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		msgOut := recvNextMsgAndCheckExt(t, conn1, len(msgBody), 0, true, true)
 		test.NotNil(t, msgOut)
-		test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+		test.Equal(t, uint8(ext.JSON_HEADER_EXT_VER), msgOut.ExtVer)
 		test.Assert(t, bytes.Equal(msgOut.ExtBytes, []byte(jsonHeaderTagStr)), "json header from message not equals, expected: %v, got: %v", jsonHeaderTagStr, string(msgOut.ExtBytes))
 	}
 
@@ -905,7 +900,7 @@ func TestConsumeJsonHeaderMessageTag(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		msgOut := recvNextMsgAndCheckExt(t, conn2, len(msgBody), 0, true, true)
 		test.NotNil(t, msgOut)
-		test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+		test.Equal(t, uint8(ext.JSON_HEADER_EXT_VER), msgOut.ExtVer)
 		test.Assert(t, bytes.Equal(msgOut.ExtBytes, []byte(jsonHeaderStr)), "json header from message not equals, expected: %v, got: %v", jsonHeaderStr, string(msgOut.ExtBytes))
 	}
 
@@ -967,6 +962,7 @@ func TestConsumeMessageWhileUpgrade(t *testing.T) {
 		msgOut := recvNextMsgAndCheckExt(t, conn1, len(msgBody), 0, true, false)
 		test.NotNil(t, msgOut)
 		test.Equal(t, msgBody, msgOut.Body)
+		test.Assert(t, msgOut.Attempts <= 4000, "attempts should less than 4000")
 	}
 	t.Logf("begin upgrade topic")
 
@@ -1002,8 +998,9 @@ func TestConsumeMessageWhileUpgrade(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		msgOut := recvNextMsgAndCheckExt(t, conn2, len(msgBody), 0, true, true)
 		test.NotNil(t, msgOut)
-		test.Equal(t, ext.NO_EXT_VER, msgOut.ExtVer)
+		test.Equal(t, uint8(ext.NO_EXT_VER), msgOut.ExtVer)
 		test.Equal(t, msgBody, msgOut.Body)
+		test.Assert(t, msgOut.Attempts <= 4000, "attempts should less than 4000")
 	}
 
 	t.Logf("receiving extend messages using new conn")
@@ -1011,9 +1008,10 @@ func TestConsumeMessageWhileUpgrade(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		msgOut := recvNextMsgAndCheckExt(t, conn2, len(msgBody), 0, true, true)
 		test.NotNil(t, msgOut)
-		test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+		test.Equal(t, uint8(ext.JSON_HEADER_EXT_VER), msgOut.ExtVer)
 		test.Equal(t, []byte(jsonHeaderStr), msgOut.ExtBytes)
 		test.Equal(t, msgBody, msgOut.Body)
+		test.Assert(t, msgOut.Attempts <= 4000, "attempts should less than 4000")
 	}
 	conn2.Close()
 	time.Sleep(1 * time.Second)
@@ -2287,7 +2285,8 @@ func TestDelayMessage(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 
 	time.Sleep(75 * time.Millisecond)
 
@@ -2401,7 +2400,8 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	recvCnt++
 
 	time.Sleep(75 * time.Millisecond)
@@ -2414,7 +2414,7 @@ func TestDelayMessageToQueueEnd(t *testing.T) {
 
 	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
 	recvCnt++
-	test.Equal(t, msgOut.ID >= msg.ID, true)
+	test.Equal(t, uint64(nsq.GetNewMessageID(msgOut.ID[:])) >= uint64(msg.ID), true)
 	delayDone := time.Since(delayStart)
 	t.Log(delayDone)
 	test.Equal(t, delayDone >= delayToEnd, true)
@@ -2566,11 +2566,11 @@ func testDelayManyMessagesToQueueEnd(t *testing.T, changedLeader bool) {
 	}
 	topic.ForceFlush()
 
-	dumpCheck := make(map[uint64]*nsqdNs.Message)
+	dumpCheck := make(map[uint64]*nsq.Message)
 	var dumpLock sync.Mutex
 	dumpCnt := int32(0)
 	gcnt := 5
-	msgChan := make(chan nsqdNs.Message, 10)
+	msgChan := make(chan nsq.Message, 10)
 	for i := 0; i < gcnt; i++ {
 		go func() {
 		RECONNECT:
@@ -2645,8 +2645,9 @@ func testDelayManyMessagesToQueueEnd(t *testing.T, changedLeader bool) {
 
 				dumpLock.Lock()
 				received := false
-				var dup *nsqdNs.Message
-				if dup, received = dumpCheck[uint64(msgOut.ID)]; received {
+				var dup *nsq.Message
+				msgID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+				if dup, received = dumpCheck[msgID]; received {
 					if changedLeader {
 						t.Logf("found duplicate message fin %v", dup)
 					} else {
@@ -2654,7 +2655,7 @@ func testDelayManyMessagesToQueueEnd(t *testing.T, changedLeader bool) {
 					}
 					atomic.AddInt32(&dumpCnt, 1)
 				}
-				dumpCheck[uint64(msgOut.ID)] = msgOut
+				dumpCheck[msgID] = msgOut
 				dumpLock.Unlock()
 				if msgOut.Attempts >= 3 {
 					if changedLeader {
@@ -2680,7 +2681,8 @@ func testDelayManyMessagesToQueueEnd(t *testing.T, changedLeader bool) {
 	for !done {
 		select {
 		case m := <-msgChan:
-			delete(allmsgs, int(m.ID))
+			msgID := uint64(nsq.GetNewMessageID(m.ID[:]))
+			delete(allmsgs, int(msgID))
 			if len(allmsgs) == putCnt/2 && changedLeader && !changed {
 				t.Logf("try disable channel ==== ")
 				ch.DisableConsume(true)
@@ -2743,7 +2745,8 @@ func TestTouch(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 
 	time.Sleep(75 * time.Millisecond)
 
@@ -2918,7 +2921,8 @@ func TestMaxRdyCount(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 
 	_, err = nsq.Ready(int(opts.MaxRdyCount) + 1).WriteTo(conn)
 	test.Equal(t, err, nil)
@@ -3001,7 +3005,8 @@ func TestOutputBuffering(t *testing.T) {
 
 	test.Equal(t, int(end.Sub(start)/time.Millisecond) >= outputBufferTimeout, true)
 
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 }
 
 func TestOutputBufferingValidity(t *testing.T) {
@@ -3373,9 +3378,10 @@ func TestSnappy(t *testing.T) {
 	topic.PutMessage(msg)
 	resp, _ = nsq.ReadResponse(compressConn)
 	frameType, data, _ = nsq.UnpackResponse(resp)
-	msgOut, _ := nsqdNs.DecodeMessage(data, topic.IsExt())
+	msgOut, _ := nsq.DecodeMessageWithExt(data, topic.IsExt())
 	test.Equal(t, frameType, frameTypeMessage)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	test.Equal(t, msgOut.Body, msg.Body)
 }
 
@@ -3614,7 +3620,8 @@ func TestClientMsgTimeoutReqCount(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	test.Equal(t, msgOut.Body, msg.Body)
 
 	tstats := nsqd.GetTopicStats(true, topicName)
@@ -3829,7 +3836,8 @@ func TestClientMsgTimeout(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	test.Equal(t, msgOut.Body, msg.Body)
 
 	_, err = nsq.Ready(0).WriteTo(conn)
@@ -3885,7 +3893,8 @@ func TestTimeoutFin(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	test.Equal(t, msgOut.Attempts, uint16(attempt))
 	test.Equal(t, msgOut.Body, msg.Body)
 
@@ -3895,7 +3904,9 @@ func TestTimeoutFin(t *testing.T) {
 
 		// wait timeout and requeue
 		msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-		if uint64(msgOut.ID) == uint64(msg.ID) {
+
+		msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+		if uint64(msgOutID) == uint64(msg.ID) {
 			t.Log(msgOut)
 			test.Equal(t, msgOut.Attempts, uint16(attempt))
 			test.Equal(t, msgOut.Body, msg.Body)
@@ -3957,7 +3968,8 @@ func TestTimeoutTooMuch(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut := recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID := uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	test.Equal(t, msgOut.Attempts, uint16(attempt))
 	test.Equal(t, msgOut.Body, msg.Body)
 
@@ -4731,11 +4743,11 @@ func subWorker(n int, workers int, tcpAddr *net.TCPAddr, topicName string, rdyCh
 		if frameType != frameTypeMessage {
 			return errors.New("got something else")
 		}
-		msg, err := nsqdNs.DecodeMessage(data, ext)
+		msg, err := nsq.DecodeMessageWithExt(data, ext)
 		if err != nil {
 			return err
 		}
-		nsq.Finish(nsq.MessageID(msg.GetFullMsgID())).WriteTo(rw)
+		nsq.Finish(msg.ID).WriteTo(rw)
 		if (i+1)%rdyCount == 0 || i+1 == num {
 			if i+1 == num {
 				nsq.Ready(0).WriteTo(conn)

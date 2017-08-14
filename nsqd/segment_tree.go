@@ -2,6 +2,7 @@ package nsqd
 
 import (
 	"fmt"
+
 	"github.com/Workiva/go-datastructures/augmentedtree"
 	"github.com/absolute8511/goskiplist/skiplist"
 )
@@ -164,7 +165,7 @@ func (self *IntervalTree) DeleteLower(low int64) int {
 	return cnt
 }
 
-func (self *IntervalTree) IsCompleteOnverlap(inter QueueInterval) bool {
+func (self *IntervalTree) IsCompleteOverlap(inter QueueInterval) bool {
 	overlaps := self.tr.Query(inter)
 	for _, v := range overlaps {
 		if v.LowAtDimension(1) >= inter.HighAtDimension(1) {
@@ -316,7 +317,7 @@ func (self *IntervalSkipList) DeleteLower(low int64) int {
 	return cnt
 }
 
-func (self *IntervalSkipList) IsCompleteOnverlap(inter QueueInterval) bool {
+func (self *IntervalSkipList) IsCompleteOverlap(inter QueueInterval) bool {
 	overlaps := self.Query(inter, true)
 	return len(overlaps) > 0
 }
@@ -499,7 +500,7 @@ func (self *IntervalHash) DeleteLower(low int64) int {
 	return cnt
 }
 
-func (self *IntervalHash) IsCompleteOnverlap(inter QueueInterval) bool {
+func (self *IntervalHash) IsCompleteOverlap(inter QueueInterval) bool {
 	qi, ok := self.elems[inter.Start()]
 	if ok {
 		if qi.End() >= inter.End() {

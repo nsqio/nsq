@@ -130,14 +130,15 @@ func (m *Message) GetClientID() int64 {
 }
 
 func (m *Message) WriteToClient(w io.Writer, writeExt bool, writeDetail bool) (int64, error) {
-	return m.internalWriteTo(w, writeExt, writeDetail)
+	// for client, we no need write the compatible version info to message
+	return m.internalWriteTo(w, writeExt, false, writeDetail)
 }
 
 func (m *Message) WriteTo(w io.Writer, writeExt bool) (int64, error) {
-	return m.internalWriteTo(w, writeExt, false)
+	return m.internalWriteTo(w, writeExt, true, false)
 }
 
-func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeDetail bool) (int64, error) {
+func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeCompatible bool, writeDetail bool) (int64, error) {
 	var buf [16]byte
 	var total int64
 
@@ -146,7 +147,7 @@ func (m *Message) internalWriteTo(w io.Writer, writeExt bool, writeDetail bool) 
 		m.Attempts = maxAttempts
 	}
 	combined := m.Attempts
-	if writeExt {
+	if writeExt && writeCompatible {
 		combined += uint16(extMsgHighBits)
 	}
 	binary.BigEndian.PutUint16(buf[8:10], combined)

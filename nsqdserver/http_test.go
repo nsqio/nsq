@@ -127,7 +127,7 @@ func TestHTTPPubExt(t *testing.T) {
 	test.Equal(t, 200, resp.StatusCode)
 	msgOut := recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
 	test.NotNil(t, msgOut)
-	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+	test.Equal(t, uint8(ext.JSON_HEADER_EXT_VER), msgOut.ExtVer)
 	//parse json
 	var jhe map[string]interface{}
 	json.Unmarshal(msgOut.ExtBytes, &jhe)
@@ -196,7 +196,7 @@ func TestHTTPPubExt(t *testing.T) {
 
 	msgOut = recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
 	test.NotNil(t, msgOut)
-	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+	test.Equal(t, uint8(ext.JSON_HEADER_EXT_VER), msgOut.ExtVer)
 
 	aUrl, err = url.Parse(fmt.Sprintf("http://%s/pub_ext?topic=%s&ext=%s", httpAddr, topicName, url.QueryEscape(jsonHeaderTagStr)))
 	if err != nil {
@@ -223,7 +223,7 @@ func TestHTTPPubExt(t *testing.T) {
 
 	msgOut = recvNextMsgAndCheckExt(t, conn1, len(messageBody), 0, true, true)
 	test.NotNil(t, msgOut)
-	test.Equal(t, ext.JSON_HEADER_EXT_VER, msgOut.ExtVer)
+	test.Equal(t, uint8(ext.JSON_HEADER_EXT_VER), msgOut.ExtVer)
 
 }
 
