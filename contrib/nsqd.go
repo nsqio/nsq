@@ -40,7 +40,7 @@ func NewEnabledNSQDAddons(contribOpts []string, n INSQD) *NSQDAddons {
 	var activeAddons []INSQDAddon
 
 	initializers := map[string]initializer{
-		"-dogstatsd": NewNSQDDogStatsd,
+		"-dogstatsd-": NewNSQDDogStatsd,
 	}
 
 	n.Logf(nsqd.LOG_INFO, "Addons Initializing")
