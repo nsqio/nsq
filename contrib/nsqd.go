@@ -31,33 +31,34 @@ func (as *NSQDAddons) Start() {
 	}
 }
 
+func optHasPrefix(opt string, prefix string) bool {
+	return strings.Index(opt, prefix) == 0
+}
+
 // Initializes addons that have options set
 func NewEnabledNSQDAddons(contribOpts []string, n INSQD) *NSQDAddons {
 	var activeAddons []INSQDAddon
-	var hasOpt bool
 
 	initializers := map[string]initializer{
-		"dogstatsd": NewNSQDDogStatsd,
+		"-dogstatsd": NewNSQDDogStatsd,
 	}
 
 	n.Logf(nsqd.LOG_INFO, "Addons Initializing")
 
-	for k, initializer := range initializers {
+	for prefix, initializer := range initializers {
+		validOpts := []string{}
 		// check if any of the options contains this addon's expected argument
-		hasOpt = false
-
+		// keeps track of all options starting with the correct prefix
+		// and initializes with the valid options
 		for _, opt := range contribOpts {
-			if strings.Contains(opt, k) {
-				hasOpt = true
-				break
+			if optHasPrefix(opt, prefix) {
+				validOpts = append(validOpts, opt)
 			}
 		}
 
-		if hasOpt {
-			addon := initializer(contribOpts, n)
-			if addon.Enabled() {
-				activeAddons = append(activeAddons, addon)
-			}
+		addon := initializer(contribOpts, n)
+		if addon.Enabled() {
+			activeAddons = append(activeAddons, addon)
 		}
 	}
 
