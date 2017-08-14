@@ -160,7 +160,7 @@ func NewNodeTopicStats(nid string, cap int, cpus int) *NodeTopicStats {
 // the load factor is something like cpu load factor that
 // stand for the busy/idle state for this node.
 // the larger means busier.
-// 60% recent avg load in 24hr + 30% left need to be consumed + 10% data size left
+// 70% recent avg load in 24hr + 20% left need to be consumed + 10% data size left
 
 func (self *NodeTopicStats) GetNodeLoadFactor() (float64, float64) {
 	leaderLF := self.GetNodeLeaderLoadFactor()
@@ -197,7 +197,7 @@ func (self *NodeTopicStats) GetNodeLeaderLoadFactor() float64 {
 		avgWrite = HIGHEST_PUB_QPS_LEVEL
 	}
 
-	return avgWrite/HIGHEST_PUB_QPS_LEVEL*60.0 + float64(leftConsumed)/HIGHEST_LEFT_CONSUME_MB_SIZE*30.0 + float64(totalLeaderDataSize)/HIGHEST_LEFT_DATA_MB_SIZE*10.0
+	return avgWrite/HIGHEST_PUB_QPS_LEVEL*70.0 + float64(leftConsumed)/HIGHEST_LEFT_CONSUME_MB_SIZE*20.0 + float64(totalLeaderDataSize)/HIGHEST_LEFT_DATA_MB_SIZE*10.0
 }
 
 func (self *NodeTopicStats) GetNodePeakLevelList() []int64 {
@@ -289,7 +289,7 @@ func (self *NodeTopicStats) GetTopicLeaderLoadFactor(topicFullName string) float
 	if data > HIGHEST_LEFT_DATA_MB_SIZE {
 		data = HIGHEST_LEFT_DATA_MB_SIZE
 	}
-	return writeLevel/HIGHEST_PUB_QPS_LEVEL*60.0 + float64(depth)/HIGHEST_LEFT_CONSUME_MB_SIZE*30.0 + float64(data)/HIGHEST_LEFT_DATA_MB_SIZE*10.0
+	return writeLevel/HIGHEST_PUB_QPS_LEVEL*70.0 + float64(depth)/HIGHEST_LEFT_CONSUME_MB_SIZE*20.0 + float64(data)/HIGHEST_LEFT_DATA_MB_SIZE*10.0
 }
 
 func (self *NodeTopicStats) GetTopicAvgWriteLevel(topicFullName string) float64 {
