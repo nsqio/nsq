@@ -2296,7 +2296,8 @@ func TestDelayMessage(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID = uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	delayDone := time.Since(delayStart)
 	t.Log(delayDone)
 	test.Equal(t, delayDone > opts.MsgTimeout, true)
@@ -2308,7 +2309,8 @@ func TestDelayMessage(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID = uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 	delayDone = time.Since(delayStart)
 	t.Log(delayDone)
 	test.Equal(t, delayDone > opts.MsgTimeout-time.Second, true)
@@ -2320,7 +2322,8 @@ func TestDelayMessage(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID = uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 
 	delayDone = time.Since(delayStart)
 	t.Log(delayDone)
@@ -2341,7 +2344,8 @@ func TestDelayMessage(t *testing.T) {
 	topic.ForceFlush()
 
 	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID = uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 
 	time.Sleep(75 * time.Millisecond)
 	delayStart = time.Now()
@@ -2349,7 +2353,8 @@ func TestDelayMessage(t *testing.T) {
 	test.Equal(t, err, nil)
 
 	msgOut = recvNextMsgAndCheck(t, conn, len(msg.Body), msg.TraceID, false)
-	test.Equal(t, msgOut.ID, msg.ID)
+	msgOutID = uint64(nsq.GetNewMessageID(msgOut.ID[:]))
+	test.Equal(t, msgOutID, uint64(msg.ID))
 
 	delayDone = time.Since(delayStart)
 	t.Log(delayDone)
@@ -3916,7 +3921,7 @@ func TestTimeoutFin(t *testing.T) {
 				test.Nil(t, err)
 			}
 		} else {
-			test.Equal(t, msgOut.ID, msg.ID+1)
+			test.Equal(t, msgOutID, uint64(msg.ID+1))
 		}
 	}
 
