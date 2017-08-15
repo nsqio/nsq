@@ -1916,6 +1916,10 @@ exit:
 	if waitingDelayCnt < 0 {
 		nsqLog.Logf("delayed waiting count error %v ", waitingDelayCnt)
 	}
+	c.confirmMutex.Lock()
+	confirmed := c.GetConfirmed()
+	c.confirmedMsgs.DeleteLower(int64(confirmed.Offset()))
+	c.confirmMutex.Unlock()
 	needPeekDelay := waitingDelayCnt <= 0
 	if !c.IsConsumeDisabled() && !c.IsOrdered() && delayedQueue != nil &&
 		needPeekDelay && clientNum > 0 {

@@ -477,6 +477,7 @@ func (self *IntervalHash) ToString() string {
 		dataStr += fmt.Sprintf("interval %v, ", it.Value())
 	}
 	it.Close()
+	dataStr += fmt.Sprintf("history intervals %v, ", len(self.historyMsg))
 	return dataStr
 }
 
