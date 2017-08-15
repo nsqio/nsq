@@ -407,6 +407,10 @@ func (self *IntervalHash) AddOrMerge(inter QueueInterval) QueueInterval {
 		if qi.Start() < minStart {
 			minStart = qi.Start()
 		}
+		if qi.End() > maxEnd {
+			maxEnd = qi.End()
+			maxEndCnt = qi.EndCnt()
+		}
 		delete(self.elems, qi.Start())
 		delete(self.elems, qi.End())
 	}
@@ -415,6 +419,9 @@ func (self *IntervalHash) AddOrMerge(inter QueueInterval) QueueInterval {
 		if qi.End() > maxEnd {
 			maxEnd = qi.End()
 			maxEndCnt = qi.EndCnt()
+		}
+		if qi.Start() < minStart {
+			minStart = qi.Start()
 		}
 		delete(self.elems, qi.Start())
 		delete(self.elems, qi.End())
@@ -510,6 +517,12 @@ func (self *IntervalHash) IsCompleteOverlap(inter QueueInterval) bool {
 	qi, ok = self.elems[inter.End()]
 	if ok {
 		if qi.Start() <= inter.Start() {
+			return true
+		}
+	}
+	for _, v := range self.elems {
+		if (inter.Start() >= v.Start()) && (inter.Start() <= v.End()) &&
+			(inter.End() >= v.Start()) && (inter.End() <= v.End()) {
 			return true
 		}
 	}

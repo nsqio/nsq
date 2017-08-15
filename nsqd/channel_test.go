@@ -376,15 +376,29 @@ func TestRangeTree(t *testing.T) {
 	equal(t, deleted, 0)
 	ret = tr.Query(m3, false)
 	equal(t, len(ret), 0)
+	ret = tr.Query(m3, true)
+	equal(t, len(ret), 0)
+	ret = tr.Query(m2, true)
+	equal(t, len(ret), 0)
+	ret = tr.Query(m2, false)
+	equal(t, len(ret), 1)
 	lowest = tr.IsLowestAt(m1.Start())
 	equal(t, lowest, m1)
 	tr.AddOrMerge(m3)
 	t.Logf("2 %v", tr.ToString())
 	ret = tr.Query(m5, false)
 	equal(t, len(ret), 0)
+	ret = tr.Query(m2, false)
+	equal(t, len(ret), 2)
+	ret = tr.Query(m4, false)
+	equal(t, len(ret), 1)
 	tr.AddOrMerge(m5)
 	ret = tr.Query(m2, false)
 	equal(t, len(ret), 2)
+	ret = tr.Query(m4, false)
+	equal(t, len(ret), 2)
+	ret = tr.Query(m4, true)
+	equal(t, len(ret), 0)
 	lowest = tr.IsLowestAt(m1.Start())
 	equal(t, lowest, m1)
 	lowest = tr.IsLowestAt(m3.Start())
@@ -398,6 +412,9 @@ func TestRangeTree(t *testing.T) {
 	equal(t, merged.Start(), m1.Start())
 	equal(t, merged.End(), m3.End())
 	equal(t, merged.EndCnt(), m3.EndCnt())
+	equal(t, true, tr.IsCompleteOverlap(m1))
+	equal(t, true, tr.IsCompleteOverlap(m2))
+	equal(t, true, tr.IsCompleteOverlap(m3))
 
 	ret = tr.Query(m6, false)
 	equal(t, len(ret), 1)
@@ -406,6 +423,8 @@ func TestRangeTree(t *testing.T) {
 	equal(t, merged.Start(), m5.Start())
 	equal(t, merged.End(), m6.End())
 	equal(t, merged.EndCnt(), m6.EndCnt())
+	equal(t, true, tr.IsCompleteOverlap(m5))
+	equal(t, true, tr.IsCompleteOverlap(m6))
 
 	ret = tr.Query(m4, false)
 	equal(t, len(ret), 2)
@@ -413,6 +432,20 @@ func TestRangeTree(t *testing.T) {
 	merged = tr.AddOrMerge(m4)
 
 	equal(t, tr.Len(), int(1))
+	equal(t, merged.Start(), int64(0))
+	equal(t, merged.End(), int64(60))
+	equal(t, merged.EndCnt(), uint64(7))
+	equal(t, true, tr.IsCompleteOverlap(m1))
+	equal(t, true, tr.IsCompleteOverlap(m2))
+	equal(t, true, tr.IsCompleteOverlap(m3))
+	equal(t, true, tr.IsCompleteOverlap(m4))
+	equal(t, true, tr.IsCompleteOverlap(m5))
+	equal(t, true, tr.IsCompleteOverlap(m6))
+	merged = tr.AddOrMerge(m1)
+	equal(t, merged.Start(), int64(0))
+	equal(t, merged.End(), int64(60))
+	equal(t, merged.EndCnt(), uint64(7))
+	merged = tr.AddOrMerge(m6)
 	equal(t, merged.Start(), int64(0))
 	equal(t, merged.End(), int64(60))
 	equal(t, merged.EndCnt(), uint64(7))
@@ -434,12 +467,14 @@ func BenchmarkRangeTree(b *testing.B) {
 	b.StopTimer()
 	b.StartTimer()
 	for i := 0; i <= b.N; i++ {
+		//tr := NewIntervalTree()
+		//tr := NewIntervalSkipList()
 		tr := NewIntervalHash()
 		for index, q := range mn {
 			if index%2 == 0 {
 				tr.AddOrMerge(q)
 				if index >= 1 {
-					tr.IsCompleteOnverlap(mn[index/2])
+					tr.IsCompleteOverlap(mn[index/2])
 				}
 			}
 		}
@@ -447,7 +482,7 @@ func BenchmarkRangeTree(b *testing.B) {
 			if index%2 == 1 {
 				tr.AddOrMerge(q)
 				if index >= 1 {
-					tr.IsCompleteOnverlap(mn[index/2])
+					tr.IsCompleteOverlap(mn[index/2])
 				}
 			}
 		}
