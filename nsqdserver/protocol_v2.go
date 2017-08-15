@@ -660,7 +660,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 		if identifyData.DeflateLevel <= 0 {
 			deflateLevel = 6
 		}
-		deflateLevel = int(math.Min(float64(deflateLevel), float64(p.ctx.getOpts().MaxDeflateLevel)))
+		deflateLevel = int(math.Min(float64(identifyData.DeflateLevel), float64(p.ctx.getOpts().MaxDeflateLevel)))
 	}
 	snappy := p.ctx.getOpts().SnappyEnabled && identifyData.Snappy
 
@@ -735,7 +735,7 @@ func (p *protocolV2) IDENTIFY(client *nsqd.ClientV2, params [][]byte) ([]byte, e
 	}
 
 	if deflate {
-		nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] upgrading connection to deflate", client)
+		nsqd.NsqLogger().Logf("PROTOCOL(V2): [%s] upgrading connection to deflate (level %d)", client, deflateLevel)
 		err = client.UpgradeDeflate(deflateLevel)
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
