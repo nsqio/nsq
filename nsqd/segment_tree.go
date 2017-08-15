@@ -388,12 +388,14 @@ func (self *IntervalSkipList) IsLowestAt(low int64) QueueInterval {
 }
 
 type IntervalHash struct {
-	elems map[int64]QueueInterval
+	elems      map[int64]QueueInterval
+	historyMsg map[int64]int64
 }
 
 func NewIntervalHash() *IntervalHash {
 	return &IntervalHash{
-		elems: make(map[int64]QueueInterval),
+		elems:      make(map[int64]QueueInterval),
+		historyMsg: make(map[int64]int64),
 	}
 }
 
@@ -402,6 +404,8 @@ func (self *IntervalHash) AddOrMerge(inter QueueInterval) QueueInterval {
 	minStart := inter.Start()
 	maxEnd := inter.End()
 	maxEndCnt := inter.EndCnt()
+
+	self.historyMsg[inter.Start()] = inter.End()
 	qi, ok := self.elems[minStart]
 	if ok {
 		if qi.Start() < minStart {
@@ -504,6 +508,11 @@ func (self *IntervalHash) DeleteLower(low int64) int {
 		}
 	}
 
+	for s, v := range self.historyMsg {
+		if v <= low && s < low {
+			delete(self.historyMsg, s)
+		}
+	}
 	return cnt
 }
 
@@ -520,13 +529,20 @@ func (self *IntervalHash) IsCompleteOverlap(inter QueueInterval) bool {
 			return true
 		}
 	}
-	for _, v := range self.elems {
-		if (inter.Start() >= v.Start()) && (inter.Start() <= v.End()) &&
-			(inter.End() >= v.Start()) && (inter.End() <= v.End()) {
+	historyM, ok := self.historyMsg[inter.Start()]
+	if ok {
+		if historyM >= inter.End() {
 			return true
 		}
 	}
 	return false
+	//for _, v := range self.elems {
+	//	if (inter.Start() >= v.Start()) && (inter.Start() <= v.End()) &&
+	//		(inter.End() >= v.Start()) && (inter.End() <= v.End()) {
+	//		return true
+	//	}
+	//}
+	//return false
 }
 
 func (self *IntervalHash) Query(inter QueueInterval, excludeBoard bool) []QueueInterval {
