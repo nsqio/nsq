@@ -925,10 +925,12 @@ func (p *protocolV2) internalSUB(client *nsqd.ClientV2, params [][]byte, enableT
 	}
 	if topic.IsExt() {
 		if !client.ExtendSupport() {
+			nsqd.NsqLogger().Logf("sub failed on extend topic: %v-%v, %v", topicName, channelName, client.String())
 			return nil, protocol.NewFatalClientErr(nil, "E_SUB_EXTEND_NEED", "this topic is extended and should identify as extend support.")
 		}
 	} else {
 		if client.ExtendSupport() {
+			nsqd.NsqLogger().Logf("sub failed on non-extend topic: %v-%v, %v", topicName, channelName, client.String())
 			return nil, protocol.NewFatalClientErr(nil, "E_SUB_EXTEND_FORBIDDON", "this topic is not extended and should not identify as extend support.")
 		}
 	}
