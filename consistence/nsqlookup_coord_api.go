@@ -455,13 +455,20 @@ func (self *NsqLookupCoordinator) updateTopicMeta(currentNodes map[string]NsqdNo
 	}
 	coordLog.Infof("update topic: %v, with meta: %v", topic, meta)
 
-	if len(currentNodes) < meta.Replica || len(currentNodes) < meta.PartitionNum {
-		coordLog.Infof("nodes %v is less than replica or partition %v", len(currentNodes), meta)
-		return ErrNodeUnavailable.ToErrorType()
-	}
-	if len(currentNodes) < meta.Replica*meta.PartitionNum {
-		coordLog.Infof("nodes is less than replica*partition")
-		return ErrNodeUnavailable.ToErrorType()
+	if meta.OrderedMulti {
+		if len(currentNodes) < meta.Replica {
+			coordLog.Infof("nodes %v is less than replica %v", len(currentNodes), meta)
+			return ErrNodeUnavailable.ToErrorType()
+		}
+	} else {
+		if len(currentNodes) < meta.Replica || len(currentNodes) < meta.PartitionNum {
+			coordLog.Infof("nodes %v is less than replica or partition %v", len(currentNodes), meta)
+			return ErrNodeUnavailable.ToErrorType()
+		}
+		if len(currentNodes) < meta.Replica*meta.PartitionNum {
+			coordLog.Infof("nodes is less than replica*partition")
+			return ErrNodeUnavailable.ToErrorType()
+		}
 	}
 	return self.leadership.UpdateTopicMetaInfo(topic, &meta, oldGen)
 }
