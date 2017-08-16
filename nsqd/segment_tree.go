@@ -549,8 +549,16 @@ func (self *IntervalHash) IsCompleteOverlap(inter QueueInterval) bool {
 	//return false
 }
 
+func (self *IntervalHash) QueryExist(inter QueueInterval, excludeBoard bool) []QueueInterval {
+	return self.query(inter, excludeBoard, true)
+}
+
 func (self *IntervalHash) Query(inter QueueInterval, excludeBoard bool) []QueueInterval {
-	rets := make([]QueueInterval, 0)
+	return self.query(inter, excludeBoard, false)
+}
+
+func (self *IntervalHash) query(inter QueueInterval, excludeBoard bool, earlyExit bool) []QueueInterval {
+	rets := make([]QueueInterval, 0, 4)
 	sorted := skiplist.NewIntMap()
 	for _, v := range self.elems {
 		if v.End() < inter.Start() {
@@ -564,6 +572,10 @@ func (self *IntervalHash) Query(inter QueueInterval, excludeBoard bool) []QueueI
 		}
 		if v.Start() == inter.End() && excludeBoard {
 			continue
+		}
+		if earlyExit {
+			rets = append(rets, v)
+			return rets
 		}
 		sorted.Set(v.Start(), v)
 	}

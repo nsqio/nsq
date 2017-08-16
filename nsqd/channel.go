@@ -1933,7 +1933,7 @@ exit:
 	hashedIntervals := c.confirmedMsgs
 	fixConsistence := false
 	for s, e := range hashedIntervals.historyMsg {
-		overlaps := hashedIntervals.Query(&queueInterval{
+		overlaps := hashedIntervals.QueryExist(&queueInterval{
 			start: s,
 			end:   e,
 		}, true)
