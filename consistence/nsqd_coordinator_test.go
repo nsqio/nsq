@@ -1481,6 +1481,8 @@ func testNsqdCoordPutMessageAndSyncChannelOffset(t *testing.T, isExt bool) {
 		time.Sleep(time.Millisecond)
 		test.Equal(t, channel2.Depth(), int64(msgCnt-i-1))
 		test.Equal(t, channel2.DepthSize(), msgRawSize*int64(msgCnt-i-1))
+		// wait sync for channel offset
+		time.Sleep(time.Millisecond * 10)
 		test.Equal(t, channel1.Depth(), int64(msgCnt-i-1))
 		test.Equal(t, channel1.DepthSize(), msgRawSize*int64(msgCnt-i-1))
 	}

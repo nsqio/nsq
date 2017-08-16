@@ -1943,9 +1943,11 @@ exit:
 			delete(hashedIntervals.historyMsg, s)
 		}
 	}
-	c.confirmMutex.Unlock()
 	if fixConsistence {
 		nsqLog.Logf("confirmed intervals are not consistentant %v, need reset reader, cur: %v ", c.confirmedMsgs.ToString(), confirmed)
+	}
+	c.confirmMutex.Unlock()
+	if fixConsistence {
 		select {
 		case c.readerChanged <- resetChannelData{BackendOffset(-1), 0, false}:
 		default:
