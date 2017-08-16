@@ -47,8 +47,9 @@ type Consumer interface {
 }
 
 type resetChannelData struct {
-	Offset BackendOffset
-	Cnt    int64
+	Offset         BackendOffset
+	Cnt            int64
+	ClearConfirmed bool
 }
 
 type MsgChanData struct {
@@ -128,7 +129,9 @@ type Channel struct {
 	EnableTrace int32
 	Ext         int32
 
-	requireOrder           int32
+	requireOrder int32
+	// 1 - reset
+	// 2 - reset and clear confirmed
 	needResetReader        int32
 	processResetReaderTime int64
 	waitingProcessMsgTs    int64
@@ -344,12 +347,12 @@ func (c *Channel) SetConsumeOffset(offset BackendOffset, cnt int64, force bool) 
 	_, ok := c.backend.(*diskQueueReader)
 	if ok {
 		select {
-		case c.readerChanged <- resetChannelData{offset, cnt}:
+		case c.readerChanged <- resetChannelData{offset, cnt, true}:
 		default:
 			nsqLog.Logf("ignored the reader reset: %v:%v", offset, cnt)
 			if offset > 0 && cnt > 0 {
 				select {
-				case c.readerChanged <- resetChannelData{offset, cnt}:
+				case c.readerChanged <- resetChannelData{offset, cnt, true}:
 				case <-time.After(time.Second):
 					nsqLog.Logf("ignored the reader reset finally: %v:%v", offset, cnt)
 				}
@@ -367,7 +370,7 @@ func (c *Channel) SetOrdered(enable bool) {
 			return
 		}
 		select {
-		case c.readerChanged <- resetChannelData{BackendOffset(-1), 0}:
+		case c.readerChanged <- resetChannelData{BackendOffset(-1), 0, true}:
 		default:
 		}
 	} else {
@@ -1327,7 +1330,7 @@ func (c *Channel) DisableConsume(disable bool) {
 				}
 			}
 			select {
-			case c.readerChanged <- resetChannelData{BackendOffset(-1), 0}:
+			case c.readerChanged <- resetChannelData{BackendOffset(-1), 0, false}:
 			default:
 			}
 		}
@@ -1417,7 +1420,7 @@ func (c *Channel) TryWakeupRead() {
 
 func (c *Channel) resetReaderToConfirmed() error {
 	atomic.StoreInt64(&c.waitingProcessMsgTs, 0)
-	atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0)
+	atomic.StoreInt32(&c.needResetReader, 0)
 	confirmed, err := c.backend.ResetReadToConfirmed()
 	if err != nil {
 		nsqLog.LogWarningf("channel(%v): reset read to confirmed error: %v", c.GetName(), err)
@@ -1431,7 +1434,11 @@ func (c *Channel) resetChannelReader(resetOffset resetChannelData, lastDataNeedR
 	lastMsg *Message, needReadBackend *bool, readBackendWait *bool) {
 	var err error
 	if resetOffset.Offset == BackendOffset(-1) {
-		atomic.StoreInt32(&c.needResetReader, 1)
+		if resetOffset.ClearConfirmed {
+			atomic.StoreInt32(&c.needResetReader, 2)
+		} else {
+			atomic.StoreInt32(&c.needResetReader, 1)
+		}
 	} else {
 		d := c.backend.(*diskQueueReader)
 		_, err = d.ResetReadToOffset(resetOffset.Offset, resetOffset.Cnt)
@@ -1475,7 +1482,8 @@ LOOP:
 			goto exit
 		}
 
-		if atomic.CompareAndSwapInt32(&c.needResetReader, 1, 0) {
+		resetReaderFlag := atomic.LoadInt32(&c.needResetReader)
+		if resetReaderFlag > 0 {
 			nsqLog.Infof("reset the reader : %v", c.GetConfirmed())
 			err = c.resetReaderToConfirmed()
 			// if reset failed, we should not drain the waiting data
@@ -1493,7 +1501,7 @@ LOOP:
 						needClearConfirm = true
 					}
 				}
-				if c.IsOrdered() {
+				if c.IsOrdered() || resetReaderFlag == 2 {
 					needClearConfirm = true
 				}
 				c.drainChannelWaiting(needClearConfirm, &lastDataNeedRead, origReadChan)
@@ -1667,7 +1675,7 @@ LOOP:
 			curConfirm := c.GetConfirmed()
 			if msg.Offset != curConfirm.Offset() {
 				nsqLog.Infof("read a message not in ordered: %v, %v", msg.Offset, curConfirm)
-				atomic.StoreInt32(&c.needResetReader, 1)
+				atomic.StoreInt32(&c.needResetReader, 2)
 				continue
 			}
 		}
@@ -1919,7 +1927,30 @@ exit:
 	c.confirmMutex.Lock()
 	confirmed := c.GetConfirmed()
 	c.confirmedMsgs.DeleteLower(int64(confirmed.Offset()))
+	// it may happen that the confirmed is moved to older
+	// Since all the confirmed intervals below than the confirmed offset will be cleaned,
+	// in this case, we need make sure all the history intervals should be lied in the hash intervals.
+	hashedIntervals := c.confirmedMsgs
+	fixConsistence := false
+	for s, e := range hashedIntervals.historyMsg {
+		overlaps := hashedIntervals.Query(&queueInterval{
+			start: s,
+			end:   e,
+		}, true)
+		if len(overlaps) == 0 || hashedIntervals.Len() == 0 {
+			nsqLog.Logf("history confirmed are not consistentant %v-%v", s, e)
+			fixConsistence = true
+			delete(hashedIntervals.historyMsg, s)
+		}
+	}
 	c.confirmMutex.Unlock()
+	if fixConsistence {
+		nsqLog.Logf("confirmed intervals are not consistentant %v, need reset reader, cur: %v ", c.confirmedMsgs.ToString(), confirmed)
+		select {
+		case c.readerChanged <- resetChannelData{BackendOffset(-1), 0, false}:
+		default:
+		}
+	}
 	needPeekDelay := waitingDelayCnt <= 0
 	if !c.IsConsumeDisabled() && !c.IsOrdered() && delayedQueue != nil &&
 		needPeekDelay && clientNum > 0 {
@@ -2010,9 +2041,8 @@ exit:
 				atomic.LoadInt32(&c.waitingConfirm), c.GetConfirmed(), c.GetChannelDebugStats())
 
 			atomic.StoreInt64(&c.processResetReaderTime, time.Now().Unix())
-			atomic.StoreInt32(&c.needResetReader, 1)
 			select {
-			case c.readerChanged <- resetChannelData{BackendOffset(-1), 0}:
+			case c.readerChanged <- resetChannelData{BackendOffset(-1), 0, true}:
 			default:
 			}
 		}

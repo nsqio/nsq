@@ -4192,8 +4192,12 @@ func TestResetChannelToOld(t *testing.T) {
 	// to old offset.
 	opts := nsqdNs.NewOptions()
 	opts.Logger = newTestLogger(t)
-	opts.Logger = &levellogger.SimpleLogger{}
+	//opts.Logger = &levellogger.SimpleLogger{}
 	opts.LogLevel = 2
+	if testing.Verbose() {
+		opts.LogLevel = 4
+		nsqdNs.SetLogger(opts.Logger)
+	}
 	opts.MsgTimeout = time.Second * 2
 	opts.MaxMsgSize = 100
 	opts.MaxBodySize = 1000
@@ -4251,11 +4255,11 @@ func TestResetChannelToOld(t *testing.T) {
 	go func() {
 		for {
 			time.Sleep(time.Second)
-			if time.Since(startTime) > time.Second*20 {
+			if time.Since(startTime) > time.Second*30 {
 				if channel.GetConfirmed().Offset() == realEnd.Offset() {
 					return
 				}
-				t.Errorf("should stop on : %v", recvCnt)
+				t.Errorf("should stop on : %v, %v, %v", recvCnt, channel.GetChannelDebugStats(), realEnd)
 				conn.Close()
 				return
 			}
@@ -4277,6 +4281,10 @@ func TestResetChannelToOld(t *testing.T) {
 			t.Logf("got error response: %v", string(data))
 		}
 		test.NotEqual(t, frameTypeError, frameType)
+
+		if channel.GetConfirmed().Offset() == realEnd.Offset() {
+			break
+		}
 		if frameType == frameTypeResponse {
 			t.Logf("got response data: %v", string(data))
 			if bytes.Equal(data, heartbeatBytes) {
@@ -4299,7 +4307,8 @@ func TestResetChannelToOld(t *testing.T) {
 			channel.UpdateQueueEnd(resetOldEnd, false)
 			test.Equal(t, end, realEnd)
 			channel.UpdateQueueEnd(resetOldEnd, true)
-			test.NotEqual(t, end, resetOldEnd)
+			t.Logf("channel update end to old %v", resetOldEnd)
+			test.NotEqual(t, realEnd, resetOldEnd)
 			end = channel.GetChannelEnd()
 			test.Equal(t, end, resetOldEnd)
 		}
@@ -4313,11 +4322,13 @@ func TestResetChannelToOld(t *testing.T) {
 		if recvCnt > int(opts.MaxConfirmWin)*2+1 {
 			localTopic.ForceFlush()
 		}
-		if recvCnt > int(opts.MaxConfirmWin)*10 {
-			t.Errorf("should stop on : %v", recvCnt)
+		if recvCnt > int(opts.MaxConfirmWin)*12 {
+			t.Errorf("should stop on : %v, %v, %v", recvCnt, channel.GetChannelDebugStats(), realEnd)
+			break
 		}
-		if time.Since(startTime) > time.Second*20 {
+		if time.Since(startTime) > time.Second*30 {
 			t.Errorf("should stop on : %v", recvCnt)
+			break
 		}
 	}
 

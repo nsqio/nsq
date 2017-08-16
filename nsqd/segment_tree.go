@@ -478,6 +478,9 @@ func (self *IntervalHash) ToString() string {
 	}
 	it.Close()
 	dataStr += fmt.Sprintf("history intervals %v, ", len(self.historyMsg))
+	for s, e := range self.historyMsg {
+		dataStr += fmt.Sprintf("interval %v-%v, ", s, e)
+	}
 	return dataStr
 }
 

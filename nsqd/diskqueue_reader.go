@@ -1180,7 +1180,7 @@ func (d *diskQueueReader) internalUpdateEnd(endPos *diskQueueEndInfo, forceReloa
 	d.queueEndInfo = *endPos
 	d.updateDepth()
 	if nsqLog.Level() >= levellogger.LOG_DETAIL {
-		nsqLog.LogDebugf("read end %v updated to : %v, current: %v ", oldPos, endPos, d.confirmedQueueInfo)
+		nsqLog.LogDebugf("read end %v updated to : %v, current confirmed: %v ", oldPos, endPos, d.confirmedQueueInfo)
 	}
 	if forceReload {
 		nsqLog.LogDebugf("read force reload at end %v ", endPos)
