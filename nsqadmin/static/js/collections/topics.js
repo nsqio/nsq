@@ -19,8 +19,12 @@ var Topics = Backbone.Collection.extend({
     },
 
     parse: function(resp) {
-        var topics = _.map(resp['topics'], function(name) {
-            return {'name': name};
+        var topics = _.map(resp['topics'], function(topic) {
+            return {
+                'name':             topic['topic_name'],
+                'extend_support':   topic['extend_support'],
+                'ordered':          topic['ordered']
+            };
         });
         return topics;
     }

@@ -85,6 +85,64 @@ func (c *ClusterInfo) GetVersion(addr string) (semver.Version, error) {
 	return v, err
 }
 
+// GetLookupdTopics returns a []*TopicInfo containing a union of all the topics
+// from all the given nsqlookupd
+func (c *ClusterInfo) GetLookupdTopicsMeta(lookupdHTTPAddrs []string) ([]*TopicInfo, error) {
+	var topics []*TopicInfo
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+	var errs []error
+
+	type respType struct {
+		Topics []string `json:"topics"`
+		MetaInfo []*TopicInfo `json:"meta_info,omitempty"`
+	}
+
+	for _, addr := range lookupdHTTPAddrs {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+
+			endpoint := fmt.Sprintf("http://%s/topics?metaInfo=true", addr)
+			c.logf("CI: querying nsqlookupd %s", endpoint)
+
+			var resp respType
+			err := c.client.NegotiateV1(endpoint, &resp)
+			if err != nil {
+				lock.Lock()
+				errs = append(errs, err)
+				lock.Unlock()
+				return
+			}
+
+			lock.Lock()
+			defer lock.Unlock()
+			if resp.MetaInfo != nil {
+				topics = append(topics, resp.MetaInfo...)
+			} else {
+				for _, topic := range resp.Topics {
+					topics = append(topics, &TopicInfo{
+						TopicName:topic,
+					})
+				}
+			}
+
+		}(addr)
+	}
+	wg.Wait()
+
+	if len(errs) == len(lookupdHTTPAddrs) {
+		return nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
+	}
+
+	sort.Sort(TopicInfoSortByName(topics))
+
+	if len(errs) > 0 {
+		return topics, ErrList(errs)
+	}
+	return topics, nil
+}
+
 // GetLookupdTopics returns a []string containing a union of all the topics
 // from all the given nsqlookupd
 func (c *ClusterInfo) GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, error) {
@@ -335,9 +393,29 @@ func (c *ClusterInfo) GetLookupdTopicProducers(topic string, lookupdHTTPAddrs []
 	return producers, partitionProducers, nil
 }
 
+type TopicInfo struct {
+	TopicName	string	`json:"topic_name"`
+	ExtSupport 	bool 	`json:"extend_support"`
+	Ordered 	bool 	`json:"ordered"`
+}
+
+type TopicInfoSortByName []*TopicInfo
+
+func (c TopicInfoSortByName) Less(i, j int) bool {
+	return 	c[i].TopicName < c[j].TopicName
+}
+
+func (c TopicInfoSortByName) Swap(i, j int) {
+	c[i], c[j] = c[j], c[i]
+}
+
+func (c TopicInfoSortByName) Len() int {
+	return len(c)
+}
+
 // GetNSQDTopics returns a []string containing all the topics produced by the given nsqd
-func (c *ClusterInfo) GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
-	var topics []string
+func (c *ClusterInfo) GetNSQDTopics(nsqdHTTPAddrs []string) ([]*TopicInfo, error) {
+	var topics []*TopicInfo
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	var errs []error
@@ -345,6 +423,8 @@ func (c *ClusterInfo) GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 	type respType struct {
 		Topics []struct {
 			Name string `json:"topic_name"`
+			Ordered bool `json:"is_multi_ordered"`
+			ExtSupport bool `json:"is_ext"`
 		} `json:"topics"`
 	}
 
@@ -368,7 +448,11 @@ func (c *ClusterInfo) GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 			lock.Lock()
 			defer lock.Unlock()
 			for _, topic := range resp.Topics {
-				topics = stringy.Add(topics, topic.Name)
+				topics = append(topics,  &TopicInfo{
+					TopicName: topic.Name,
+					Ordered:   topic.Ordered,
+					ExtSupport:topic.ExtSupport,
+				})
 			}
 		}(addr)
 	}
@@ -378,7 +462,7 @@ func (c *ClusterInfo) GetNSQDTopics(nsqdHTTPAddrs []string) ([]string, error) {
 		return nil, fmt.Errorf("Failed to query any nsqd: %s", ErrList(errs))
 	}
 
-	sort.Strings(topics)
+	sort.Sort(TopicInfoSortByName(topics));
 
 	if len(errs) > 0 {
 		return topics, ErrList(errs)

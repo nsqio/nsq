@@ -9,6 +9,37 @@ var TopicsView = BaseView.extend({
 
     template: require('./spinner.hbs'),
 
+    events: {
+        'click .filters input': 'topicsFilterAction',
+    },
+
+    topicsFilterAction: function(e) {
+            e.stopPropagation();
+
+            $('.table tr').show();
+
+            $(e.target).parent().find('input')
+                .filter(function(){
+                    if($(this).is(':checked')) {
+                        return this;
+                    }
+                })
+                .each(function() {
+                    var filterValue = $(this).val();
+                    $('.table tr')
+                        .filter(
+                            function(){
+                                if ($(this)
+                                    .find('td a#' + filterValue).length == 0){
+                                    return this;
+                                }
+                            }
+                        )
+                        .hide();
+                    }
+                );
+    },
+
     initialize: function() {
         BaseView.prototype.initialize.apply(this, arguments);
         this.listenTo(AppState, 'change:graph_interval', this.render);

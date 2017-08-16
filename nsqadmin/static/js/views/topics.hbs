@@ -6,7 +6,10 @@
         <h2>Topics</h2>
     </div>
 </div>
-
+<div class="filters">
+    <input type="checkbox" id="orderedFilter" value="order">ordered<br>
+    <input type="checkbox" id="extendFilter" value="ext">extend<br>
+</div>
 <div class="row">
     <div class="col-md-6">
     {{#if collection.length}}
@@ -16,7 +19,15 @@
             </tr>
             {{#each collection}}
             <tr>
-                <td><a class="link" href="/topics/{{urlencode name}}">{{name}}</a></td>
+                <td>
+                    <a class="link" href="/topics/{{urlencode name}}">{{name}}</a>
+                    {{#if ordered}}
+                        <a id = "order" class="label label-primary">Order</a>
+                    {{/if}}
+                    {{#if extend_support}}
+                        <a id = "ext" class="label label-primary">Ext</a>
+                    {{/if}}
+                </td>
             </tr>
             {{/each}}
         </table>
