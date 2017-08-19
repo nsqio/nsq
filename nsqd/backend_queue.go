@@ -1,5 +1,9 @@
 package nsqd
 
+import (
+	"github.com/nsqio/nsq/internal/lg"
+)
+
 // BackendQueue represents the behavior for the secondary message
 // storage system
 type BackendQueue interface {
@@ -9,4 +13,13 @@ type BackendQueue interface {
 	Delete() error
 	Depth() int64
 	Empty() error
+}
+
+type backendLogger struct {
+	logf lg.AppLogFunc
+}
+
+func (b backendLogger) Output(calldepth int, s string) error {
+	b.logf(lg.INFO, "%s", s)
+	return nil
 }
