@@ -169,7 +169,7 @@ func New(opts *Options) *NSQD {
 
 	err = n.LoadMetadata()
 	if err != nil {
-		n.logf("FATAL: failed to load metadata - %s", err)
+		n.logf(LOG_FATAL, "failed to load metadata - %s", err)
 		os.Exit(1)
 	}
 

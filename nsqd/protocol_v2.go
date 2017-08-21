@@ -304,7 +304,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 		case ev := <-backendMsgChan:
 			entry, err := DecodeWireEntry(ev.Body)
 			if err != nil {
-				p.ctx.nsqd.logf("PROTOCOL(V2): [%s] DecodeWireEntry error - %s", client, err)
+				p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] DecodeWireEntry error - %s", client, err)
 				// TODO: (WAL) FIN this ID?
 				continue
 			}
