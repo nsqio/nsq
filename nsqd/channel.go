@@ -329,8 +329,8 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 
 // RequeueMessage requeues a message based on `time.Duration`, ie:
 //
-// `timeoutMs` == 0 - requeue a message immediately
-// `timeoutMs`  > 0 - asynchronously wait for the specified timeout
+// `timeout` == 0 - requeue a message immediately
+// `timeout`  > 0 - asynchronously wait for the specified timeout
 //     and requeue a message (aka "deferred requeue")
 //
 func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Duration) error {

@@ -199,7 +199,7 @@ func TestHTTPmpubForNonNormalizedBinaryParam(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(5), topic.Depth())
+	test.Equal(t, uint64(5), topic.Depth())
 }
 
 func TestHTTPpubDefer(t *testing.T) {
