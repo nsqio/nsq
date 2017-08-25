@@ -221,13 +221,16 @@ func (c *Channel) flush() error {
 	}
 
 finish:
+	c.inFlightMutex.Lock()
 	for _, msg := range c.inFlightMessages {
 		err := writeMessageToBackend(&msgBuf, msg, c.backend)
 		if err != nil {
 			c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 		}
 	}
+	c.inFlightMutex.Unlock()
 
+	c.deferredMutex.Lock()
 	for _, item := range c.deferredMessages {
 		msg := item.Value.(*Message)
 		err := writeMessageToBackend(&msgBuf, msg, c.backend)
@@ -235,6 +238,7 @@ finish:
 			c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 		}
 	}
+	c.deferredMutex.Unlock()
 
 	return nil
 }
