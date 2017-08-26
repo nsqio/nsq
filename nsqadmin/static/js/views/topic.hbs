@@ -188,7 +188,11 @@
                 <td>{{commafy requeue_count}}</td>
                 <td>{{commafy timeout_count}}</td>
                 <td>{{commafy message_count}}</td>
-                <td>{{commafy clients.length}}</td>
+                {{#if client_count}}
+                    <td>{{commafy client_count}}</td>
+                {{else}}
+                    <td>{{commafy clients.length}}</td>
+                {{/if}}
                 {{#if e2e_processing_latency.percentiles.length}}
                     {{#each e2e_processing_latency.percentiles}}
                     <td>

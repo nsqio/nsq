@@ -251,7 +251,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
-	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName)
+	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName, "")
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
@@ -291,7 +291,7 @@ func (s *httpServer) channelHandler(w http.ResponseWriter, req *http.Request, ps
 		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
-	_, allChannelStats, err := s.ci.GetNSQDStats(producers, topicName)
+	_, allChannelStats, err := s.ci.GetNSQDStats(producers, topicName, channelName)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
@@ -349,7 +349,7 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 		return nil, http_api.Err{404, "NODE_NOT_FOUND"}
 	}
 
-	topicStats, _, err := s.ci.GetNSQDStats(clusterinfo.Producers{producer}, "")
+	topicStats, _, err := s.ci.GetNSQDStats(clusterinfo.Producers{producer}, "", "")
 	if err != nil {
 		s.ctx.nsqadmin.logf(LOG_ERROR, "failed to get nsqd stats - %s", err)
 		return nil, http_api.Err{502, fmt.Sprintf("UPSTREAM_ERROR: %s", err)}
@@ -359,7 +359,11 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 	var totalMessages int64
 	for _, ts := range topicStats {
 		for _, cs := range ts.Channels {
-			totalClients += int64(len(cs.Clients))
+			if len(cs.Clients) > 0 {
+				totalClients += int64(len(cs.Clients))
+			} else {
+				totalClients += int64(cs.ClientCount)
+			}
 		}
 		totalMessages += ts.MessageCount
 	}
@@ -631,7 +635,7 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps
 		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
-	_, channelStats, err := s.ci.GetNSQDStats(producers, "")
+	_, channelStats, err := s.ci.GetNSQDStats(producers, "", "")
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {

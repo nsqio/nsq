@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"errors"
 	"runtime"
 	"sort"
 	"sync/atomic"
@@ -40,6 +41,7 @@ type ChannelStats struct {
 	DeferredCount int           `json:"deferred_count"`
 	MessageCount  uint64        `json:"message_count"`
 	RequeueCount  uint64        `json:"requeue_count"`
+	ClientCount   int           `json:"client_count"`
 	TimeoutCount  uint64        `json:"timeout_count"`
 	Clients       []ClientStats `json:"clients"`
 	Paused        bool          `json:"paused"`
@@ -56,6 +58,7 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		DeferredCount: len(c.deferredMessages),
 		MessageCount:  atomic.LoadUint64(&c.messageCount),
 		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
+		ClientCount:   len(c.clients),
 		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
 		Clients:       clients,
 		Paused:        c.IsPaused(),
@@ -143,6 +146,75 @@ func (n *NSQD) GetStats() []TopicStats {
 		topics = append(topics, NewTopicStats(t, channels))
 	}
 	return topics
+}
+
+func (n *NSQD) GetTopicStats(topic string) (TopicStats, error) {
+	n.RLock()
+	var realTopic *Topic
+	for _, t := range n.topicMap {
+		if topic == t.name {
+			realTopic = t
+			break
+		}
+	}
+	n.RUnlock()
+
+	if nil == realTopic {
+		return TopicStats{}, errors.New("the topic is not found.")
+	} else {
+		realTopic.RLock()
+		realChannels := make([]*Channel, 0, len(realTopic.channelMap))
+		for _, c := range realTopic.channelMap {
+			realChannels = append(realChannels, c)
+		}
+		realTopic.RUnlock()
+		sort.Sort(ChannelsByName{realChannels})
+		channels := make([]ChannelStats, 0, len(realChannels))
+		for _, c := range realChannels {
+			channels = append(channels, NewChannelStats(c, nil))
+		}
+		topics := NewTopicStats(realTopic, channels)
+		return topics, nil
+	}
+}
+
+func (n *NSQD) GetChannelStats(topic, channel string) (TopicStats, error) {
+	n.RLock()
+	var realTopic *Topic
+	for _, t := range n.topicMap {
+		if topic == t.name {
+			realTopic = t
+			break
+		}
+	}
+	n.RUnlock()
+
+	if nil == realTopic {
+		return TopicStats{}, errors.New("the topic is not found.")
+	} else {
+		realTopic.RLock()
+		realChannels := make([]*Channel, 0, len(realTopic.channelMap))
+		for _, c := range realTopic.channelMap {
+			realChannels = append(realChannels, c)
+		}
+		realTopic.RUnlock()
+		sort.Sort(ChannelsByName{realChannels})
+		channels := make([]ChannelStats, 0, 1)
+		for _, c := range realChannels {
+			if c.name == channel {
+				c.RLock()
+				clients := make([]ClientStats, 0, len(c.clients))
+				for _, client := range c.clients {
+					clients = append(clients, client.Stats())
+				}
+				c.RUnlock()
+				channels = append(channels, NewChannelStats(c, clients))
+				break
+			}
+		}
+		topics := NewTopicStats(realTopic, channels)
+		return topics, nil
+	}
 }
 
 type memStats struct {
