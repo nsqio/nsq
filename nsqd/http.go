@@ -248,35 +248,22 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, err
 	}
 
-	// if `binary` param is not specified, `text` mode is used.
-	//
-	// if `binary` param is specified:
-	//     1. "true" or "1", use `binary` mode
-	//     2. "false" or "0", use `text` mode
-	//     3. All other **empty** or  **non-empty** values will be logged as deprecated
-	//        and will be parsed as `true`, i.e., `binary` mode
-	//
-	vals, ok := reqParams["binary"]
-
+	// text mode is default, but unrecognized binary opt considered true
 	binaryMode := false
-	if ok {
-		var exists bool
-		if binaryMode, exists = boolParams[vals[0]]; !exists {
+	if vals, ok := reqParams["binary"]; ok {
+		if binaryMode, ok = boolParams[vals[0]]; !ok {
 			binaryMode = true
 			s.ctx.nsqd.logf(LOG_WARN, "deprecated value '%s' used for /mpub binary param", vals[0])
 		}
-
-		if binaryMode {
-			tmp := make([]byte, 4)
-			msgs, err = readMPUB(req.Body, tmp, topic,
-				s.ctx.nsqd.getOpts().MaxMsgSize, s.ctx.nsqd.getOpts().MaxBodySize)
-			if err != nil {
-				return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
-			}
-		}
 	}
-
-	if !binaryMode {
+	if binaryMode {
+		tmp := make([]byte, 4)
+		msgs, err = readMPUB(req.Body, tmp, topic,
+			s.ctx.nsqd.getOpts().MaxMsgSize, s.ctx.nsqd.getOpts().MaxBodySize)
+		if err != nil {
+			return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
+		}
+	} else {
 		// add 1 so that it's greater than our max when we test for it
 		// (LimitReader returns a "fake" EOF)
 		readMax := s.ctx.nsqd.getOpts().MaxBodySize + 1
