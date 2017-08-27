@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nsqio/go-diskqueue"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/pqueue"
 	"github.com/nsqio/nsq/internal/quantile"
 )
@@ -94,16 +95,22 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		c.ephemeral = true
 		c.backend = newDummyBackendQueue()
 	} else {
+		dqLogf := func(level diskqueue.LogLevel, f string, args ...interface{}) {
+			opts := ctx.nsqd.getOpts()
+			lg.Logf(opts.Logger, opts.logLevel, lg.LogLevel(level), f, args...)
+		}
 		// backend names, for uniqueness, automatically include the topic...
 		backendName := getBackendName(topicName, channelName)
-		c.backend = diskqueue.New(backendName,
+		c.backend = diskqueue.New(
+			backendName,
 			ctx.nsqd.getOpts().DataPath,
 			ctx.nsqd.getOpts().MaxBytesPerFile,
 			int32(minValidMsgLength),
 			int32(ctx.nsqd.getOpts().MaxMsgSize)+minValidMsgLength,
 			ctx.nsqd.getOpts().SyncEvery,
 			ctx.nsqd.getOpts().SyncTimeout,
-			ctx.nsqd.getOpts().Logger)
+			dqLogf,
+		)
 	}
 
 	c.ctx.nsqd.Notify(c)
