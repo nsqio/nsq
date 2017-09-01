@@ -25,6 +25,11 @@ func TestStats(t *testing.T) {
 	msg := NewMessage(topic.GenerateID(), []byte("test body"))
 	topic.PutMessage(msg)
 
+	accompanyTopicName := "accompany_test_stats" + strconv.Itoa(int(time.Now().Unix()))
+	accompanyTopic := nsqd.GetTopic(accompanyTopicName)
+	msg = NewMessage(accompanyTopic.GenerateID(), []byte("accompany test body"))
+	accompanyTopic.PutMessage(msg)
+
 	conn, err := mustConnectNSQD(tcpAddr)
 	test.Nil(t, err)
 	defer conn.Close()
@@ -32,12 +37,22 @@ func TestStats(t *testing.T) {
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	stats := nsqd.GetStats()
+	stats := nsqd.GetStats(topicName, "ch")
 	t.Logf("stats: %+v", stats)
 
 	test.Equal(t, 1, len(stats))
 	test.Equal(t, 1, len(stats[0].Channels))
 	test.Equal(t, 1, len(stats[0].Channels[0].Clients))
+
+	stats = nsqd.GetStats(topicName, "none_exist_channel")
+	t.Logf("stats: %+v", stats)
+
+	test.Equal(t, 0, len(stats))
+
+	stats = nsqd.GetStats("none_exist_topic", "none_exist_channel")
+	t.Logf("stats: %+v", stats)
+
+	test.Equal(t, 0, len(stats))
 }
 
 func TestClientAttributes(t *testing.T) {
