@@ -450,7 +450,7 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 		go func(addr string) {
 			defer wg.Done()
 
-			endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
+			endpoint := fmt.Sprintf("http://%s/stats?format=json&topic=%s", addr, topic)
 			c.logf("CI: querying nsqd %s", endpoint)
 
 			var statsResp statsRespType
@@ -528,9 +528,10 @@ func (c *ClusterInfo) GetNSQDTopicProducers(topic string, nsqdHTTPAddrs []string
 
 // GetNSQDStats returns aggregate topic and channel stats from the given Producers
 //
+// if selectedChannel is empty, this will return stats for topic/channel
 // if selectedTopic is empty, this will return stats for *all* topic/channels
 // and the ChannelStats dict will be keyed by topic + ':' + channel
-func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([]*TopicStats, map[string]*ChannelStats, error) {
+func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string, selectedChannel string) ([]*TopicStats, map[string]*ChannelStats, error) {
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	var topicStatsList TopicStatsList
@@ -548,7 +549,15 @@ func (c *ClusterInfo) GetNSQDStats(producers Producers, selectedTopic string) ([
 			defer wg.Done()
 
 			addr := p.HTTPAddress()
+
 			endpoint := fmt.Sprintf("http://%s/stats?format=json", addr)
+			if selectedTopic != "" {
+				endpoint += "&topic=" + selectedTopic
+				if selectedChannel != "" {
+					endpoint += "&channel=" + selectedChannel
+				}
+			}
+
 			c.logf("CI: querying nsqd %s", endpoint)
 
 			var resp respType
