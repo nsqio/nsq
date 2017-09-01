@@ -5,6 +5,8 @@ import (
 	"math"
 	"time"
 
+	"strings"
+
 	"github.com/nsqio/nsq/internal/statsd"
 )
 
@@ -107,6 +109,33 @@ func (n *NSQD) statsdLoop() {
 					for _, item := range channel.E2eProcessingLatency.Percentiles {
 						stat = fmt.Sprintf("topic.%s.channel.%s.e2e_processing_latency_%.0f", topic.TopicName, channel.ChannelName, item["quantile"]*100.0)
 						client.Gauge(stat, int64(item["value"]))
+					}
+
+					for _, consumerClient := range channel.Clients {
+						// try to find the client in the last collection
+						lastConsumerClient := ClientStats{}
+						for _, checkConsumerClient := range lastChannel.Clients {
+							if consumerClient.RemoteAddress == checkConsumerClient.RemoteAddress {
+								lastConsumerClient = checkConsumerClient
+								break
+							}
+						}
+
+						clientAddr := strings.Replace(strings.Replace(consumerClient.RemoteAddress, ".", "_", -1), ":", "_", -1)
+
+						stat := fmt.Sprintf("topic.%s.channel.%s.client.%s.in_flight_count", topic.TopicName, channel.ChannelName, clientAddr)
+						client.Gauge(stat, int64(consumerClient.InFlightCount))
+
+						stat = fmt.Sprintf("topic.%s.channel.%s.client.%s.ready_count", topic.TopicName, channel.ChannelName, clientAddr)
+						client.Gauge(stat, consumerClient.ReadyCount)
+
+						diff := consumerClient.FinishCount - lastConsumerClient.FinishCount
+						stat = fmt.Sprintf("topic.%s.channel.%s.client.%s.finished_count", topic.TopicName, channel.ChannelName, clientAddr)
+						client.Incr(stat, int64(diff))
+
+						diff = consumerClient.RequeueCount - lastConsumerClient.RequeueCount
+						stat = fmt.Sprintf("topic.%s.channel.%s.client.%s.requeue_count", topic.TopicName, channel.ChannelName, clientAddr)
+						client.Incr(stat, int64(diff))
 					}
 				}
 			}
