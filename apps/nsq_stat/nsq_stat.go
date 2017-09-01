@@ -73,12 +73,12 @@ func statLoop(interval time.Duration, connectTimeout time.Duration, requestTimeo
 			log.Fatalf("ERROR: failed to get topic producers - %s", err)
 		}
 
-		_, allChannelStats, err := ci.GetNSQDStats(producers, topic)
+		_, channelStats, err := ci.GetNSQDStats(producers, topic, channel)
 		if err != nil {
 			log.Fatalf("ERROR: failed to get nsqd stats - %s", err)
 		}
 
-		c, ok := allChannelStats[channel]
+		c, ok := channelStats[channel]
 		if !ok {
 			log.Fatalf("ERROR: failed to find channel(%s) in stats metadata for topic(%s)", channel, topic)
 		}

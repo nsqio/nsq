@@ -40,7 +40,7 @@ func (n *NSQD) statsdLoop() {
 
 			n.logf(LOG_INFO, "STATSD: pushing stats to %s", client)
 
-			stats := n.GetStats()
+			stats := n.GetStats("", "")
 			for _, topic := range stats {
 				// try to find the topic in the last collection
 				lastTopic := TopicStats{}

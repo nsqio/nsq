@@ -113,20 +113,36 @@ type ChannelsByName struct {
 
 func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Channels[j].name }
 
-func (n *NSQD) GetStats() []TopicStats {
+func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 	n.RLock()
-	realTopics := make([]*Topic, 0, len(n.topicMap))
-	for _, t := range n.topicMap {
-		realTopics = append(realTopics, t)
+	var realTopics []*Topic
+	if topic == "" {
+		realTopics = make([]*Topic, 0, len(n.topicMap))
+		for _, t := range n.topicMap {
+			realTopics = append(realTopics, t)
+		}
+	} else if val, exists := n.topicMap[topic]; exists {
+		realTopics = []*Topic{val}
+	} else {
+		n.RUnlock()
+		return []TopicStats{}
 	}
 	n.RUnlock()
 	sort.Sort(TopicsByName{realTopics})
 	topics := make([]TopicStats, 0, len(realTopics))
 	for _, t := range realTopics {
 		t.RLock()
-		realChannels := make([]*Channel, 0, len(t.channelMap))
-		for _, c := range t.channelMap {
-			realChannels = append(realChannels, c)
+		var realChannels []*Channel
+		if channel == "" {
+			realChannels = make([]*Channel, 0, len(t.channelMap))
+			for _, c := range t.channelMap {
+				realChannels = append(realChannels, c)
+			}
+		} else if val, exists := t.channelMap[channel]; exists {
+			realChannels = []*Channel{val}
+		} else {
+			t.RUnlock()
+			continue
 		}
 		t.RUnlock()
 		sort.Sort(ChannelsByName{realChannels})
