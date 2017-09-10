@@ -65,7 +65,6 @@ type PublishHandler struct {
 	mode      int
 	hostPool  hostpool.HostPool
 	respChan  chan *nsq.ProducerTransaction
-	destinationTopic string
 
 	requireJSONValueParsed   bool
 	requireJSONValueIsNumber bool
@@ -73,6 +72,11 @@ type PublishHandler struct {
 
 	perAddressStatus map[string]*timer_metrics.TimerMetrics
 	timermetrics     *timer_metrics.TimerMetrics
+}
+
+type TopicHandler struct {
+	publishHandler *PublishHandler
+	destinationTopic string
 }
 
 func (ph *PublishHandler) responder() {
@@ -194,7 +198,12 @@ func filterMessage(js map[string]interface{}, rawMsg []byte) ([]byte, error) {
 	return newRawMsg, nil
 }
 
-func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
+func (t *TopicHandler) HandleMessage(m *nsq.Message) error {
+    return t.publishHandler.HandleMessage(m, t.destinationTopic)
+}
+
+
+func (ph *PublishHandler) HandleMessage(m *nsq.Message, destinationTopic string) error {
 	var err error
 	msgBody := m.Body
 
@@ -214,6 +223,7 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 		}
 
 		msgBody, err = filterMessage(js, msgBody)
+
 		if err != nil {
 			log.Printf("ERROR: filterMessage() failed: %s", err)
 			return err
@@ -228,11 +238,11 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message) error {
 		idx := counter % uint64(len(ph.addresses))
 		addr := ph.addresses[idx]
 		p := ph.producers[addr]
-		err = p.PublishAsync(ph.destinationTopic, msgBody, ph.respChan, m, startTime, addr)
+		err = p.PublishAsync(destinationTopic, msgBody, ph.respChan, m, startTime, addr)
 	case ModeHostPool:
 		hostPoolResponse := ph.hostPool.Get()
 		p := ph.producers[hostPoolResponse.Host()]
-		err = p.PublishAsync(ph.destinationTopic, msgBody, ph.respChan, m, startTime, hostPoolResponse)
+		err = p.PublishAsync(destinationTopic, msgBody, ph.respChan, m, startTime, hostPoolResponse)
 		if err != nil {
 			hostPoolResponse.Mark(err)
 		}
@@ -268,7 +278,7 @@ func commandLineValidation() {
 	}
 
 	if *destTopic != "" && !protocol.IsValidTopicName(*destTopic) {
-		log.Fatal("--single-destination-topic is invalid")
+		log.Fatal("--destination-topic is invalid")
 	}
 
 	if !protocol.IsValidChannelName(*channel) {
@@ -293,12 +303,11 @@ func initConsumerAndHandler(cCfg *nsq.Config,
 	                        selectedMode int,
 	                        hostPool hostpool.HostPool,
 	                        perAddressStatus map[string]*timer_metrics.TimerMetrics) []*nsq.Consumer {
-	var consumerList []*nsq.Consumer
-	var singleDestinationHandler *PublishHandler
-	var handlerList []*PublishHandler
 
-	if *destTopic != "" {
-		singleDestinationHandler = &PublishHandler{
+	var consumerList []*nsq.Consumer
+	var singleDestinationTopicHandler *TopicHandler
+
+    publisherHandlerRef := &PublishHandler{
 			addresses:        destNsqdTCPAddrs,
 			producers:        producers,
 			mode:             selectedMode,
@@ -306,9 +315,13 @@ func initConsumerAndHandler(cCfg *nsq.Config,
 			respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
 			perAddressStatus: perAddressStatus,
 			timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
+	}
+
+	if *destTopic != "" {
+		singleDestinationTopicHandler = &TopicHandler{
+			publishHandler:   publisherHandlerRef,
 			destinationTopic: *destTopic,
 		}
-		handlerList = append(handlerList, singleDestinationHandler)
 	}
 
 	for _, topic := range topics {
@@ -317,27 +330,19 @@ func initConsumerAndHandler(cCfg *nsq.Config,
 		if err != nil {
 			log.Fatal(err)
 		}
-		if (singleDestinationHandler != nil) {
-			consumer.AddConcurrentHandlers(singleDestinationHandler, len(destNsqdTCPAddrs))
+		if (singleDestinationTopicHandler != nil) {
+			consumer.AddConcurrentHandlers(singleDestinationTopicHandler, len(destNsqdTCPAddrs))
 		} else {
-			handler := &PublishHandler{
-				addresses:        destNsqdTCPAddrs,
-				producers:        producers,
-				mode:             selectedMode,
-				hostPool:         hostPool,
-				respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
-				perAddressStatus: perAddressStatus,
-				timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
+			topicHandler := &TopicHandler{
+				publishHandler:   publisherHandlerRef,
 				destinationTopic: topic,
 			}
-			consumer.AddConcurrentHandlers(handler, len(destNsqdTCPAddrs))
-			handlerList = append(handlerList, handler)
+
+			consumer.AddConcurrentHandlers(topicHandler, len(destNsqdTCPAddrs))
 		}
 	}
 	for i := 0; i < len(destNsqdTCPAddrs); i++ {
-		for _, handler := range handlerList {
-			go handler.responder()
-		}
+		go publisherHandlerRef.responder()
 	}
 
 	return consumerList;
