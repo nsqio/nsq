@@ -423,29 +423,13 @@ func main() {
 		}
 	}
 
-	aggregateStopChan := make(chan bool)
-
-	for _, consumer := range consumerList {
-		go func(consumer *nsq.Consumer, aggregateStopChan chan<- bool) {
-			for {
-				select {
-					case <-consumer.StopChan:
-						aggregateStopChan<-true
-						return
-				}
-			}
-
-		}(consumer, aggregateStopChan)
-	}
-
 	for {
 		select {
-		case <-aggregateStopChan:
-			return
 		case <-termChan:
 			for _, consumer := range consumerList {
 				consumer.Stop()
 			}
+			return
 		}
 	}
 }
