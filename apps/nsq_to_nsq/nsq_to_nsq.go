@@ -75,7 +75,7 @@ type PublishHandler struct {
 }
 
 type TopicHandler struct {
-	publishHandler *PublishHandler
+	publishHandler   *PublishHandler
 	destinationTopic string
 }
 
@@ -199,9 +199,8 @@ func filterMessage(js map[string]interface{}, rawMsg []byte) ([]byte, error) {
 }
 
 func (t *TopicHandler) HandleMessage(m *nsq.Message) error {
-    return t.publishHandler.HandleMessage(m, t.destinationTopic)
+	return t.publishHandler.HandleMessage(m, t.destinationTopic)
 }
-
 
 func (ph *PublishHandler) HandleMessage(m *nsq.Message, destinationTopic string) error {
 	var err error
@@ -273,7 +272,7 @@ func commandLineValidation() {
 
 	for _, topic := range topics {
 		if !protocol.IsValidTopicName(topic) {
-	        log.Fatal("--topic is invalid")
+			log.Fatal("--topic is invalid")
 		}
 	}
 
@@ -297,24 +296,23 @@ func commandLineValidation() {
 	}
 }
 
-
 func initConsumerAndHandler(cCfg *nsq.Config,
-	                        producers map[string]*nsq.Producer,
-	                        selectedMode int,
-	                        hostPool hostpool.HostPool,
-	                        perAddressStatus map[string]*timer_metrics.TimerMetrics) []*nsq.Consumer {
+	producers map[string]*nsq.Producer,
+	selectedMode int,
+	hostPool hostpool.HostPool,
+	perAddressStatus map[string]*timer_metrics.TimerMetrics) []*nsq.Consumer {
 
 	var consumerList []*nsq.Consumer
 	var singleDestinationTopicHandler *TopicHandler
 
-    publisherHandlerRef := &PublishHandler{
-			addresses:        destNsqdTCPAddrs,
-			producers:        producers,
-			mode:             selectedMode,
-			hostPool:         hostPool,
-			respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
-			perAddressStatus: perAddressStatus,
-			timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
+	publisherHandlerRef := &PublishHandler{
+		addresses:        destNsqdTCPAddrs,
+		producers:        producers,
+		mode:             selectedMode,
+		hostPool:         hostPool,
+		respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
+		perAddressStatus: perAddressStatus,
+		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
 
 	if *destTopic != "" {
@@ -330,7 +328,7 @@ func initConsumerAndHandler(cCfg *nsq.Config,
 		if err != nil {
 			log.Fatal(err)
 		}
-		if (singleDestinationTopicHandler != nil) {
+		if singleDestinationTopicHandler != nil {
 			consumer.AddConcurrentHandlers(singleDestinationTopicHandler, len(destNsqdTCPAddrs))
 		} else {
 			topicHandler := &TopicHandler{
@@ -345,7 +343,7 @@ func initConsumerAndHandler(cCfg *nsq.Config,
 		go publisherHandlerRef.responder()
 	}
 
-	return consumerList;
+	return consumerList
 }
 
 func main() {
