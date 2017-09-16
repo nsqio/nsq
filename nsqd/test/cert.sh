@@ -1,7 +1,5 @@
 #!/bin/bash
-# call this script with an email address (valid or not).
-# like:
-# ./cert.sh foo@foo.com
+# ./cert.sh foo@foo.com 127.0.0.1
 # Found: https://gist.github.com/ncw/9253562#file-makecert-sh
 
 if [ "$1" == "" ]; then
@@ -9,31 +7,39 @@ if [ "$1" == "" ]; then
     exit 1
 fi
 
-EMAIL=$1
+if [ "$2" == "" ]; then
+    echo "Need CN as argument"
+    exit 1
+fi
 
-rm -rf tmp 
+PRIVKEY="test"
+EMAIL=$1
+CN=$2
+
+rm -rf tmp
 mkdir tmp
 cd tmp
 
 echo "make CA"
-PRIVKEY="test"
-openssl req -new -x509 -days 365 -keyout ca.key -out ca.pem -subj "/C=DE/ST=NRW/L=Earth/O=Random Company/OU=IT/CN=www.random.com/emailAddress=KryptoKings@random.com" -passout pass:$PRIVKEY
+openssl req -new -x509 -days 3650 -keyout ca.key -out ca.pem \
+    -config ../openssl.conf -extensions ca \
+    -subj "/CN=ca" \
+    -passout pass:$PRIVKEY
 
 echo "make server cert"
-openssl req -new -nodes -x509 -out server.pem -keyout server.key -days 3650 -subj "/C=DE/ST=NRW/L=Earth/O=Random Company/OU=IT/CN=www.random.com/emailAddress=${EMAIL}"
+openssl genrsa -out server.key 2048
+openssl req -new -sha256 -key server.key -out server.req \
+    -subj "/emailAddress=${EMAIL}/C=DE/ST=NRW/L=Earth/O=Random Company/OU=IT/CN=${CN}"
+openssl x509 -req -days 3650 -sha256 -in server.req -CA ca.pem -CAkey ca.key -CAcreateserial -passin pass:$PRIVKEY -out server.pem \
+    -extfile ../openssl.conf -extensions server
+    
 
 echo "make client cert"
-#openssl req -new -nodes -x509 -out client.pem -keyout client.key
-#-days 3650 -subj "/C=DE/ST=NRW/L=Earth/O=Random
-#Company/OU=IT/CN=www.random.com/emailAddress=${EMAIL}"
-
 openssl genrsa -out client.key 2048
-echo "00" > ca.srl
-openssl req -sha1 -key client.key -new -out client.req -subj "/C=DE/ST=NRW/L=Earth/O=Random Company/OU=IT/CN=client.com/emailAddress=${EMAIL}"
-# Adding -addtrust clientAuth makes certificates Go can't read
-openssl x509 -req -days 365 -in client.req -CA ca.pem -CAkey ca.key -passin pass:$PRIVKEY -out client.pem # -addtrust clientAuth
-
-openssl x509 -extfile ../openssl.conf -extensions ssl_client -req -days 365 -in client.req -CA ca.pem -CAkey ca.key -passin pass:$PRIVKEY -out client.pem
+openssl req -new -sha256 -key client.key -out client.req \
+    -subj "/emailAddress=${EMAIL}/C=DE/ST=NRW/L=Earth/O=Random Company/OU=IT/CN=${CN}"
+openssl x509 -req -days 3650 -sha256 -in client.req -CA ca.pem -CAkey ca.key -CAserial ca.srl -passin pass:$PRIVKEY -out client.pem \
+    -extfile ../openssl.conf -extensions client
 
 cd ..
 mv tmp/* certs
