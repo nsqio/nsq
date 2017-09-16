@@ -54,11 +54,14 @@ func TestBothNSQDAndNSQLookup(t *testing.T) {
 }
 
 func TestTLSHTTPClient(t *testing.T) {
+	lgr := test.NewTestLogger(t)
+
 	nsqdOpts := nsqd.NewOptions()
 	nsqdOpts.TLSCert = "./test/server.pem"
-	nsqdOpts.TLSKey = "./test/server-key.pem"
+	nsqdOpts.TLSKey = "./test/server.key"
 	nsqdOpts.TLSRootCAFile = "./test/ca.pem"
 	nsqdOpts.TLSClientAuthPolicy = "require-verify"
+	nsqdOpts.Logger = lgr
 	_, nsqdHTTPAddr, nsqd := mustStartNSQD(nsqdOpts)
 	defer os.RemoveAll(nsqdOpts.DataPath)
 	defer nsqd.Exit()
@@ -68,7 +71,8 @@ func TestTLSHTTPClient(t *testing.T) {
 	opts.NSQDHTTPAddresses = []string{nsqdHTTPAddr.String()}
 	opts.HTTPClientTLSRootCAFile = "./test/ca.pem"
 	opts.HTTPClientTLSCert = "./test/client.pem"
-	opts.HTTPClientTLSKey = "./test/client-key.pem"
+	opts.HTTPClientTLSKey = "./test/client.key"
+	opts.Logger = lgr
 	nsqadmin := New(opts)
 	nsqadmin.Main()
 	defer nsqadmin.Exit()
