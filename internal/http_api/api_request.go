@@ -13,30 +13,19 @@ import (
 	"time"
 )
 
-type deadlinedConn struct {
-	Timeout time.Duration
-	net.Conn
-}
-
-func (c *deadlinedConn) Read(b []byte) (n int, err error) {
-	return c.Conn.Read(b)
-}
-
-func (c *deadlinedConn) Write(b []byte) (n int, err error) {
-	return c.Conn.Write(b)
-}
-
 // A custom http.Transport with support for deadline timeouts
 func NewDeadlineTransport(connectTimeout time.Duration, requestTimeout time.Duration) *http.Transport {
+	// arbitrary values copied from http.DefaultTransport
 	transport := &http.Transport{
-		Dial: func(netw, addr string) (net.Conn, error) {
-			c, err := net.DialTimeout(netw, addr, connectTimeout)
-			if err != nil {
-				return nil, err
-			}
-			return &deadlinedConn{connectTimeout, c}, nil
-		},
+		DialContext: (&net.Dialer{
+			Timeout:   connectTimeout,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
 		ResponseHeaderTimeout: requestTimeout,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
 	}
 	return transport
 }
