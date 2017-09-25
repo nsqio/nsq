@@ -32,7 +32,7 @@ const (
 var (
 	showVersion = flag.Bool("version", false, "print version string")
 	channel     = flag.String("channel", "nsq_to_nsq", "nsq channel")
-	destTopic   = flag.String("destination-topic", "", "activate single destination nsq topic Note: default destination topic is the topic itself")
+	destTopic   = flag.String("destination-topic", "", "use this destination topic for all consumed topics (default is consumed topic name)")
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
 	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
@@ -351,9 +351,8 @@ func main() {
 	}
 
 	var consumerList []*nsq.Consumer
-	var singleDestinationTopicHandler *TopicHandler
 
-	publisherHandlerRef := &PublishHandler{
+	publisher := &PublishHandler{
 		addresses:        destNsqdTCPAddrs,
 		producers:        producers,
 		mode:             selectedMode,
@@ -363,32 +362,25 @@ func main() {
 		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
 
-	if *destTopic != "" {
-		singleDestinationTopicHandler = &TopicHandler{
-			publishHandler:   publisherHandlerRef,
-			destinationTopic: *destTopic,
-		}
-	}
-
 	for _, topic := range topics {
 		consumer, err := nsq.NewConsumer(topic, *channel, cCfg)
 		consumerList = append(consumerList, consumer)
 		if err != nil {
 			log.Fatal(err)
 		}
-		if singleDestinationTopicHandler != nil {
-			consumer.AddConcurrentHandlers(singleDestinationTopicHandler, len(destNsqdTCPAddrs))
-		} else {
-			topicHandler := &TopicHandler{
-				publishHandler:   publisherHandlerRef,
-				destinationTopic: topic,
-			}
 
-			consumer.AddConcurrentHandlers(topicHandler, len(destNsqdTCPAddrs))
+		publishTopic := topic
+		if *destTopic != "" {
+			publishTopic = *destTopic
 		}
+		topicHandler := &TopicHandler{
+			publishHandler:   publisher,
+			destinationTopic: publishTopic,
+		}
+		consumer.AddConcurrentHandlers(topicHandler, len(destNsqdTCPAddrs))
 	}
 	for i := 0; i < len(destNsqdTCPAddrs); i++ {
-		go publisherHandlerRef.responder()
+		go publisher.responder()
 	}
 
 	for _, consumer := range consumerList {
