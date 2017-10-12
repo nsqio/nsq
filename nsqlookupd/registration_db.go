@@ -76,6 +76,7 @@ func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 	for _, producer := range producers {
 		if producer.peerInfo.id == p.peerInfo.id {
 			found = true
+			break
 		}
 	}
 	if found == false {
