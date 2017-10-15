@@ -26,7 +26,7 @@ Python libraries are available out of the box (as well as many other [client
 libraries][client_libraries]) and, if you're interested in building your own, there's a [protocol
 spec][protocol].
 
-We publish [binary releases][installing] for linux and darwin.
+We publish [binary releases][installing] for linux, darwin, freebsd and windows as well as an official [Docker image][docker_deployment].
 
 NOTE: master is our *development* branch and may not be stable at all times.
 
@@ -86,6 +86,7 @@ Logo created by Wolasi Konu ([@kisalow][wolasi_twitter]).
 
 [protocol]: http://nsq.io/clients/tcp_protocol_spec.html
 [installing]: http://nsq.io/deployment/installing.html
+[docker_deployment]: http://nsq.io/deployment/docker.html
 [snakes_twitter]: https://twitter.com/imsnakes
 [jehiah_twitter]: https://twitter.com/jehiah
 [bitly]: https://bitly.com
