@@ -21,6 +21,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	_, err := io.ReadFull(clientConn, buf)
 	if err != nil {
 		p.ctx.nsqlookupd.logf(LOG_ERROR, "failed to read protocol version - %s", err)
+		clientConn.Close()
 		return
 	}
 	protocolMagic := string(buf)
