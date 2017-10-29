@@ -1,0 +1,70 @@
+
+# Gopkg.toml example
+#
+# Refer to https://github.com/golang/dep/blob/master/docs/Gopkg.toml.md
+# for detailed Gopkg.toml documentation.
+#
+# required = ["github.com/user/thing/cmd/thing"]
+# ignored = ["github.com/user/project/pkgX", "bitbucket.org/user/project/pkgA/pkgY"]
+#
+# [[constraint]]
+#   name = "github.com/user/project"
+#   version = "1.0.0"
+#
+# [[constraint]]
+#   name = "github.com/user/project2"
+#   branch = "dev"
+#   source = "github.com/myfork/project2"
+#
+# [[override]]
+#  name = "github.com/x/y"
+#  version = "2.4.0"
+
+
+[[constraint]]
+  name = "github.com/BurntSushi/toml"
+  revision = "2dff11163ee667d51dcc066660925a92ce138deb"
+
+[[constraint]]
+  name = "github.com/bitly/go-hostpool"
+  revision = "a3a6125de9329587178a9792dc8f4bc98e620d2d"
+
+[[constraint]]
+  name = "github.com/bitly/timer_metrics"
+  revision = "afad1794bb13e2a094720aeb27c088aa64564895"
+
+[[constraint]]
+  name = "github.com/blang/semver"
+  revision = "9bf7bff48b0388cb75991e58c6df7d13e982f1f2"
+
+[[constraint]]
+  name = "github.com/bmizerany/perks"
+  revision = "6cb9d9d729303ee2628580d9aec5db968da3a607"
+
+[[constraint]]
+  name = "github.com/golang/snappy"
+  revision = "d9eb7a3d35ec988b8585d4a0068e462c27d28380"
+
+[[constraint]]
+  name = "github.com/judwhite/go-svc"
+  revision = "63c12402f579f0bdf022653c821a1aa5d7544f01"
+
+[[constraint]]
+  name = "github.com/julienschmidt/httprouter"
+  revision = "6aacfd5ab513e34f7e64ea9627ab9670371b34e7"
+
+[[constraint]]
+  name = "github.com/mreiferson/go-options"
+  revision = "77551d20752b54535462404ad9d877ebdb26e53d"
+
+[[constraint]]
+  name = "github.com/nsqio/go-diskqueue"
+  revision = "0681a1afee1245efa503b7543989fc26d8f268bc"
+
+[[constraint]]
+  name = "github.com/nsqio/go-nsq"
+  revision = "a53d495e81424aaf7a7665a9d32a97715c40e953"
+
+[[constraint]]
+  name = "golang.org/x/sys"
+  branch = "master"
