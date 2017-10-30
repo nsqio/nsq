@@ -1,4 +1,4 @@
-package contrib
+package dogstatsd
 
 import (
 	"errors"

@@ -16,10 +16,11 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
-	"github.com/nsqio/nsq/contrib"
 	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqd"
+	"github.com/nsqio/nsq/nsqd/mod"
 )
 
 type tlsRequiredOption int
@@ -236,9 +237,12 @@ func (p *program) Start() error {
 	}
 	nsqd.Main()
 
-	// hook into addons
-	addons := contrib.NewEnabledNSQDAddons(opts.ModOpt, nsqd)
-	addons.Start()
+	// hook optional modules
+	err = mod.Init(opts.ModOpt, nsqd)
+	if err != nil {
+		nsqd.Logf(lg.ERROR, "Failed initializing an optional module: %s", err)
+		// abort/exit? (Main() already started goroutines)
+	}
 
 	p.nsqd = nsqd
 	return nil

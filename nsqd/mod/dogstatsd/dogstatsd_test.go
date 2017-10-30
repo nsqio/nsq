@@ -1,73 +1,51 @@
-package contrib
+package dogstatsd
 
 import (
 	"bytes"
 	"fmt"
-	"github.com/nsqio/nsq/internal/lg"
-	"github.com/nsqio/nsq/internal/quantile"
-	"github.com/nsqio/nsq/internal/test"
-	"github.com/nsqio/nsq/nsqd"
+	"io/ioutil"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/nsqio/nsq/internal/test"
+	"github.com/nsqio/nsq/nsqd"
 )
 
-type StubNSQD struct{}
-
-func (n *StubNSQD) Logf(level lg.LogLevel, f string, args ...interface{}) {
-	fmt.Printf(f, args)
-}
-func (n *StubNSQD) GetStats() []nsqd.TopicStats {
-	return []nsqd.TopicStats{
-		{
-			TopicName:            "test",
-			E2eProcessingLatency: &quantile.Result{},
-			Channels: []nsqd.ChannelStats{
-				{
-					ChannelName:          "test_channel",
-					E2eProcessingLatency: &quantile.Result{},
-				},
-			},
-		},
+func makeNSQD(t *testing.T, opts *nsqd.Options) *nsqd.NSQD {
+	opts.Logger = test.NewTestLogger(t)
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
+	opts.HTTPSAddress = "127.0.0.1:0"
+	if opts.DataPath == "" {
+		tmpDir, err := ioutil.TempDir("", "nsq-test-")
+		test.Nil(t, err)
+		opts.DataPath = tmpDir
 	}
-}
-func (n *StubNSQD) AddModuleGoroutine(addonFn func(exitChan chan int)) {}
-
-func TestEnabledTrueWhenAddressPresent(t *testing.T) {
-	dd := &NSQDDogStatsd{
-		opts: &NSQDDogStatsdOptions{
-			DogStatsdAddress: "test.com.org",
-		},
-		nsqd: &StubNSQD{},
-	}
-	test.Equal(t, dd.Enabled(), true)
-
+	nsqd := nsqd.New(opts)
+	nsqd.Main()
+	return nsqd
 }
 
-func TestEnabledFalseWhenAddressAbsent(t *testing.T) {
-	dd := &NSQDDogStatsd{
-		opts: &NSQDDogStatsdOptions{},
-		nsqd: &StubNSQD{},
-	}
-	test.Equal(t, dd.Enabled(), false)
-}
 
 func TestFlagsParsedSuccess(t *testing.T) {
-	opts := []string{"-dogstatsd-address", "127.0.0.1:8125"}
-	addon := NewNSQDDogStatsd(opts, &StubNSQD{})
+	nsqdOpts := nsqd.NewOptions()
+	nsqd := makeNSQD(t, nsqdOpts)
+	defer nsqd.Exit()
+
+	opts := []string{"-address=127.0.0.1:8125"}
+	addon, err := Init(opts)
+	test.Nil(t, err)
 	test.Equal(t, addon.(*NSQDDogStatsd).opts.DogStatsdAddress, "127.0.0.1:8125")
 }
 
-// Tests that no opts are parsed when the - prefix is missing from the module
-// opts.  The - is required because the optional module opts list is passed directly
-// back to flags.Parse()
-func TestFlagsMissingDashPrefix(t *testing.T) {
-	opts := []string{"dogstatsd-address", "127.0.0.1:8125"}
-	addon := NewNSQDDogStatsd(opts, &StubNSQD{})
-	test.Equal(t, addon.(*NSQDDogStatsd).opts.DogStatsdAddress, "")
-}
-
 func TestLoopSendsCorrectMessages(t *testing.T) {
+	nsqdOpts := nsqd.NewOptions()
+	n := makeNSQD(t, nsqdOpts)
+	defer n.Exit()
+	topic := n.GetTopic("test")
+	topic.GetChannel("test_channel")
+
 	// setup the UDP Server
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{
 		IP:   net.ParseIP("127.0.0.1"),
@@ -86,7 +64,7 @@ func TestLoopSendsCorrectMessages(t *testing.T) {
 				DogStatsdAddress:  addr.String(),
 				DogStatsdInterval: time.Second,
 			},
-			nsqd:       &StubNSQD{},
+			nsqd:       n,
 			singleLoop: true,
 		}
 

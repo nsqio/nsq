@@ -1,76 +1,68 @@
-package contrib
+package dogstatsd
 
 import (
 	"flag"
 	"fmt"
-	"github.com/nsqio/nsq/nsqd"
 	"time"
+
+	"github.com/nsqio/nsq/nsqd"
+	"github.com/nsqio/nsq/nsqd/mod/iface"
 )
 
 type NSQDDogStatsdOptions struct {
-	DogStatsdAddress  string        `flag:"dogstatsd-address"`
-	DogStatsdPrefix   string        `flag:"dogstatsd-prefix"`
-	DogStatsdInterval time.Duration `flag:"dogstatsd-interval"`
+	DogStatsdAddress  string
+	DogStatsdPrefix   string
+	DogStatsdInterval time.Duration
 }
 
 func NewNSQDDogStatsdContribFlags(opts *NSQDDogStatsdOptions) *flag.FlagSet {
 	flagSet := flag.NewFlagSet("dogstatsd", flag.ExitOnError)
 	flagSet.StringVar(
 		&opts.DogStatsdAddress,
-		"dogstatsd-address",
+		"address",
 		"",
-		"UDP <addr>:<port> of a statsd daemon for pushing stats",
+		"UDP <addr>:<port> of dogstatsd daemon for pushing stats",
 	)
 	flagSet.DurationVar(
 		&opts.DogStatsdInterval,
-		"dogstatsd-interval",
+		"interval",
 		10*time.Second,
 		"duration between pushing to dogstatsd",
 	)
-	// flagSet.Bool("statsd-mem-stats", opts.StatsdMemStats, "toggle sending memory and GC stats to statsd")
+	// flagSet.Bool(&opts.MemStats, "mem-stats", "toggle sending memory and GC stats to dogstatsd")
 	flagSet.StringVar(
 		&opts.DogStatsdPrefix,
-		"dogstatsd-prefix",
+		"prefix",
 		"nsq.",
-		"prefix used for keys sent to statsd (%s for host replacement)",
+		"prefix used for keys sent to dogstatsd (%s for host replacement)",
 	)
 	return flagSet
 }
 
-func NewNSQDDogStatsd(contribOpts []string, n INSQD) INSQDAddon {
-	n.Logf(nsqd.LOG_INFO, "Received options: %+v", contribOpts)
-
+func Init(opts []string) (iface.NSQDModule, error) {
 	dogStatsdOpts := &NSQDDogStatsdOptions{}
 	flagSet := NewNSQDDogStatsdContribFlags(dogStatsdOpts)
+	flagSet.Parse(opts)
 
-	flagSet.Parse(contribOpts)
-	n.Logf(nsqd.LOG_INFO, "Parsed Options: %+v", dogStatsdOpts)
-
-	// pass the dogstats specific opts on
-	return &NSQDDogStatsd{
-		opts: dogStatsdOpts,
-		nsqd: n,
-	}
+	dd := NSQDDogStatsd{opts: dogStatsdOpts}
+	return &dd, nil
 }
 
 type NSQDDogStatsd struct {
-	nsqd       INSQD
+	nsqd       *nsqd.NSQD
 	opts       *NSQDDogStatsdOptions
 	singleLoop bool
 }
 
-func (dd *NSQDDogStatsd) Enabled() bool {
-	dd.nsqd.Logf(nsqd.LOG_INFO, "%+v", dd.opts)
-	if dd.opts.DogStatsdAddress != "" {
-		return true
-	} else {
-		return false
+func (dd *NSQDDogStatsd) Start(n *nsqd.NSQD) error {
+	n.Logf(nsqd.LOG_DEBUG, "module dogstatsd parsed options: %+v", dd.opts)
+	if dd.opts.DogStatsdAddress == "" {
+		return nil
 	}
-}
-
-func (dd *NSQDDogStatsd) Start() {
-	dd.nsqd.Logf(nsqd.LOG_INFO, "Starting Datadog NSQD Monitor")
+	n.Logf(nsqd.LOG_INFO, "Starting Datadog NSQD Monitor")
+	dd.nsqd = n
 	dd.nsqd.AddModuleGoroutine(dd.Loop)
+	return nil
 }
 
 func (dd *NSQDDogStatsd) Loop(exitChan chan int) {
@@ -101,7 +93,7 @@ func (dd *NSQDDogStatsd) Loop(exitChan chan int) {
 
 			dd.nsqd.Logf(nsqd.LOG_INFO, "DOGSTATSD: pushing stats to %s", client)
 
-			stats := dd.nsqd.GetStats()
+			stats := dd.nsqd.GetStats("", "")
 			for _, topic := range stats {
 				// try to find the topic in the last collection
 				lastTopic := nsqd.TopicStats{}

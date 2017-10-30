@@ -1,9 +1,10 @@
-package contrib
+package dogstatsd
 
 import (
-	"github.com/nsqio/nsq/internal/test"
 	"net"
 	"testing"
+
+	"github.com/nsqio/nsq/internal/test"
 )
 
 func TestDDTagsStringNoTags(t *testing.T) {
