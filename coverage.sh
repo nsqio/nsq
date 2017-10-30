@@ -45,7 +45,7 @@ push_to_coveralls() {
                                -ignore="nsqadmin/bindata.go" || true
 }
 
-generate_cover_data $(go list ./...)
+generate_cover_data $(go list ./... | grep -v /vendor/)
 show_csv_report
 
 case "$1" in
