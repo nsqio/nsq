@@ -105,7 +105,7 @@ func main() {
 	cfg.UserAgent = fmt.Sprintf("nsq_tail/%s go-nsq/%s", version.Binary, nsq.VERSION)
 	cfg.MaxInFlight = *maxInFlight
 
-	consumers := []nsq.Consumer{}
+	consumers := []*nsq.Consumer{}
 	for i := 0; i < len(topics); i += 1 {
 		fmt.Printf("Adding consumer for topic: %s\n", topics[i])
 
@@ -126,14 +126,15 @@ func main() {
 			log.Fatal(err)
 		}
 
-		consumers = append(consumers, *consumer)
+		consumers = append(consumers, consumer)
 	}
 
-	select {
-	case <-sigChan:
-		for _, consumer := range consumers {
-			consumer.Stop()
-		}
-		return
+	<-sigChan
+
+	for _, consumer := range consumers {
+		consumer.Stop()
+	}
+	for _, consumer := range consumers {
+		<-consumer.StopChan
 	}
 }
