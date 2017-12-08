@@ -48,12 +48,19 @@ type ChannelStats struct {
 }
 
 func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
+	c.inFlightMutex.Lock()
+	inflight := len(c.inFlightMessages)
+	c.inFlightMutex.Unlock()
+	c.deferredMutex.Lock()
+	deferred := len(c.deferredMessages)
+	c.deferredMutex.Unlock()
+
 	return ChannelStats{
 		ChannelName:   c.name,
 		Depth:         c.Depth(),
 		BackendDepth:  c.backend.Depth(),
-		InFlightCount: len(c.inFlightMessages),
-		DeferredCount: len(c.deferredMessages),
+		InFlightCount: inflight,
+		DeferredCount: deferred,
 		MessageCount:  atomic.LoadUint64(&c.messageCount),
 		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
 		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),

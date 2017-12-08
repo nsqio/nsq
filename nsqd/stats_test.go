@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -106,4 +107,44 @@ func TestClientAttributes(t *testing.T) {
 
 	test.Equal(t, userAgent, d.Topics[0].Channels[0].Clients[0].UserAgent)
 	test.Equal(t, true, d.Topics[0].Channels[0].Clients[0].Snappy)
+}
+
+func TestStatsChannelLocking(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("channel")
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+	go func() {
+		for i := 0; i < 25; i++ {
+			msg := NewMessage(topic.GenerateID(), []byte("test"))
+			topic.PutMessage(msg)
+			channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		for i := 0; i < 25; i++ {
+			nsqd.GetStats("", "")
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	stats := nsqd.GetStats(topicName, "channel")
+	t.Logf("stats: %+v", stats)
+
+	test.Equal(t, 1, len(stats))
+	test.Equal(t, 1, len(stats[0].Channels))
+	test.Equal(t, 25, stats[0].Channels[0].InFlightCount)
 }
