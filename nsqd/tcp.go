@@ -34,6 +34,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 		prot = &protocolV2{ctx: p.ctx}
 	default:
 		protocol.SendFramedResponse(clientConn, frameTypeError, []byte("E_BAD_PROTOCOL"))
+		clientConn.(*net.TCPConn).SetLinger(-1)
 		clientConn.Close()
 		p.ctx.nsqd.logf(LOG_ERROR, "client(%s) bad protocol magic '%s'",
 			clientConn.RemoteAddr(), protocolMagic)
