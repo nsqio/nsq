@@ -121,14 +121,13 @@ func NewChannel(topicName string, channelName string, ctx *context,
 func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.ctx.nsqd.getOpts().MemQueueSize)/10))
 
-	c.inFlightMessages = make(map[MessageID]*Message)
-	c.deferredMessages = make(map[MessageID]*pqueue.Item)
-
 	c.inFlightMutex.Lock()
+	c.inFlightMessages = make(map[MessageID]*Message)
 	c.inFlightPQ = newInFlightPqueue(pqSize)
 	c.inFlightMutex.Unlock()
 
 	c.deferredMutex.Lock()
+	c.deferredMessages = make(map[MessageID]*pqueue.Item)
 	c.deferredPQ = pqueue.New(pqSize)
 	c.deferredMutex.Unlock()
 }
