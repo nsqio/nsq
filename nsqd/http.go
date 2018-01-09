@@ -76,16 +76,18 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
 	// debug
-	router.HandlerFunc("GET", "/debug/pprof/", pprof.Index)
-	router.HandlerFunc("GET", "/debug/pprof/cmdline", pprof.Cmdline)
-	router.HandlerFunc("GET", "/debug/pprof/symbol", pprof.Symbol)
-	router.HandlerFunc("POST", "/debug/pprof/symbol", pprof.Symbol)
-	router.HandlerFunc("GET", "/debug/pprof/profile", pprof.Profile)
-	router.Handler("GET", "/debug/pprof/heap", pprof.Handler("heap"))
-	router.Handler("GET", "/debug/pprof/goroutine", pprof.Handler("goroutine"))
-	router.Handler("GET", "/debug/pprof/block", pprof.Handler("block"))
-	router.Handle("PUT", "/debug/setblockrate", http_api.Decorate(setBlockRateHandler, log, http_api.PlainText))
-	router.Handler("GET", "/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+	if ctx.nsqd.getOpts().ProfilingEnabled {
+		router.HandlerFunc("GET", "/debug/pprof/", pprof.Index)
+		router.HandlerFunc("GET", "/debug/pprof/cmdline", pprof.Cmdline)
+		router.HandlerFunc("GET", "/debug/pprof/symbol", pprof.Symbol)
+		router.HandlerFunc("POST", "/debug/pprof/symbol", pprof.Symbol)
+		router.HandlerFunc("GET", "/debug/pprof/profile", pprof.Profile)
+		router.Handler("GET", "/debug/pprof/heap", pprof.Handler("heap"))
+		router.Handler("GET", "/debug/pprof/goroutine", pprof.Handler("goroutine"))
+		router.Handler("GET", "/debug/pprof/block", pprof.Handler("block"))
+		router.Handle("PUT", "/debug/setblockrate", http_api.Decorate(setBlockRateHandler, log, http_api.PlainText))
+		router.Handler("GET", "/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+	}
 
 	return s
 }
