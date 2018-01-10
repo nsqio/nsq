@@ -28,6 +28,7 @@ type NSQAdmin struct {
 	notifications       chan *AdminAction
 	graphiteURL         *url.URL
 	httpClientTLSConfig *tls.Config
+	notifyClient        *http.Client
 }
 
 func New(opts *Options) *NSQAdmin {
@@ -39,6 +40,10 @@ func New(opts *Options) *NSQAdmin {
 		notifications: make(chan *AdminAction),
 	}
 	n.swapOpts(opts)
+
+	n.notifyClient = &http.Client{
+		Transport: http_api.NewDeadlineTransport(n.getOpts().HTTPClientConnectTimeout, n.getOpts().HTTPClientRequestTimeout),
+	}
 
 	var err error
 	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
@@ -155,11 +160,8 @@ func (n *NSQAdmin) handleAdminActions() {
 		if err != nil {
 			n.logf(LOG_ERROR, "failed to serialize admin action - %s", err)
 		}
-		httpclient := &http.Client{
-			Transport: http_api.NewDeadlineTransport(n.getOpts().HTTPClientConnectTimeout, n.getOpts().HTTPClientRequestTimeout),
-		}
 		n.logf(LOG_INFO, "POSTing notification to %s", n.getOpts().NotificationHTTPEndpoint)
-		resp, err := httpclient.Post(n.getOpts().NotificationHTTPEndpoint,
+		resp, err := n.notifyClient.Post(n.getOpts().NotificationHTTPEndpoint,
 			"application/json", bytes.NewBuffer(content))
 		if err != nil {
 			n.logf(LOG_ERROR, "failed to POST notification - %s", err)
