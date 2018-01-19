@@ -148,6 +148,13 @@ func New(opts *Options) *NSQD {
 	}
 	n.tlsConfig = tlsConfig
 
+	for _, v := range opts.E2EProcessingLatencyPercentiles {
+		if v <= 0 || v > 1 {
+			n.logf(LOG_FATAL, "Invalid percentile: %v", v)
+			os.Exit(1)
+		}
+	}
+
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
