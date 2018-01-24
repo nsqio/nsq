@@ -139,6 +139,7 @@ func (p *protocolV2) SendMessage(client *clientV2, msg *Message, buf *bytes.Buff
 
 func (p *protocolV2) Send(client *clientV2, frameType int32, data []byte) error {
 	client.writeLock.Lock()
+	defer client.writeLock.Unlock()()
 
 	var zeroTime time.Time
 	if client.HeartbeatInterval > 0 {
@@ -149,15 +150,12 @@ func (p *protocolV2) Send(client *clientV2, frameType int32, data []byte) error 
 
 	_, err := protocol.SendFramedResponse(client.Writer, frameType, data)
 	if err != nil {
-		client.writeLock.Unlock()
 		return err
 	}
 
 	if frameType != frameTypeMessage {
 		err = client.Flush()
 	}
-
-	client.writeLock.Unlock()
 
 	return err
 }
