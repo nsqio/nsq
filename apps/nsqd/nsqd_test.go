@@ -33,15 +33,17 @@ func TestConfigFlagParsing(t *testing.T) {
 }
 
 func TestAuthRequiredFlagParsing_CommaSeparated(t *testing.T) {
-	os.Args = []string{"", "--auth-required=tcp,http,https"}
-	flagSet := nsqFlagset()
-	err := flagSet.Parse(os.Args[1:])
+	args := []string{"--auth-required=tcp,http,https"}
+
+	opts := nsqd.NewOptions()
+	flagSet := nsqdFlagSet(opts)
+	err := flagSet.Parse(args)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	opts := nsqd.NewOptions()
 	options.Resolve(opts, flagSet, config{})
+	nsqd.New(opts)
 
 	expected := uint16(nsqd.FlagTCPProtocol | nsqd.FlagHTTPProtocol | nsqd.FlagHTTPSProtocol)
 
@@ -51,15 +53,17 @@ func TestAuthRequiredFlagParsing_CommaSeparated(t *testing.T) {
 }
 
 func TestAuthRequiredFlagParsing_SpecifiedMultipleTimes(t *testing.T) {
-	os.Args = []string{"", "--auth-required=http", "--auth-required=https"}
-	flagSet := nsqFlagset()
-	err := flagSet.Parse(os.Args[1:])
+	args := []string{"--auth-required=http", "--auth-required=https"}
+
+	opts := nsqd.NewOptions()
+	flagSet := nsqdFlagSet(opts)
+	err := flagSet.Parse(args)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	opts := nsqd.NewOptions()
 	options.Resolve(opts, flagSet, config{})
+	nsqd.New(opts)
 
 	expected := uint16(nsqd.FlagHTTPProtocol | nsqd.FlagHTTPSProtocol)
 
@@ -69,15 +73,17 @@ func TestAuthRequiredFlagParsing_SpecifiedMultipleTimes(t *testing.T) {
 }
 
 func TestAuthRequiredFlagParsing_DefaultTCP(t *testing.T) {
-	os.Args = []string{""}
-	flagSet := nsqFlagset()
-	err := flagSet.Parse(os.Args[1:])
+	var args []string
+
+	opts := nsqd.NewOptions()
+	flagSet := nsqdFlagSet(opts)
+	err := flagSet.Parse(args)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	opts := nsqd.NewOptions()
 	options.Resolve(opts, flagSet, config{})
+	nsqd.New(opts)
 
 	expected := uint16(nsqd.FlagTCPProtocol)
 
