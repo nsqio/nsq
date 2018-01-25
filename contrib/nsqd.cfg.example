@@ -87,9 +87,9 @@ statsd_mem_stats = true
 
 ## message processing time percentiles to keep track of (float)
 e2e_processing_latency_percentiles = [
-    100.0,
-    99.0,
-    95.0
+    1.0,
+    0.99,
+    0.95
 ]
 
 ## calculate end to end latency quantiles for this duration of time (time.Duration)
