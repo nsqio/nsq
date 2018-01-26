@@ -123,3 +123,6 @@ max_deflate_level = 6
 
 ## enable snappy feature negotiation (client compression)
 snappy = true
+
+## enable profiling via web interface
+profiling = true
