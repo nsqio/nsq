@@ -7,7 +7,7 @@ env:
   - GOARCH=amd64
   - GOARCH=386
 sudo: false
-go_import_path: github.com/nsqio/nsq
+go_import_path: https://github.com/feifeiiiiiiiiiii/nsq
 before_install:
   - go get github.com/mattn/goveralls
 script:
