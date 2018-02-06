@@ -29,6 +29,7 @@ func connectCallback(n *NSQD, hostname string, syncTopicChan chan *lookupPeer) f
 		resp, err := lp.Command(cmd)
 		if err != nil {
 			n.logf(LOG_ERROR, "LOOKUPD(%s): %s - %s", lp, cmd, err)
+			return
 		} else if bytes.Equal(resp, []byte("E_INVALID")) {
 			n.logf(LOG_INFO, "LOOKUPD(%s): lookupd returned %s", lp, resp)
 		} else {
