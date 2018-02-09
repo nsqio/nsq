@@ -17,6 +17,7 @@ import (
 func TestStats(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
+	opts.LogLevel = "debug"
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
@@ -112,6 +113,7 @@ func TestClientAttributes(t *testing.T) {
 func TestStatsChannelLocking(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
+	opts.LogLevel = "debug"
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
