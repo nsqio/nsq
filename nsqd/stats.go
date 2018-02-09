@@ -167,19 +167,28 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 			n.logf(LOG_DEBUG, "stats: acquired channels (under lock) for topic (%s) in %v", t.name, time.Since(topicLockStart))
 			sort.Sort(ChannelsByName{realChannels})
 			channels := make([]ChannelStats, 0, len(realChannels))
+			var channelsMutex sync.Mutex
+			var channelsWG sync.WaitGroup
+			channelsWG.Add(len(realChannels))
 			for _, c := range realChannels {
-				channelLockStart := time.Now()
-				c.RLock()
-				clients := make([]ClientStats, 0, len(c.clients))
-				for _, client := range c.clients {
-					clients = append(clients, client.Stats())
-				}
-				c.RUnlock()
-				n.logf(LOG_DEBUG, "stats: acquired clients (under lock) for topic/channel (%s/%s) in %v", t.name, c.name, time.Since(channelLockStart))
-				channelStatsStart := time.Now()
-				channels = append(channels, NewChannelStats(c, clients))
-				n.logf(LOG_DEBUG, "stats: acquired channel stats for topic/channel (%s/%s) in %v", t.name, c.name, time.Since(channelStatsStart))
+				go func(c *Channel) {
+					defer channelsWG.Done()
+					channelLockStart := time.Now()
+					c.RLock()
+					clients := make([]ClientStats, 0, len(c.clients))
+					for _, client := range c.clients {
+						clients = append(clients, client.Stats())
+					}
+					c.RUnlock()
+					n.logf(LOG_DEBUG, "stats: acquired clients (under lock) for topic/channel (%s/%s) in %v", t.name, c.name, time.Since(channelLockStart))
+					channelStatsStart := time.Now()
+					channelsMutex.Lock()
+					channels = append(channels, NewChannelStats(c, clients))
+					channelsMutex.Unlock()
+					n.logf(LOG_DEBUG, "stats: acquired channel stats for topic/channel (%s/%s) in %v", t.name, c.name, time.Since(channelStatsStart))
+				}(c)
 			}
+			channelsWG.Wait()
 
 			topicStatsStart := time.Now()
 			topicsMutex.Lock()
