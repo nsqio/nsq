@@ -148,5 +148,5 @@ func TestStatsChannelLocking(t *testing.T) {
 
 	test.Equal(t, 1, len(stats))
 	test.Equal(t, 1, len(stats[0].Channels))
-	test.Equal(t, 25, stats[0].Channels[0].InFlightCount)
+	test.Equal(t, uint64(25), stats[0].Channels[0].InFlightCount)
 }

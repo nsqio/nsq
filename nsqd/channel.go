@@ -35,9 +35,10 @@ type Consumer interface {
 // messages, timeouts, requeuing, etc.
 type Channel struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
-	requeueCount uint64
-	messageCount uint64
-	timeoutCount uint64
+	requeueCount  uint64
+	messageCount  uint64
+	timeoutCount  uint64
+	inFlightCount uint64
 
 	sync.RWMutex
 
@@ -122,6 +123,7 @@ func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.ctx.nsqd.getOpts().MemQueueSize)/10))
 
 	c.inFlightMutex.Lock()
+	atomic.StoreUint64(&c.inFlightCount, 0)
 	c.inFlightMessages = make(map[MessageID]*Message)
 	c.inFlightPQ = newInFlightPqueue(pqSize)
 	c.inFlightMutex.Unlock()
@@ -449,6 +451,7 @@ func (c *Channel) pushInFlightMessage(msg *Message) error {
 		return errors.New("ID already in flight")
 	}
 	c.inFlightMessages[msg.ID] = msg
+	atomic.StoreUint64(&c.inFlightCount, uint64(len(c.inFlightMessages)))
 	c.inFlightMutex.Unlock()
 	return nil
 }
@@ -466,6 +469,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 		return nil, errors.New("client does not own message")
 	}
 	delete(c.inFlightMessages, id)
+	atomic.StoreUint64(&c.inFlightCount, uint64(len(c.inFlightMessages)))
 	c.inFlightMutex.Unlock()
 	return msg, nil
 }
