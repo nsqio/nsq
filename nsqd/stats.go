@@ -118,7 +118,7 @@ func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Chan
 func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 	topicAcquireStart := time.Now()
 	n.RLock()
-	n.logf(LOG_DEBUG, "stats: acquiring topic list - took %v to acquire nsqd lock", time.Since(topicAcquireStart))
+	nsqdRlockAcquireDuration := time.Since(topicAcquireStart)
 	var realTopics []*Topic
 	if topic == "" {
 		realTopics = make([]*Topic, 0, len(n.topicMap))
@@ -132,7 +132,9 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 		return []TopicStats{}
 	}
 	n.RUnlock()
-	n.logf(LOG_DEBUG, "stats: acquired topic list (under lock) in %v", time.Since(topicAcquireStart))
+	topicAcquireDuration := time.Since(topicAcquireStart)
+	n.logf(LOG_DEBUG, "stats: acquiring topic list - took %v to acquire nsqd lock", nsqdRlockAcquireDuration)
+	n.logf(LOG_DEBUG, "stats: acquired topic list (under lock) in %v", topicAcquireDuration)
 	sort.Sort(TopicsByName{realTopics})
 	topics := make([]TopicStats, 0, len(realTopics))
 	var topicsMutex sync.Mutex
@@ -143,7 +145,7 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 			defer topicsWG.Done()
 			topicLockStart := time.Now()
 			t.RLock()
-			n.logf(LOG_DEBUG, "stats: topic (%v) rlock acquired in %v", t.name, time.Since(topicLockStart))
+			topicLockAcquireDuration := time.Since(topicLockStart)
 			var realChannels []*Channel
 			if channel == "" {
 				realChannels = make([]*Channel, 0, len(t.channelMap))
@@ -157,7 +159,9 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 				return
 			}
 			t.RUnlock()
-			n.logf(LOG_DEBUG, "stats: acquired channels (under lock) for topic (%s) in %v", t.name, time.Since(topicLockStart))
+			channelAcquireDuration := time.Since(topicLockStart)
+			n.logf(LOG_DEBUG, "stats: topic (%v) rlock acquired in %v", t.name, topicLockAcquireDuration)
+			n.logf(LOG_DEBUG, "stats: acquired channels (under lock) for topic (%s) in %v", t.name, channelAcquireDuration)
 			sort.Sort(ChannelsByName{realChannels})
 			channels := make([]ChannelStats, 0, len(realChannels))
 			var channelsMutex sync.Mutex
