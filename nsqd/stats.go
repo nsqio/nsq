@@ -104,6 +104,19 @@ type TopicsByName struct {
 
 func (t TopicsByName) Less(i, j int) bool { return t.Topics[i].name < t.Topics[j].name }
 
+type TopicStatsS []TopicStats
+
+func (t TopicStatsS) Len() int      { return len(t) }
+func (t TopicStatsS) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+
+type TopicStatsByTopicName struct {
+	TopicStatsS
+}
+
+func (t TopicStatsByTopicName) Less(i, j int) bool {
+	return t.TopicStatsS[i].TopicName < t.TopicStatsS[j].TopicName
+}
+
 type Channels []*Channel
 
 func (c Channels) Len() int      { return len(c) }
@@ -114,6 +127,19 @@ type ChannelsByName struct {
 }
 
 func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Channels[j].name }
+
+type ChannelStatsS []ChannelStats
+
+func (c ChannelStatsS) Len() int      { return len(c) }
+func (c ChannelStatsS) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
+
+type ChannelStatsByChannelName struct {
+	ChannelStatsS
+}
+
+func (c ChannelStatsByChannelName) Less(i, j int) bool {
+	return c.ChannelStatsS[i].ChannelName < c.ChannelStatsS[j].ChannelName
+}
 
 func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 	topicAcquireStart := time.Now()
@@ -135,7 +161,6 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 	topicAcquireDuration := time.Since(topicAcquireStart)
 	n.logf(LOG_DEBUG, "stats: acquiring topic list - took %v to acquire nsqd lock", nsqdRlockAcquireDuration)
 	n.logf(LOG_DEBUG, "stats: acquired topic list (under lock) in %v", topicAcquireDuration)
-	sort.Sort(TopicsByName{realTopics})
 	topics := make([]TopicStats, 0, len(realTopics))
 	var topicsMutex sync.Mutex
 	var topicsWG sync.WaitGroup
@@ -162,7 +187,6 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 			channelAcquireDuration := time.Since(topicLockStart)
 			n.logf(LOG_DEBUG, "stats: topic (%v) rlock acquired in %v", t.name, topicLockAcquireDuration)
 			n.logf(LOG_DEBUG, "stats: acquired channels (under lock) for topic (%s) in %v", t.name, channelAcquireDuration)
-			sort.Sort(ChannelsByName{realChannels})
 			channels := make([]ChannelStats, 0, len(realChannels))
 			var channelsMutex sync.Mutex
 			var channelsWG sync.WaitGroup
@@ -188,6 +212,7 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 				}(c)
 			}
 			channelsWG.Wait()
+			sort.Sort(ChannelStatsByChannelName{channels})
 
 			topicStatsStart := time.Now()
 			// calculate outside lock, as this aggregates e2e latency
@@ -199,6 +224,7 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 		}(t)
 	}
 	topicsWG.Wait()
+	sort.Sort(TopicStatsByTopicName{topics})
 
 	n.logf(LOG_DEBUG, "stats: finished acquiring stats in %v", time.Since(topicAcquireStart))
 	return topics
