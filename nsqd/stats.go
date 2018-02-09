@@ -175,8 +175,10 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 					c.RUnlock()
 					n.logf(LOG_DEBUG, "stats: acquired clients (under lock) for topic/channel (%s/%s) in %v", t.name, c.name, time.Since(channelLockStart))
 					channelStatsStart := time.Now()
+					// calculate outside lock, as this aggregates e2e latency
+					cs := NewChannelStats(c, clients)
 					channelsMutex.Lock()
-					channels = append(channels, NewChannelStats(c, clients))
+					channels = append(channels, cs)
 					channelsMutex.Unlock()
 					n.logf(LOG_DEBUG, "stats: acquired channel stats for topic/channel (%s/%s) in %v", t.name, c.name, time.Since(channelStatsStart))
 				}(c)
@@ -184,8 +186,10 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 			channelsWG.Wait()
 
 			topicStatsStart := time.Now()
+			// calculate outside lock, as this aggregates e2e latency
+			ts := NewTopicStats(t, channels)
 			topicsMutex.Lock()
-			topics = append(topics, NewTopicStats(t, channels))
+			topics = append(topics, ts)
 			topicsMutex.Unlock()
 			n.logf(LOG_DEBUG, "stats: acquired topic stats for topic (%s) in %v", t.name, time.Since(topicStatsStart))
 		}(t)
