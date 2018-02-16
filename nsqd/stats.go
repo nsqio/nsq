@@ -3,7 +3,9 @@ package nsqd
 import (
 	"runtime"
 	"sort"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/nsqio/nsq/internal/quantile"
 )
@@ -36,8 +38,8 @@ type ChannelStats struct {
 	ChannelName   string        `json:"channel_name"`
 	Depth         int64         `json:"depth"`
 	BackendDepth  int64         `json:"backend_depth"`
-	InFlightCount int           `json:"in_flight_count"`
-	DeferredCount int           `json:"deferred_count"`
+	InFlightCount uint64        `json:"in_flight_count"`
+	DeferredCount uint64        `json:"deferred_count"`
 	MessageCount  uint64        `json:"message_count"`
 	RequeueCount  uint64        `json:"requeue_count"`
 	TimeoutCount  uint64        `json:"timeout_count"`
@@ -48,19 +50,12 @@ type ChannelStats struct {
 }
 
 func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
-	c.inFlightMutex.Lock()
-	inflight := len(c.inFlightMessages)
-	c.inFlightMutex.Unlock()
-	c.deferredMutex.Lock()
-	deferred := len(c.deferredMessages)
-	c.deferredMutex.Unlock()
-
 	return ChannelStats{
 		ChannelName:   c.name,
 		Depth:         c.Depth(),
 		BackendDepth:  c.backend.Depth(),
-		InFlightCount: inflight,
-		DeferredCount: deferred,
+		InFlightCount: atomic.LoadUint64(&c.inFlightCount),
+		DeferredCount: atomic.LoadUint64(&c.deferredCount),
 		MessageCount:  atomic.LoadUint64(&c.messageCount),
 		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
 		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
@@ -109,6 +104,19 @@ type TopicsByName struct {
 
 func (t TopicsByName) Less(i, j int) bool { return t.Topics[i].name < t.Topics[j].name }
 
+type TopicStatsS []TopicStats
+
+func (t TopicStatsS) Len() int      { return len(t) }
+func (t TopicStatsS) Swap(i, j int) { t[i], t[j] = t[j], t[i] }
+
+type TopicStatsByTopicName struct {
+	TopicStatsS
+}
+
+func (t TopicStatsByTopicName) Less(i, j int) bool {
+	return t.TopicStatsS[i].TopicName < t.TopicStatsS[j].TopicName
+}
+
 type Channels []*Channel
 
 func (c Channels) Len() int      { return len(c) }
@@ -120,8 +128,23 @@ type ChannelsByName struct {
 
 func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Channels[j].name }
 
+type ChannelStatsS []ChannelStats
+
+func (c ChannelStatsS) Len() int      { return len(c) }
+func (c ChannelStatsS) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
+
+type ChannelStatsByChannelName struct {
+	ChannelStatsS
+}
+
+func (c ChannelStatsByChannelName) Less(i, j int) bool {
+	return c.ChannelStatsS[i].ChannelName < c.ChannelStatsS[j].ChannelName
+}
+
 func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
+	topicAcquireStart := time.Now()
 	n.RLock()
+	nsqdRlockAcquireDuration := time.Since(topicAcquireStart)
 	var realTopics []*Topic
 	if topic == "" {
 		realTopics = make([]*Topic, 0, len(n.topicMap))
@@ -135,36 +158,75 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 		return []TopicStats{}
 	}
 	n.RUnlock()
-	sort.Sort(TopicsByName{realTopics})
+	topicAcquireDuration := time.Since(topicAcquireStart)
+	n.logf(LOG_DEBUG, "stats: acquiring topic list - took %v to acquire nsqd lock", nsqdRlockAcquireDuration)
+	n.logf(LOG_DEBUG, "stats: acquired topic list (under lock) in %v", topicAcquireDuration)
 	topics := make([]TopicStats, 0, len(realTopics))
+	var topicsMutex sync.Mutex
+	var topicsWG sync.WaitGroup
+	topicsWG.Add(len(realTopics))
 	for _, t := range realTopics {
-		t.RLock()
-		var realChannels []*Channel
-		if channel == "" {
-			realChannels = make([]*Channel, 0, len(t.channelMap))
-			for _, c := range t.channelMap {
-				realChannels = append(realChannels, c)
+		go func(t *Topic) {
+			defer topicsWG.Done()
+			topicLockStart := time.Now()
+			t.RLock()
+			topicLockAcquireDuration := time.Since(topicLockStart)
+			var realChannels []*Channel
+			if channel == "" {
+				realChannels = make([]*Channel, 0, len(t.channelMap))
+				for _, c := range t.channelMap {
+					realChannels = append(realChannels, c)
+				}
+			} else if val, exists := t.channelMap[channel]; exists {
+				realChannels = []*Channel{val}
+			} else {
+				t.RUnlock()
+				return
 			}
-		} else if val, exists := t.channelMap[channel]; exists {
-			realChannels = []*Channel{val}
-		} else {
 			t.RUnlock()
-			continue
-		}
-		t.RUnlock()
-		sort.Sort(ChannelsByName{realChannels})
-		channels := make([]ChannelStats, 0, len(realChannels))
-		for _, c := range realChannels {
-			c.RLock()
-			clients := make([]ClientStats, 0, len(c.clients))
-			for _, client := range c.clients {
-				clients = append(clients, client.Stats())
+			channelAcquireDuration := time.Since(topicLockStart)
+			n.logf(LOG_DEBUG, "stats: topic (%v) rlock acquired in %v", t.name, topicLockAcquireDuration)
+			n.logf(LOG_DEBUG, "stats: acquired channels (under lock) for topic (%s) in %v", t.name, channelAcquireDuration)
+			channels := make([]ChannelStats, 0, len(realChannels))
+			var channelsMutex sync.Mutex
+			var channelsWG sync.WaitGroup
+			channelsWG.Add(len(realChannels))
+			for _, c := range realChannels {
+				go func(c *Channel) {
+					defer channelsWG.Done()
+					channelLockStart := time.Now()
+					c.RLock()
+					clients := make([]ClientStats, 0, len(c.clients))
+					for _, client := range c.clients {
+						clients = append(clients, client.Stats())
+					}
+					c.RUnlock()
+					n.logf(LOG_DEBUG, "stats: acquired clients (under lock) for topic/channel (%s/%s) in %v", t.name, c.name, time.Since(channelLockStart))
+					channelStatsStart := time.Now()
+					// calculate outside lock, as this aggregates e2e latency
+					cs := NewChannelStats(c, clients)
+					channelsMutex.Lock()
+					channels = append(channels, cs)
+					channelsMutex.Unlock()
+					n.logf(LOG_DEBUG, "stats: acquired channel stats for topic/channel (%s/%s) in %v", t.name, c.name, time.Since(channelStatsStart))
+				}(c)
 			}
-			c.RUnlock()
-			channels = append(channels, NewChannelStats(c, clients))
-		}
-		topics = append(topics, NewTopicStats(t, channels))
+			channelsWG.Wait()
+			sort.Sort(ChannelStatsByChannelName{channels})
+
+			topicStatsStart := time.Now()
+			// calculate outside lock, as this aggregates e2e latency
+			ts := NewTopicStats(t, channels)
+			topicsMutex.Lock()
+			topics = append(topics, ts)
+			topicsMutex.Unlock()
+			n.logf(LOG_DEBUG, "stats: acquired topic stats for topic (%s) in %v", t.name, time.Since(topicStatsStart))
+		}(t)
 	}
+	topicsWG.Wait()
+	sort.Sort(TopicStatsByTopicName{topics})
+
+	n.logf(LOG_DEBUG, "stats: finished acquiring stats in %v", time.Since(topicAcquireStart))
 	return topics
 }
 

@@ -35,9 +35,11 @@ type Consumer interface {
 // messages, timeouts, requeuing, etc.
 type Channel struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
-	requeueCount uint64
-	messageCount uint64
-	timeoutCount uint64
+	requeueCount  uint64
+	messageCount  uint64
+	timeoutCount  uint64
+	inFlightCount uint64
+	deferredCount uint64
 
 	sync.RWMutex
 
@@ -122,11 +124,13 @@ func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.ctx.nsqd.getOpts().MemQueueSize)/10))
 
 	c.inFlightMutex.Lock()
+	atomic.StoreUint64(&c.inFlightCount, 0)
 	c.inFlightMessages = make(map[MessageID]*Message)
 	c.inFlightPQ = newInFlightPqueue(pqSize)
 	c.inFlightMutex.Unlock()
 
 	c.deferredMutex.Lock()
+	atomic.StoreUint64(&c.deferredCount, 0)
 	c.deferredMessages = make(map[MessageID]*pqueue.Item)
 	c.deferredPQ = pqueue.New(pqSize)
 	c.deferredMutex.Unlock()
@@ -449,6 +453,7 @@ func (c *Channel) pushInFlightMessage(msg *Message) error {
 		return errors.New("ID already in flight")
 	}
 	c.inFlightMessages[msg.ID] = msg
+	atomic.StoreUint64(&c.inFlightCount, uint64(len(c.inFlightMessages)))
 	c.inFlightMutex.Unlock()
 	return nil
 }
@@ -466,6 +471,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 		return nil, errors.New("client does not own message")
 	}
 	delete(c.inFlightMessages, id)
+	atomic.StoreUint64(&c.inFlightCount, uint64(len(c.inFlightMessages)))
 	c.inFlightMutex.Unlock()
 	return msg, nil
 }
@@ -497,6 +503,7 @@ func (c *Channel) pushDeferredMessage(item *pqueue.Item) error {
 		return errors.New("ID already deferred")
 	}
 	c.deferredMessages[id] = item
+	atomic.StoreUint64(&c.deferredCount, uint64(len(c.deferredMessages)))
 	c.deferredMutex.Unlock()
 	return nil
 }
@@ -510,6 +517,7 @@ func (c *Channel) popDeferredMessage(id MessageID) (*pqueue.Item, error) {
 		return nil, errors.New("ID not deferred")
 	}
 	delete(c.deferredMessages, id)
+	atomic.StoreUint64(&c.deferredCount, uint64(len(c.deferredMessages)))
 	c.deferredMutex.Unlock()
 	return item, nil
 }
