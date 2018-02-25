@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"container/heap"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/astaxie/beego"
 	"github.com/nsqio/go-diskqueue"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/pqueue"
@@ -313,7 +315,24 @@ func (c *Channel) put(m *Message) error {
 			return err
 		}
 	}
+	if c.ctx.nsqd.getOpts().MysqlUrl != "" {
+		go c.ConsumeLog(m)
+	}
 	return nil
+}
+
+func (t *Channel) ConsumeLog(m *Message) error {
+	log := &NsqConsumeLog{}
+	log.Topic = t.topicName
+	log.Channel = t.name
+	log.Message = string(m.Body)
+	log.NsqdUrl = t.ctx.nsqd.getOpts().TCPAddress
+	log.MessageId = fmt.Sprintf("%s", m.ID)
+	_, err := AddNsqConsumeLog(log)
+	if err != nil {
+		beego.Error(err)
+	}
+	return err
 }
 
 func (c *Channel) PutMessageDeferred(msg *Message, timeout time.Duration) {

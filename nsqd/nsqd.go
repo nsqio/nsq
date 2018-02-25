@@ -19,6 +19,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/orm"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/dirlock"
 	"github.com/nsqio/nsq/internal/http_api"
@@ -157,7 +160,10 @@ func New(opts *Options) *NSQD {
 
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
-
+	beego.Info("mysql:", opts.MysqlUrl)
+	if opts.MysqlUrl != "" {
+		orm.RegisterDataBase("default", "mysql", opts.MysqlUrl)
+	}
 	return n
 }
 

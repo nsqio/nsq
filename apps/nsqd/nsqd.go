@@ -144,6 +144,8 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int("max-deflate-level", opts.MaxDeflateLevel, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 
+	// mysql
+	flagSet.String("mysql", opts.MysqlUrl, "save messages in mysql")
 	return flagSet
 }
 
