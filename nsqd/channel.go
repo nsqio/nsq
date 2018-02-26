@@ -315,18 +315,16 @@ func (c *Channel) put(m *Message) error {
 			return err
 		}
 	}
-	if c.ctx.nsqd.getOpts().MysqlUrl != "" {
-		go c.ConsumeLog(m)
-	}
+
 	return nil
 }
 
-func (t *Channel) ConsumeLog(m *Message) error {
+func (c *Channel) ConsumeLog(m *Message) error {
 	log := &NsqConsumeLog{}
-	log.Topic = t.topicName
-	log.Channel = t.name
+	log.Topic = c.topicName
+	log.Channel = c.name
 	log.Message = string(m.Body)
-	log.NsqdUrl = t.ctx.nsqd.getOpts().TCPAddress
+	log.NsqdUrl = c.ctx.nsqd.getOpts().TCPAddress
 	log.MessageId = fmt.Sprintf("%s", m.ID)
 	_, err := AddNsqConsumeLog(log)
 	if err != nil {
