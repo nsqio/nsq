@@ -329,6 +329,9 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			if err != nil {
 				goto exit
 			}
+			if client.ctx.nsqd.getOpts().MysqlUrl != "" {
+				go client.Channel.ConsumeLog(msg)
+			}
 			flushed = false
 		case <-client.ExitChan:
 			goto exit

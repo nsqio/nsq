@@ -79,6 +79,9 @@ type Options struct {
 	DeflateEnabled  bool `flag:"deflate"`
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
+
+	// mysql
+	MysqlUrl string `flag:"mysql"`
 }
 
 func NewOptions() *Options {

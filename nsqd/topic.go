@@ -3,11 +3,13 @@ package nsqd
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/astaxie/beego"
 	"github.com/nsqio/go-diskqueue"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/quantile"
@@ -209,7 +211,23 @@ func (t *Topic) put(m *Message) error {
 			return err
 		}
 	}
+	if t.ctx.nsqd.getOpts().MysqlUrl != "" {
+		go t.PublishLog(m)
+	}
 	return nil
+}
+
+func (t *Topic) PublishLog(m *Message) error {
+	log := &NsqPublishLog{}
+	log.Topic = t.name
+	log.Message = string(m.Body)
+	log.NsqdUrl = t.ctx.nsqd.getOpts().TCPAddress
+	log.MessageId = fmt.Sprintf("%s", m.ID)
+	_, err := AddNsqPublishLog(log)
+	if err != nil {
+		beego.Error(err)
+	}
+	return err
 }
 
 func (t *Topic) Depth() int64 {
