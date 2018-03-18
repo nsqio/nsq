@@ -497,7 +497,8 @@ func TestCluster(t *testing.T) {
 func TestSetHealth(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	nsqd := New(opts)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	test.Equal(t, nil, nsqd.GetError())
@@ -523,7 +524,8 @@ func TestCrashingLogger(t *testing.T) {
 		// Test invalid log level causes error
 		opts := NewOptions()
 		opts.LogLevel = "bad"
-		_ = New(opts)
+		mustStartNSQD(opts)
+		defer os.RemoveAll(opts.DataPath)
 		return
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=TestCrashingLogger")

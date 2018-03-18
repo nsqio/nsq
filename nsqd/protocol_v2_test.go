@@ -1604,8 +1604,10 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = "debug"
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 
-	prot := &protocolV2{ctx: &context{nsqd: New(opts)}}
+	prot := &protocolV2{ctx: &context{nsqd: nsqd}}
 	defer prot.ctx.nsqd.Exit()
 
 	err := prot.IOLoop(fakeConn)
@@ -1619,7 +1621,8 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(b)
-	nsqd := New(opts)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	ctx := &context{nsqd}
 	p := &protocolV2{ctx}
 	c := newClientV2(0, nil, ctx)
