@@ -24,12 +24,13 @@ const (
 	RequestTimeout = 5 * time.Second
 )
 
-func getMetadata(n *NSQD) (*meta, error) {
+func getMetadata(t *testing.T, n *NSQD) (*meta, error) {
 	fn := newMetadataFile(n.getOpts())
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		return nil, err
 	}
+	t.Logf("reading metadata from: %s, %s", fn, data)
 
 	var m meta
 	err = json.Unmarshal(data, &m)
@@ -66,7 +67,7 @@ func TestStartup(t *testing.T) {
 	test.Nil(t, err)
 	atomic.StoreInt32(&nsqd.isLoading, 1)
 	nsqd.GetTopic(topicName) // will not persist if `flagLoading`
-	m, err := getMetadata(nsqd)
+	m, err := getMetadata(t, nsqd)
 	test.Nil(t, err)
 	test.Equal(t, 0, len(m.Topics))
 	nsqd.DeleteExistingTopic(topicName)
@@ -90,14 +91,22 @@ func TestStartup(t *testing.T) {
 		test.Equal(t, body, msg.Body)
 	}
 
-	// make sure metadata shows the topic
-	m, err = getMetadata(nsqd)
-	test.Nil(t, err)
-	test.Equal(t, 1, len(m.Topics))
-	test.Equal(t, topicName, m.Topics[0].Name)
-	test.Equal(t, 1, len(m.Topics[0].Channels))
-	test.Equal(t, "ch1", m.Topics[0].Channels[0].Name)
+	// make sure metadata shows the topic/channel
+	for i := 0; i < 10; i++ {
+		m, err = getMetadata(t, nsqd)
+		test.Nil(t, err)
+		if len(m.Topics) != 1 ||
+			m.Topics[0].Name != topicName ||
+			len(m.Topics[0].Channels) != 1 ||
+			m.Topics[0].Channels[0].Name != "ch1" {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		goto success
+	}
+	panic("should not happen")
 
+success:
 	exitChan <- 1
 	<-doneExitChan
 
@@ -308,7 +317,7 @@ func TestPauseMetadata(t *testing.T) {
 	nsqd.PersistMetadata()
 
 	var isPaused = func(n *NSQD, topicIndex int, channelIndex int) bool {
-		m, _ := getMetadata(n)
+		m, _ := getMetadata(t, n)
 		return m.Topics[topicIndex].Channels[channelIndex].Paused
 	}
 
