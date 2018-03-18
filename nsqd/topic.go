@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 
 	"github.com/mreiferson/wal"
-	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/quantile"
 )
 
@@ -49,15 +48,16 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 	if t.ephemeral {
 		t.wal = wal.NewEphemeral()
 	} else {
-		dqLogf := func(level lg.LogLevel, f string, args ...interface{}) {
-			opts := ctx.nsqd.getOpts()
-			lg.Logf(opts.Logger, opts.logLevel, lg.LogLevel(level), f, args...)
-		}
+		// TODO: fix wal logging
+		// walLogf := func(level lg.LogLevel, f string, args ...interface{}) {
+		// 	opts := ctx.nsqd.getOpts()
+		// 	lg.Logf(opts.Logger, opts.logLevel, lg.LogLevel(level), f, args...)
+		// }
 		t.wal, _ = wal.New(topicName,
 			ctx.nsqd.getOpts().DataPath,
 			ctx.nsqd.getOpts().MaxBytesPerFile,
 			ctx.nsqd.getOpts().SyncTimeout,
-			dqLogf,
+			ctx.nsqd.getOpts().Logger,
 		)
 	}
 
@@ -165,6 +165,7 @@ func (t *Topic) Depth() uint64 {
 			depth = t.wal.Index() - atomic.LoadUint64(&t.pauseIdx)
 		}
 	} else {
+		// TODO: this depth is wrong when emptying a topic and no channels exist
 		depth = t.wal.Index()
 	}
 	return depth

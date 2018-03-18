@@ -1271,7 +1271,7 @@ func TestSampling(t *testing.T) {
 	}()
 	<-doneChan
 
-	actualSampleRate := int(float64(count) / float64(num) * 100)
+	actualSampleRate := int(float64(atomic.LoadInt32(&count)) / float64(num) * 100)
 	test.Equal(t, true, sampleRate-slack <= actualSampleRate)
 	test.Equal(t, true, actualSampleRate <= sampleRate+slack)
 }

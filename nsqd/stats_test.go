@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -29,8 +28,7 @@ func TestStats(t *testing.T) {
 
 	accompanyTopicName := "accompany_test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	accompanyTopic := nsqd.GetTopic(accompanyTopicName)
-	msg = NewMessage(accompanyTopic.GenerateID(), []byte("accompany test body"))
-	accompanyTopic.PutMessage(msg)
+	accompanyTopic.Pub([]wal.EntryWriterTo{NewEntry([]byte("accompany test body"), time.Now().UnixNano(), 0)})
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	test.Nil(t, err)

@@ -554,6 +554,7 @@ func (n *NSQD) Notify(v interface{}) {
 	// should not persist metadata while loading it.
 	// nsqd will call `PersistMetadata` it after loading
 	persist := atomic.LoadInt32(&n.isLoading) == 0
+	n.logf(LOG_INFO, "notifying - %v", persist)
 	n.waitGroup.Wrap(func() {
 		// by selecting on exitChan we guarantee that
 		// we do not block exit, see issue #123

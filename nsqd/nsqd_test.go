@@ -95,6 +95,7 @@ func TestStartup(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 1, len(m.Topics))
 	test.Equal(t, topicName, m.Topics[0].Name)
+	test.Equal(t, 1, len(m.Topics[0].Channels))
 	test.Equal(t, "ch1", m.Topics[0].Channels[0].Name)
 
 	exitChan <- 1

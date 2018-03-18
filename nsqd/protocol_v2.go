@@ -202,7 +202,6 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 
 func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	var err error
-	var buf bytes.Buffer
 	var memoryMsgChan <-chan *Message
 	var backendMsgChan <-chan wal.Entry
 	var subChannel *Channel
