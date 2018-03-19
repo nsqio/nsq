@@ -68,3 +68,7 @@
 [[constraint]]
   name = "golang.org/x/sys"
   branch = "master"
+
+[[constraint]]
+  name = "github.com/vearne/randomchoice"
+  branch = "adc98c957c116a968aec4b0d525adcb386d03e03"

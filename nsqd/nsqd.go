@@ -27,6 +27,7 @@ import (
 	"github.com/nsqio/nsq/internal/statsd"
 	"github.com/nsqio/nsq/internal/util"
 	"github.com/nsqio/nsq/internal/version"
+	"github.com/vearne/randomchoice"
 )
 
 const (
@@ -725,7 +726,7 @@ func (n *NSQD) queueScanLoop() {
 		}
 
 	loop:
-		for _, i := range util.UniqRands(num, len(channels)) {
+		for _, i := range randomchoice.RandomChoice(len(channels), num) {
 			workCh <- channels[i]
 		}
 
