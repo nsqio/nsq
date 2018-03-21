@@ -4,19 +4,22 @@ import (
 	"math/rand"
 )
 
-func UniqRands(l int, n int) []int {
-	set := make(map[int]struct{})
-	nums := make([]int, 0, l)
-	for {
-		num := rand.Intn(n)
-		if _, ok := set[num]; !ok {
-			set[num] = struct{}{}
-			nums = append(nums, num)
-		}
-		if len(nums) == l {
-			goto exit
-		}
+func UniqRands(quantity int, maxval int) []int {
+	if maxval < quantity {
+		quantity = maxval
 	}
-exit:
-	return nums
+
+	intSlice := make([]int, maxval)
+	for i := 0; i < maxval; i++ {
+		intSlice[i] = i
+	}
+
+	for i := 0; i < quantity; i++ {
+		j := rand.Int()%maxval + i
+		// swap
+		intSlice[i], intSlice[j] = intSlice[j], intSlice[i]
+		maxval--
+
+	}
+	return intSlice[0:quantity]
 }
