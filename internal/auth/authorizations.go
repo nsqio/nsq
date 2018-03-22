@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/url"
 	"regexp"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/nsqio/nsq/internal/http_api"
@@ -23,6 +25,13 @@ type State struct {
 	Identity       string          `json:"identity"`
 	IdentityURL    string          `json:"identity_url"`
 	Expires        time.Time
+}
+
+var authStateCache map[string]State
+var authStateCacheMutex sync.RWMutex
+
+func init() {
+	authStateCache = make(map[string]State)
 }
 
 func (a *Authorization) HasPermission(permission string) bool {
@@ -86,7 +95,15 @@ func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string,
 		}
 		return authState, nil
 	}
-	return nil, errors.New("Unable to access auth server")
+	return nil, errors.New("unable to access auth server")
+}
+
+func addScheme(url string) string {
+	lowerUrl := strings.ToLower(url)
+	if !strings.HasPrefix(lowerUrl, "http://") && !strings.HasPrefix(lowerUrl, "https://") {
+		url = fmt.Sprintf("http://%s", url)
+	}
+	return url
 }
 
 func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
@@ -96,9 +113,15 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
 	v.Set("tls", tlsEnabled)
 	v.Set("secret", authSecret)
 
-	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
+	endpoint := fmt.Sprintf("%s/auth?%s", addScheme(authd), v.Encode())
 
-	var authState State
+	authStateCacheMutex.RLock()
+	authState, ok := authStateCache[endpoint]
+	authStateCacheMutex.RUnlock()
+	if ok && !authState.IsExpired() {
+		return &authState, nil
+	}
+
 	client := http_api.NewClient(nil, connectTimeout, requestTimeout)
 	if err := client.GETV1(endpoint, &authState); err != nil {
 		return nil, err
@@ -107,10 +130,11 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
 	// validation on response
 	for _, auth := range authState.Authorizations {
 		for _, p := range auth.Permissions {
+			// TODO (judwhite): Add more granular permissions, for example delete, pause, etc
 			switch p {
 			case "subscribe", "publish":
 			default:
-				return nil, fmt.Errorf("unknown permission %s", p)
+				log.Printf("Warning: unknown permission %s", p)
 			}
 		}
 
@@ -130,5 +154,10 @@ func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
 	}
 
 	authState.Expires = time.Now().Add(time.Duration(authState.TTL) * time.Second)
+
+	authStateCacheMutex.Lock()
+	authStateCache[endpoint] = authState
+	authStateCacheMutex.Unlock()
+
 	return &authState, nil
 }

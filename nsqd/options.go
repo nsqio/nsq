@@ -27,6 +27,7 @@ type Options struct {
 	BroadcastAddress         string        `flag:"broadcast-address"`
 	NSQLookupdTCPAddresses   []string      `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
 	AuthHTTPAddresses        []string      `flag:"auth-http-address" cfg:"auth_http_addresses"`
+	AuthRequired             uint16        `flag:"auth-required" cfg:"auth_required"`
 	HTTPClientConnectTimeout time.Duration `flag:"http-client-connect-timeout" cfg:"http_client_connect_timeout"`
 	HTTPClientRequestTimeout time.Duration `flag:"http-client-request-timeout" cfg:"http_client_request_timeout"`
 
@@ -103,6 +104,7 @@ func NewOptions() *Options {
 
 		NSQLookupdTCPAddresses: make([]string, 0),
 		AuthHTTPAddresses:      make([]string, 0),
+		AuthRequired:           FlagTCPProtocol,
 
 		HTTPClientConnectTimeout: 2 * time.Second,
 		HTTPClientRequestTimeout: 5 * time.Second,
