@@ -36,7 +36,7 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, *NSQLookupd) {
 	nsqlookupdOpts.BroadcastAddress = "127.0.0.1"
 	nsqlookupdOpts.Logger = lgr
 	nsqlookupd1 := New(nsqlookupdOpts)
-	go nsqlookupd1.Main()
+	nsqlookupd1.Main()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -52,7 +52,7 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, *NSQLookupd) {
 	}
 	nsqdOpts.DataPath = tmpDir
 	nsqd1 := nsqd.New(nsqdOpts)
-	go nsqd1.Main()
+	nsqd1.Main()
 
 	time.Sleep(100 * time.Millisecond)
 

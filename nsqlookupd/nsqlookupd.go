@@ -50,22 +50,19 @@ func (l *NSQLookupd) Main() {
 		l.logf(LOG_FATAL, "listen (%s) failed - %s", l.opts.TCPAddress, err)
 		os.Exit(1)
 	}
-	l.Lock()
-	l.tcpListener = tcpListener
-	l.Unlock()
-	tcpServer := &tcpServer{ctx: ctx}
-	l.waitGroup.Wrap(func() {
-		protocol.TCPServer(tcpListener, tcpServer, l.logf)
-	})
-
 	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
 	if err != nil {
 		l.logf(LOG_FATAL, "listen (%s) failed - %s", l.opts.HTTPAddress, err)
 		os.Exit(1)
 	}
-	l.Lock()
+
+	l.tcpListener = tcpListener
 	l.httpListener = httpListener
-	l.Unlock()
+
+	tcpServer := &tcpServer{ctx: ctx}
+	l.waitGroup.Wrap(func() {
+		protocol.TCPServer(tcpListener, tcpServer, l.logf)
+	})
 	httpServer := newHTTPServer(ctx)
 	l.waitGroup.Wrap(func() {
 		http_api.Serve(httpListener, httpServer, "HTTP", l.logf)
@@ -73,14 +70,10 @@ func (l *NSQLookupd) Main() {
 }
 
 func (l *NSQLookupd) RealTCPAddr() *net.TCPAddr {
-	l.RLock()
-	defer l.RUnlock()
 	return l.tcpListener.Addr().(*net.TCPAddr)
 }
 
 func (l *NSQLookupd) RealHTTPAddr() *net.TCPAddr {
-	l.RLock()
-	defer l.RUnlock()
 	return l.httpListener.Addr().(*net.TCPAddr)
 }
 

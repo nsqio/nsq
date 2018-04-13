@@ -67,7 +67,7 @@ func bootstrapNSQClusterWithAuth(t *testing.T, withAuth bool) (string, []*nsqd.N
 	nsqlookupdOpts.BroadcastAddress = "127.0.0.1"
 	nsqlookupdOpts.Logger = lgr
 	nsqlookupd1 := nsqlookupd.New(nsqlookupdOpts)
-	go nsqlookupd1.Main()
+	nsqlookupd1.Main()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -83,7 +83,7 @@ func bootstrapNSQClusterWithAuth(t *testing.T, withAuth bool) (string, []*nsqd.N
 	}
 	nsqdOpts.DataPath = tmpDir
 	nsqd1 := nsqd.New(nsqdOpts)
-	go nsqd1.Main()
+	nsqd1.Main()
 
 	nsqadminOpts := NewOptions()
 	nsqadminOpts.HTTPAddress = "127.0.0.1:0"
@@ -93,7 +93,7 @@ func bootstrapNSQClusterWithAuth(t *testing.T, withAuth bool) (string, []*nsqd.N
 		nsqadminOpts.AdminUsers = []string{"matt"}
 	}
 	nsqadmin1 := New(nsqadminOpts)
-	go nsqadmin1.Main()
+	nsqadmin1.Main()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -592,7 +592,7 @@ func TestHTTPconfigCIDR(t *testing.T) {
 	opts.Logger = test.NewTestLogger(t)
 	opts.AllowConfigFromCIDR = "10.0.0.0/8"
 	nsqadmin := New(opts)
-	go nsqadmin.Main()
+	nsqadmin.Main()
 	defer nsqadmin.Exit()
 
 	time.Sleep(100 * time.Millisecond)
