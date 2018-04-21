@@ -1,4 +1,5 @@
 .godeps
+vendor
 ./build
 .cover/
 apps/nsqlookupd/nsqlookupd

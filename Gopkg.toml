@@ -64,7 +64,3 @@
 [[constraint]]
   name = "github.com/nsqio/go-nsq"
   revision = "a53d495e81424aaf7a7665a9d32a97715c40e953"
-
-[[constraint]]
-  name = "golang.org/x/sys"
-  branch = "master"
