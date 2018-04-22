@@ -84,6 +84,9 @@ statsd_interval = "60s"
 ## toggle sending memory and GC stats to statsd
 statsd_mem_stats = true
 
+## the size in bytes of statsd UDP packets
+# statsd_udp_packet_size = 508
+
 
 ## message processing time percentiles to keep track of (float)
 e2e_processing_latency_percentiles = [

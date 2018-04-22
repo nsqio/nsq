@@ -58,10 +58,11 @@ type Options struct {
 	MaxOutputBufferTimeout time.Duration `flag:"max-output-buffer-timeout"`
 
 	// statsd integration
-	StatsdAddress  string        `flag:"statsd-address"`
-	StatsdPrefix   string        `flag:"statsd-prefix"`
-	StatsdInterval time.Duration `flag:"statsd-interval"`
-	StatsdMemStats bool          `flag:"statsd-mem-stats"`
+	StatsdAddress       string        `flag:"statsd-address"`
+	StatsdPrefix        string        `flag:"statsd-prefix"`
+	StatsdInterval      time.Duration `flag:"statsd-interval"`
+	StatsdMemStats      bool          `flag:"statsd-mem-stats"`
+	StatsdUDPPacketSize int           `flag:"statsd-udp-packet-size"`
 
 	// e2e message latency
 	E2EProcessingLatencyWindowTime  time.Duration `flag:"e2e-processing-latency-window-time"`
@@ -130,9 +131,10 @@ func NewOptions() *Options {
 		MaxOutputBufferSize:    64 * 1024,
 		MaxOutputBufferTimeout: 1 * time.Second,
 
-		StatsdPrefix:   "nsq.%s",
-		StatsdInterval: 60 * time.Second,
-		StatsdMemStats: true,
+		StatsdPrefix:        "nsq.%s",
+		StatsdInterval:      60 * time.Second,
+		StatsdMemStats:      true,
+		StatsdUDPPacketSize: 508,
 
 		E2EProcessingLatencyWindowTime: time.Duration(10 * time.Minute),
 

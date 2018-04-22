@@ -1,40 +1,20 @@
 package statsd
 
 import (
-	"errors"
 	"fmt"
-	"net"
-	"time"
+	"io"
 )
 
 type Client struct {
-	conn   net.Conn
-	addr   string
+	w      io.Writer
 	prefix string
 }
 
-func NewClient(addr string, prefix string) *Client {
+func NewClient(w io.Writer, prefix string) *Client {
 	return &Client{
-		addr:   addr,
+		w:      w,
 		prefix: prefix,
 	}
-}
-
-func (c *Client) String() string {
-	return c.addr
-}
-
-func (c *Client) CreateSocket() error {
-	conn, err := net.DialTimeout("udp", c.addr, time.Second)
-	if err != nil {
-		return err
-	}
-	c.conn = conn
-	return nil
-}
-
-func (c *Client) Close() error {
-	return c.conn.Close()
 }
 
 func (c *Client) Incr(stat string, count int64) error {
@@ -54,10 +34,7 @@ func (c *Client) Gauge(stat string, value int64) error {
 }
 
 func (c *Client) send(stat string, format string, value int64) error {
-	if c.conn == nil {
-		return errors.New("not connected")
-	}
-	format = fmt.Sprintf("%s%s:%s", c.prefix, stat, format)
-	_, err := fmt.Fprintf(c.conn, format, value)
+	format = fmt.Sprintf("%s%s:%s\n", c.prefix, stat, format)
+	_, err := fmt.Fprintf(c.w, format, value)
 	return err
 }
