@@ -1,5 +1,5 @@
 %define name nsq
-%define version 1.0.0-alpha
+%define version 1.0.1-alpha
 %define release 1
 %define path usr/local
 %define group Database/Applications
