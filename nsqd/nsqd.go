@@ -177,20 +177,14 @@ func (n *NSQD) triggerOptsNotification() {
 }
 
 func (n *NSQD) RealTCPAddr() *net.TCPAddr {
-	n.RLock()
-	defer n.RUnlock()
 	return n.tcpListener.Addr().(*net.TCPAddr)
 }
 
 func (n *NSQD) RealHTTPAddr() *net.TCPAddr {
-	n.RLock()
-	defer n.RUnlock()
 	return n.httpListener.Addr().(*net.TCPAddr)
 }
 
 func (n *NSQD) RealHTTPSAddr() *net.TCPAddr {
-	n.RLock()
-	defer n.RUnlock()
 	return n.httpsListener.Addr().(*net.TCPAddr)
 }
 
@@ -220,50 +214,41 @@ func (n *NSQD) GetStartTime() time.Time {
 }
 
 func (n *NSQD) Main() {
-	var httpListener net.Listener
-	var httpsListener net.Listener
-
+	var err error
 	ctx := &context{n}
 
-	tcpListener, err := net.Listen("tcp", n.getOpts().TCPAddress)
+	n.tcpListener, err = net.Listen("tcp", n.getOpts().TCPAddress)
 	if err != nil {
 		n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().TCPAddress, err)
 		os.Exit(1)
 	}
-	n.Lock()
-	n.tcpListener = tcpListener
-	n.Unlock()
-	tcpServer := &tcpServer{ctx: ctx}
-	n.waitGroup.Wrap(func() {
-		protocol.TCPServer(n.tcpListener, tcpServer, n.logf)
-	})
-
+	n.httpListener, err = net.Listen("tcp", n.getOpts().HTTPAddress)
+	if err != nil {
+		n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
+		os.Exit(1)
+	}
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
-		httpsListener, err = tls.Listen("tcp", n.getOpts().HTTPSAddress, n.tlsConfig)
+		n.httpsListener, err = tls.Listen("tcp", n.getOpts().HTTPSAddress, n.tlsConfig)
 		if err != nil {
 			n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().HTTPSAddress, err)
 			os.Exit(1)
 		}
-		n.Lock()
-		n.httpsListener = httpsListener
-		n.Unlock()
+	}
+
+	tcpServer := &tcpServer{ctx: ctx}
+	n.waitGroup.Wrap(func() {
+		protocol.TCPServer(n.tcpListener, tcpServer, n.logf)
+	})
+	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
+	n.waitGroup.Wrap(func() {
+		http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf)
+	})
+	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
 		httpsServer := newHTTPServer(ctx, true, true)
 		n.waitGroup.Wrap(func() {
 			http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf)
 		})
 	}
-	httpListener, err = net.Listen("tcp", n.getOpts().HTTPAddress)
-	if err != nil {
-		n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
-		os.Exit(1)
-	}
-	n.Lock()
-	n.httpListener = httpListener
-	n.Unlock()
-	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
-	n.waitGroup.Wrap(func() {
-		http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf)
-	})
 
 	n.waitGroup.Wrap(func() { n.queueScanLoop() })
 	n.waitGroup.Wrap(func() { n.lookupLoop() })

@@ -144,8 +144,6 @@ func (n *NSQAdmin) swapOpts(opts *Options) {
 }
 
 func (n *NSQAdmin) RealHTTPAddr() *net.TCPAddr {
-	n.RLock()
-	defer n.RUnlock()
 	return n.httpListener.Addr().(*net.TCPAddr)
 }
 
@@ -174,9 +172,7 @@ func (n *NSQAdmin) Main() {
 		n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
 		os.Exit(1)
 	}
-	n.Lock()
 	n.httpListener = httpListener
-	n.Unlock()
 	httpServer := NewHTTPServer(&Context{n})
 	n.waitGroup.Wrap(func() {
 		http_api.Serve(n.httpListener, http_api.CompressHandler(httpServer), "HTTP", n.logf)
