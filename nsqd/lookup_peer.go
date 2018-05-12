@@ -98,9 +98,16 @@ func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 			return nil, err
 		}
 		lp.state = stateConnected
-		lp.Write(nsq.MagicV1)
+		_, err = lp.Write(nsq.MagicV1)
+		if err != nil {
+			lp.Close()
+			return nil, err
+		}
 		if initialState == stateDisconnected {
 			lp.connectCallback(lp)
+		}
+		if lp.state != stateConnected {
+			return nil, fmt.Errorf("lookupPeer connectCallback() failed")
 		}
 	}
 	if cmd == nil {
