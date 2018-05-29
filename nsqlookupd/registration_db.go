@@ -9,7 +9,7 @@ import (
 
 type RegistrationDB struct {
 	sync.RWMutex
-	registrationMap map[Registration]Producers
+	registrationMap map[Registration]ProducerMap
 }
 
 type Registration struct {
@@ -37,6 +37,7 @@ type Producer struct {
 }
 
 type Producers []*Producer
+type ProducerMap map[string]*Producer
 
 func (p *Producer) String() string {
 	return fmt.Sprintf("%s [%d, %d]", p.peerInfo.BroadcastAddress, p.peerInfo.TCPPort, p.peerInfo.HTTPPort)
@@ -53,7 +54,7 @@ func (p *Producer) IsTombstoned(lifetime time.Duration) bool {
 
 func NewRegistrationDB() *RegistrationDB {
 	return &RegistrationDB{
-		registrationMap: make(map[Registration]Producers),
+		registrationMap: make(map[Registration]ProducerMap),
 	}
 }
 
@@ -63,7 +64,7 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 	defer r.Unlock()
 	_, ok := r.registrationMap[k]
 	if !ok {
-		r.registrationMap[k] = Producers{}
+		r.registrationMap[k] = make(map[string]*Producer)
 	}
 }
 
@@ -71,16 +72,14 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 	r.Lock()
 	defer r.Unlock()
-	producers := r.registrationMap[k]
-	found := false
-	for _, producer := range producers {
-		if producer.peerInfo.id == p.peerInfo.id {
-			found = true
-			break
-		}
+	_, ok := r.registrationMap[k]
+	if !ok {
+		r.registrationMap[k] = make(map[string]*Producer)
 	}
+	producers := r.registrationMap[k]
+	_, found := producers[p.peerInfo.id]
 	if found == false {
-		r.registrationMap[k] = append(producers, p)
+		producers[p.peerInfo.id] = p
 	}
 	return !found
 }
@@ -94,17 +93,13 @@ func (r *RegistrationDB) RemoveProducer(k Registration, id string) (bool, int) {
 		return false, 0
 	}
 	removed := false
-	cleaned := Producers{}
-	for _, producer := range producers {
-		if producer.peerInfo.id != id {
-			cleaned = append(cleaned, producer)
-		} else {
-			removed = true
-		}
+	if _, exists := producers[id]; exists {
+		removed = true
 	}
+
 	// Note: this leaves keys in the DB even if they have empty lists
-	r.registrationMap[k] = cleaned
-	return removed, len(cleaned)
+	delete(producers, id)
+	return removed, len(producers)
 }
 
 // remove a Registration and all it's producers
@@ -143,27 +138,22 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 	defer r.RUnlock()
 	if !r.needFilter(key, subkey) {
 		k := Registration{category, key, subkey}
-		return r.registrationMap[k]
+		return ProducerMap2Slice(r.registrationMap[k])
 	}
 
-	results := Producers{}
+	results := make(map[string]*Producer)
 	for k, producers := range r.registrationMap {
 		if !k.IsMatch(category, key, subkey) {
 			continue
 		}
 		for _, producer := range producers {
-			found := false
-			for _, p := range results {
-				if producer.peerInfo.id == p.peerInfo.id {
-					found = true
-				}
-			}
+			_, found := results[producer.peerInfo.id]
 			if found == false {
-				results = append(results, producer)
+				results[producer.peerInfo.id] = producer
 			}
 		}
 	}
-	return results
+	return ProducerMap2Slice(results)
 }
 
 func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
@@ -171,11 +161,8 @@ func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
 	defer r.RUnlock()
 	results := Registrations{}
 	for k, producers := range r.registrationMap {
-		for _, p := range producers {
-			if p.peerInfo.id == id {
-				results = append(results, k)
-				break
-			}
+		if _, exists := producers[id]; exists {
+			results = append(results, k)
 		}
 	}
 	return results
@@ -239,4 +226,13 @@ func (pp Producers) PeerInfo() []*PeerInfo {
 		results = append(results, p.peerInfo)
 	}
 	return results
+}
+
+func ProducerMap2Slice(pm ProducerMap) Producers {
+	var producers Producers
+	for _, producer := range pm {
+		producers = append(producers, producer)
+	}
+
+	return producers
 }
