@@ -1,11 +1,68 @@
 package nsqlookupd
 
 import (
+	"math/rand"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/nsqio/nsq/internal/test"
 )
+
+type FakeRegistrationDB struct {
+	sync.RWMutex
+	registrationMap map[Registration]Producers
+}
+
+func NewFakeRegistrationDB() *FakeRegistrationDB {
+	return &FakeRegistrationDB{
+		registrationMap: make(map[Registration]Producers),
+	}
+}
+
+// add a registration key
+func (r *FakeRegistrationDB) AddRegistration(k Registration) {
+	r.Lock()
+	defer r.Unlock()
+	_, ok := r.registrationMap[k]
+	if !ok {
+		r.registrationMap[k] = Producers{}
+	}
+}
+
+// add a producer to a registration
+func (r *FakeRegistrationDB) AddProducer(k Registration, p *Producer) bool {
+	r.Lock()
+	defer r.Unlock()
+	producers := r.registrationMap[k]
+	found := false
+	for _, producer := range producers {
+		if producer.peerInfo.id == p.peerInfo.id {
+			found = true
+			break
+		}
+	}
+	if found == false {
+		r.registrationMap[k] = append(producers, p)
+	}
+	return !found
+}
+
+func (r *FakeRegistrationDB) LookupRegistrations(id string) Registrations {
+	r.RLock()
+	defer r.RUnlock()
+	results := Registrations{}
+	for k, producers := range r.registrationMap {
+		for _, p := range producers {
+			if p.peerInfo.id == id {
+				results = append(results, k)
+				break
+			}
+		}
+	}
+	return results
+}
 
 func TestRegistrationDB(t *testing.T) {
 	sec30 := 30 * time.Second
@@ -95,4 +152,110 @@ func TestRegistrationDB(t *testing.T) {
 	db.RemoveRegistration(Registration{"c", "a", "b"})
 	k = db.FindRegistrations("c", "*", "*").Keys()
 	test.Equal(t, 0, len(k))
+}
+
+func benchmarkLookupRegistrations(b *testing.B, registrationNumber int, producerNumber int) {
+	regDB := NewRegistrationDB()
+	for i := 0; i < registrationNumber; i++ {
+		regKey := strconv.Itoa(i)
+		reg := Registration{
+			Category: regKey,
+			Key:      regKey,
+			SubKey:   regKey,
+		}
+		regDB.AddRegistration(reg)
+		for j := 0; j < producerNumber; j++ {
+			pKey := strconv.Itoa(j)
+			p := Producer{
+				peerInfo: &PeerInfo{
+					id: pKey,
+				},
+			}
+			regDB.AddProducer(reg, &p)
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		i := rand.Intn(producerNumber)
+		pKey := strconv.Itoa(i)
+		regDB.LookupRegistrations(pKey)
+	}
+}
+
+func BenchmarkLookupRegistrations64Registration64Producer(b *testing.B) {
+	benchmarkLookupRegistrations(b, 64, 64)
+}
+
+func BenchmarkLookupRegistrations128Registration128Producer(b *testing.B) {
+	benchmarkLookupRegistrations(b, 128, 128)
+}
+
+func BenchmarkLookupRegistrations256Registration256Producer(b *testing.B) {
+	benchmarkLookupRegistrations(b, 256, 256)
+}
+
+func BenchmarkLookupRegistrations512Registration512Producer(b *testing.B) {
+	benchmarkLookupRegistrations(b, 512, 512)
+}
+
+func BenchmarkLookupRegistrations1024Registration1024Producer(b *testing.B) {
+	benchmarkLookupRegistrations(b, 1024, 1024)
+}
+
+func BenchmarkLookupRegistrations2048Registration2048Producer(b *testing.B) {
+	benchmarkLookupRegistrations(b, 2048, 2048)
+}
+
+func benchmarkFakeLookupRegistrations(b *testing.B, registrationNumber int, producerNumber int) {
+	regDB := NewFakeRegistrationDB()
+	for i := 0; i < registrationNumber; i++ {
+		regKey := strconv.Itoa(i)
+		reg := Registration{
+			Category: regKey,
+			Key:      regKey,
+			SubKey:   regKey,
+		}
+		regDB.AddRegistration(reg)
+		for j := 0; j < producerNumber; j++ {
+			pKey := strconv.Itoa(j)
+			p := Producer{
+				peerInfo: &PeerInfo{
+					id: pKey,
+				},
+			}
+			regDB.AddProducer(reg, &p)
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		i := rand.Intn(producerNumber)
+		pKey := strconv.Itoa(i)
+		regDB.LookupRegistrations(pKey)
+	}
+}
+
+func BenchmarkFakeLookupRegistrations64Registration64Producer(b *testing.B) {
+	benchmarkFakeLookupRegistrations(b, 64, 64)
+}
+
+func BenchmarkFakeLookupRegistrations128Registration128Producer(b *testing.B) {
+	benchmarkFakeLookupRegistrations(b, 128, 128)
+}
+
+func BenchmarkFakeLookupRegistrations256Registration256Producer(b *testing.B) {
+	benchmarkFakeLookupRegistrations(b, 256, 256)
+}
+
+func BenchmarkFakeLookupRegistrations512Registration512Producer(b *testing.B) {
+	benchmarkFakeLookupRegistrations(b, 512, 512)
+}
+
+func BenchmarkFakeLookupRegistrations1024Registration1024Producer(b *testing.B) {
+	benchmarkFakeLookupRegistrations(b, 1024, 1024)
+}
+
+func BenchmarkFakeLookupRegistrations2048Registration2048Producer(b *testing.B) {
+	benchmarkFakeLookupRegistrations(b, 2048, 2048)
 }
