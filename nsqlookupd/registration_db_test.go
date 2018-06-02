@@ -1,6 +1,8 @@
 package nsqlookupd
 
 import (
+	"math/rand"
+	"strconv"
 	"testing"
 	"time"
 
@@ -95,4 +97,123 @@ func TestRegistrationDB(t *testing.T) {
 	db.RemoveRegistration(Registration{"c", "a", "b"})
 	k = db.FindRegistrations("c", "*", "*").Keys()
 	test.Equal(t, 0, len(k))
+}
+
+
+func fillRegDB(registrations int, producers int) *RegistrationDB {
+	regDB := NewRegistrationDB()
+	for i := 0; i < registrations; i++ {
+		regT := Registration{"topic", "t" + strconv.Itoa(i), ""}
+		regCa := Registration{"channel", "t" + strconv.Itoa(i), "ca" + strconv.Itoa(i)}
+		regCb := Registration{"channel", "t" + strconv.Itoa(i), "cb" + strconv.Itoa(i)}
+		for j := 0; j < producers; j++ {
+			p := Producer{
+				peerInfo: &PeerInfo{
+					id: "p" + strconv.Itoa(j),
+				},
+			}
+			regDB.AddProducer(regT, &p)
+			regDB.AddProducer(regCa, &p)
+			regDB.AddProducer(regCb, &p)
+		}
+	}
+	return regDB
+}
+
+func benchmarkLookupRegistrations(b *testing.B, registrations int, producers int) {
+	regDB := fillRegDB(registrations, producers)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		j := strconv.Itoa(rand.Intn(producers))
+		_ = regDB.LookupRegistrations("p" + j)
+	}
+}
+
+func benchmarkRegister(b *testing.B, registrations int, producers int) {
+	for i := 0; i < b.N; i++ {
+		_ = fillRegDB(registrations, producers)
+	}
+}
+
+func benchmarkDoLookup(b *testing.B, registrations int, producers int) {
+	regDB := fillRegDB(registrations, producers)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		topic := "t" + strconv.Itoa(rand.Intn(registrations))
+		_ = regDB.FindRegistrations("topic", topic, "")
+		_ = regDB.FindRegistrations("channel", topic, "*").SubKeys()
+		_ = regDB.FindProducers("topic", topic, "")
+	}
+}
+
+func BenchmarkLookupRegistrations8x8(b *testing.B) {
+	benchmarkLookupRegistrations(b, 8, 8)
+}
+
+func BenchmarkLookupRegistrations8x64(b *testing.B) {
+	benchmarkLookupRegistrations(b, 8, 64)
+}
+
+func BenchmarkLookupRegistrations64x64(b *testing.B) {
+	benchmarkLookupRegistrations(b, 64, 64)
+}
+
+func BenchmarkLookupRegistrations64x512(b *testing.B) {
+	benchmarkLookupRegistrations(b, 64, 512)
+}
+
+func BenchmarkLookupRegistrations512x512(b *testing.B) {
+	benchmarkLookupRegistrations(b, 512, 512)
+}
+
+func BenchmarkLookupRegistrations512x2048(b *testing.B) {
+	benchmarkLookupRegistrations(b, 512, 2048)
+}
+
+func BenchmarkRegister8x8(b *testing.B) {
+	benchmarkRegister(b, 8, 8)
+}
+
+func BenchmarkRegister8x64(b *testing.B) {
+	benchmarkRegister(b, 8, 64)
+}
+
+func BenchmarkRegister64x64(b *testing.B) {
+	benchmarkRegister(b, 64, 64)
+}
+
+func BenchmarkRegister64x512(b *testing.B) {
+	benchmarkRegister(b, 64, 512)
+}
+
+func BenchmarkRegister512x512(b *testing.B) {
+	benchmarkRegister(b, 512, 512)
+}
+
+func BenchmarkRegister512x2048(b *testing.B) {
+	benchmarkRegister(b, 512, 2048)
+}
+
+func BenchmarkDoLookup8x8(b *testing.B) {
+	benchmarkDoLookup(b, 8, 8)
+}
+
+func BenchmarkDoLookup8x64(b *testing.B) {
+	benchmarkDoLookup(b, 8, 64)
+}
+
+func BenchmarkDoLookup64x64(b *testing.B) {
+	benchmarkDoLookup(b, 64, 64)
+}
+
+func BenchmarkDoLookup64x512(b *testing.B) {
+	benchmarkDoLookup(b, 64, 512)
+}
+
+func BenchmarkDoLookup512x512(b *testing.B) {
+	benchmarkDoLookup(b, 512, 512)
+}
+
+func BenchmarkDoLookup512x2048(b *testing.B) {
+	benchmarkDoLookup(b, 512, 2048)
 }
