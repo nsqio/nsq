@@ -77,7 +77,11 @@ func (p *program) Start() error {
 	options.Resolve(opts, flagSet, cfg)
 	daemon := nsqlookupd.New(opts)
 
-	daemon.Main()
+	err := daemon.Main()
+	if err != nil {
+		log.Fatalf("ERROR: failed to start nsqlookupd: %v", err)
+	}
+
 	p.nsqlookupd = daemon
 	return nil
 }

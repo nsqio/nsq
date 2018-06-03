@@ -1,6 +1,7 @@
 package nsqlookupd
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -42,18 +43,18 @@ func New(opts *Options) *NSQLookupd {
 	return n
 }
 
-func (l *NSQLookupd) Main() {
+// Main starts an instance of nsqlookupd and returns an
+// error if there was a problem starting up.
+func (l *NSQLookupd) Main() error {
 	ctx := &Context{l}
 
 	tcpListener, err := net.Listen("tcp", l.opts.TCPAddress)
 	if err != nil {
-		l.logf(LOG_FATAL, "listen (%s) failed - %s", l.opts.TCPAddress, err)
-		os.Exit(1)
+		return fmt.Errorf("listen (%s) failed - %s", l.opts.TCPAddress, err)
 	}
 	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
 	if err != nil {
-		l.logf(LOG_FATAL, "listen (%s) failed - %s", l.opts.HTTPAddress, err)
-		os.Exit(1)
+		return fmt.Errorf("listen (%s) failed - %s", l.opts.TCPAddress, err)
 	}
 
 	l.tcpListener = tcpListener
@@ -67,6 +68,8 @@ func (l *NSQLookupd) Main() {
 	l.waitGroup.Wrap(func() {
 		http_api.Serve(httpListener, httpServer, "HTTP", l.logf)
 	})
+
+	return nil
 }
 
 func (l *NSQLookupd) RealTCPAddr() *net.TCPAddr {
