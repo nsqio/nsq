@@ -11,7 +11,7 @@ RUN wget -O /bin/dep https://github.com/golang/dep/releases/download/v0.4.1/dep-
  && ./test.sh \
  && CGO_ENABLED=0 make DESTDIR=/opt PREFIX=/nsq GOFLAGS='-ldflags="-s -w"' install
 
-FROM alpine:3.6
+FROM alpine:3.7
 
 EXPOSE 4150 4151 4160 4161 4170 4171
 
