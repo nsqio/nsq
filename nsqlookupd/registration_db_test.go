@@ -99,7 +99,6 @@ func TestRegistrationDB(t *testing.T) {
 	test.Equal(t, 0, len(k))
 }
 
-
 func fillRegDB(registrations int, producers int) *RegistrationDB {
 	regDB := NewRegistrationDB()
 	for i := 0; i < registrations; i++ {
