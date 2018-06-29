@@ -41,7 +41,7 @@ func (n *NSQD) statsdLoop() {
 				n.logf(LOG_ERROR, "failed to create UDP socket to statsd(%s)", addr)
 				continue
 			}
-			sw := writers.NewSpreadWriter(conn, interval-time.Second)
+			sw := writers.NewSpreadWriter(conn, interval-time.Second, n.exitChan)
 			bw := writers.NewBoundaryBufferedWriter(sw, n.getOpts().StatsdUDPPacketSize)
 			client := statsd.NewClient(bw, prefix)
 
@@ -143,6 +143,7 @@ func (n *NSQD) statsdLoop() {
 
 exit:
 	ticker.Stop()
+	n.logf(LOG_INFO, "STATSD: closing")
 }
 
 func percentile(perc float64, arr []uint64, length int) uint64 {
