@@ -9,13 +9,15 @@ type SpreadWriter struct {
 	w        io.Writer
 	interval time.Duration
 	buf      [][]byte
+	exitCh   chan int
 }
 
-func NewSpreadWriter(w io.Writer, interval time.Duration) *SpreadWriter {
+func NewSpreadWriter(w io.Writer, interval time.Duration, exitCh chan int) *SpreadWriter {
 	return &SpreadWriter{
 		w:        w,
 		interval: interval,
 		buf:      make([][]byte, 0),
+		exitCh:   exitCh,
 	}
 }
 
@@ -28,11 +30,14 @@ func (s *SpreadWriter) Write(p []byte) (int, error) {
 
 func (s *SpreadWriter) Flush() {
 	sleep := s.interval / time.Duration(len(s.buf))
+	ticker := time.NewTicker(sleep)
 	for _, b := range s.buf {
-		start := time.Now()
 		s.w.Write(b)
-		latency := time.Now().Sub(start)
-		time.Sleep(sleep - latency)
+		select {
+		case <-ticker.C:
+		case <-s.exitCh: // skip sleeps finish writes
+		}
 	}
+	ticker.Stop()
 	s.buf = s.buf[:0]
 }

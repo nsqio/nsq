@@ -473,10 +473,11 @@ func (n *NSQD) Exit() {
 	}
 	n.Unlock()
 
+	n.logf(LOG_INFO, "NSQ: stopping subsystems")
 	close(n.exitChan)
 	n.waitGroup.Wait()
-
 	n.dl.Unlock()
+	n.logf(LOG_INFO, "NSQ: bye")
 }
 
 // GetTopic performs a thread safe operation
