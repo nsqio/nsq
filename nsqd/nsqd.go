@@ -504,14 +504,20 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	t = NewTopic(topicName, &context{n}, deleteCallback)
 	n.topicMap[topicName] = t
 
-	// if we're creating a new topic in this process while we're loading from metadata, the topic may already
-	// have message data persisted on disk. To ensure that all channels are created before message flow
-	// begins, we pause the topic.
-	if atomic.LoadInt32(&n.isLoading) == 1 {
-		t.Pause()
-	}
-
 	n.logf(LOG_INFO, "TOPIC(%s): created", t.name)
+
+	if atomic.LoadInt32(&n.isLoading) == 1 {
+		// if loading metadata, channels added outside this function, pause for that
+		// no lookupd connections initialized yet
+		t.Pause()
+		n.Unlock()
+		return t
+	}
+	if len(n.getOpts().NSQLookupdTCPAddresses) == 0 {
+		// not configured for lookupd, no channel lookup
+		n.Unlock()
+		return t
+	}
 
 	// release our global nsqd lock, and switch to a more granular topic lock while we init our
 	// channels from lookupd. This blocks concurrent PutMessages to this topic.
@@ -534,7 +540,7 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 			}
 			t.getOrCreateChannel(channelName)
 		}
-	} else if len(n.getOpts().NSQLookupdTCPAddresses) > 0 {
+	} else {
 		n.logf(LOG_ERROR, "no available nsqlookupd to query for channels to pre-create for topic %s", t.name)
 	}
 
