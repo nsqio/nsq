@@ -226,17 +226,7 @@ func (t *Topic) messagePump() {
 	var chans []*Channel
 	var memoryMsgChan chan *Message
 	var backendChan chan []byte
-
-	t.RLock()
-	for _, c := range t.channelMap {
-		chans = append(chans, c)
-	}
-	t.RUnlock()
-
-	if !t.IsPaused() && len(chans) > 0 {
-		memoryMsgChan = t.memoryMsgChan
-		backendChan = t.backend.ReadChan()
-	}
+	// always starts with no channels, channels added async with notification
 
 	for {
 		select {
