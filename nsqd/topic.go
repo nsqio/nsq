@@ -49,6 +49,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
 		ctx:               ctx,
+		paused:            1,
 		pauseChan:         make(chan bool),
 		deleteCallback:    deleteCallback,
 		idFactory:         NewGUIDFactory(ctx.nsqd.getOpts().ID),
@@ -232,7 +233,7 @@ func (t *Topic) messagePump() {
 	}
 	t.RUnlock()
 
-	if len(chans) > 0 {
+	if !t.IsPaused() && len(chans) > 0 {
 		memoryMsgChan = t.memoryMsgChan
 		backendChan = t.backend.ReadChan()
 	}
