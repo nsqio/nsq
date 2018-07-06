@@ -49,6 +49,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
 		ctx:               ctx,
+		paused:            1,
 		pauseChan:         make(chan bool),
 		deleteCallback:    deleteCallback,
 		idFactory:         NewGUIDFactory(ctx.nsqd.getOpts().ID),
@@ -225,17 +226,7 @@ func (t *Topic) messagePump() {
 	var chans []*Channel
 	var memoryMsgChan chan *Message
 	var backendChan chan []byte
-
-	t.RLock()
-	for _, c := range t.channelMap {
-		chans = append(chans, c)
-	}
-	t.RUnlock()
-
-	if len(chans) > 0 {
-		memoryMsgChan = t.memoryMsgChan
-		backendChan = t.backend.ReadChan()
-	}
+	// always starts with no channels, channels added async with notification
 
 	for {
 		select {
