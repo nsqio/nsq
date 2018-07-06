@@ -14,6 +14,9 @@ import (
 	"github.com/nsqio/nsq/internal/util"
 )
 
+var ErrAlreadyPaused = errors.New("ALREADY_PAUSED")
+var ErrAlreadyUnPaused = errors.New("ALREADY_UNPAUSED")
+
 type Topic struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	messageCount uint64
@@ -452,17 +455,23 @@ func (t *Topic) UnPause() error {
 }
 
 func (t *Topic) doPause(pause bool) error {
+	setv := int32(0)
 	if pause {
-		atomic.StoreInt32(&t.paused, 1)
-	} else {
-		atomic.StoreInt32(&t.paused, 0)
+		setv = int32(1)
 	}
+	prev := atomic.SwapInt32(&t.paused, setv)
 
+	if prev == setv {
+		if pause {
+			return ErrAlreadyPaused
+		} else {
+			return ErrAlreadyUnPaused
+		}
+	}
 	select {
 	case t.pauseChan <- 1:
 	case <-t.exitChan:
 	}
-
 	return nil
 }
 

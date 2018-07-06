@@ -381,10 +381,13 @@ func (s *httpServer) doPauseTopic(w http.ResponseWriter, req *http.Request, ps h
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
 
-	if strings.Contains(req.URL.Path, "unpause") {
+	if strings.HasSuffix(req.URL.Path, "/unpause") {
 		err = topic.UnPause()
 	} else {
 		err = topic.Pause()
+	}
+	if err == ErrAlreadyPaused || err == ErrAlreadyUnPaused {
+		return nil, http_api.Err{400, err.Error()}
 	}
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failure in %s - %s", req.URL.Path, err)
@@ -452,10 +455,13 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
 	}
 
-	if strings.Contains(req.URL.Path, "unpause") {
+	if strings.HasSuffix(req.URL.Path, "/unpause") {
 		err = channel.UnPause()
 	} else {
 		err = channel.Pause()
+	}
+	if err == ErrAlreadyPaused || err == ErrAlreadyUnPaused {
+		return nil, http_api.Err{400, err.Error()}
 	}
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failure in %s - %s", req.URL.Path, err)

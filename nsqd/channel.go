@@ -262,12 +262,19 @@ func (c *Channel) UnPause() error {
 }
 
 func (c *Channel) doPause(pause bool) error {
+	setv := int32(0)
 	if pause {
-		atomic.StoreInt32(&c.paused, 1)
-	} else {
-		atomic.StoreInt32(&c.paused, 0)
+		setv = int32(1)
 	}
+	prev := atomic.SwapInt32(&c.paused, setv)
 
+	if prev == setv {
+		if pause {
+			return ErrAlreadyPaused
+		} else {
+			return ErrAlreadyUnPaused
+		}
+	}
 	c.RLock()
 	for _, client := range c.clients {
 		if pause {
