@@ -177,7 +177,7 @@ func (n *NSQAdmin) Main() {
 	n.waitGroup.Wrap(func() {
 		http_api.Serve(n.httpListener, http_api.CompressHandler(httpServer), "HTTP", n.logf)
 	})
-	n.waitGroup.Wrap(func() { n.handleAdminActions() })
+	n.waitGroup.Wrap(n.handleAdminActions)
 }
 
 func (n *NSQAdmin) Exit() {

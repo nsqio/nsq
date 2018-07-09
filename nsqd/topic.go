@@ -75,7 +75,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 		)
 	}
 
-	t.waitGroup.Wrap(func() { t.messagePump() })
+	t.waitGroup.Wrap(t.messagePump)
 
 	t.ctx.nsqd.Notify(t)
 
