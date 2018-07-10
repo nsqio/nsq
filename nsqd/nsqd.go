@@ -250,10 +250,10 @@ func (n *NSQD) Main() {
 		})
 	}
 
-	n.waitGroup.Wrap(func() { n.queueScanLoop() })
-	n.waitGroup.Wrap(func() { n.lookupLoop() })
+	n.waitGroup.Wrap(n.queueScanLoop)
+	n.waitGroup.Wrap(n.lookupLoop)
 	if n.getOpts().StatsdAddress != "" {
-		n.waitGroup.Wrap(func() { n.statsdLoop() })
+		n.waitGroup.Wrap(n.statsdLoop)
 	}
 }
 
@@ -343,7 +343,9 @@ func (n *NSQD) LoadMetadata() error {
 			continue
 		}
 		topic := n.GetTopic(t.Name)
-
+		if t.Paused {
+			topic.Pause()
+		}
 		for _, c := range t.Channels {
 			if !protocol.IsValidChannelName(c.Name) {
 				n.logf(LOG_WARN, "skipping creation of invalid channel %s", c.Name)
@@ -354,12 +356,7 @@ func (n *NSQD) LoadMetadata() error {
 				channel.Pause()
 			}
 		}
-
-		// this logic is reversed, and done _after_ channel creation to ensure that all channels
-		// are created before messages begin flowing
-		if !t.Paused {
-			topic.UnPause()
-		}
+		topic.Start()
 	}
 	return nil
 }
@@ -507,9 +504,9 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	n.Unlock()
 
 	n.logf(LOG_INFO, "TOPIC(%s): created", t.name)
-	// topic is created paused, only un-pause after adding channels
+	// topic is created but messagePump not yet started
 
-	// if loading metadata at startup, no lookupd connections yet, and topic un-paused elsewhere
+	// if loading metadata at startup, no lookupd connections yet, topic started after load
 	if atomic.LoadInt32(&n.isLoading) == 1 {
 		return t
 	}
@@ -532,8 +529,8 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		n.logf(LOG_ERROR, "no available nsqlookupd to query for channels to pre-create for topic %s", t.name)
 	}
 
-	// now that all channels are added we can un-pause topic
-	t.UnPause()
+	// now that all channels are added, start topic messagePump
+	t.Start()
 	return t
 }
 
