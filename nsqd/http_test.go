@@ -437,7 +437,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	test.Equal(t, 200, resp.StatusCode)
 	body, _ = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
-	test.Equal(t, "", string(body))
+	test.Equal(t, `{"was_paused":false}`, string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
 
 	test.Equal(t, true, topic.IsPaused())
@@ -448,7 +448,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	test.Equal(t, 200, resp.StatusCode)
 	body, _ = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
-	test.Equal(t, "", string(body))
+	test.Equal(t, `{"was_paused":true}`, string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
 
 	test.Equal(t, false, topic.IsPaused())
@@ -459,7 +459,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	test.Equal(t, 200, resp.StatusCode)
 	body, _ = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
-	test.Equal(t, "", string(body))
+	test.Equal(t, `{"was_paused":false}`, string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
 
 	test.Equal(t, true, channel.IsPaused())
@@ -470,7 +470,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	test.Equal(t, 200, resp.StatusCode)
 	body, _ = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
-	test.Equal(t, "", string(body))
+	test.Equal(t, `{"was_paused":true}`, string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
 
 	test.Equal(t, false, channel.IsPaused())

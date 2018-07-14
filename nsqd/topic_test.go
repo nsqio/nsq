@@ -171,14 +171,13 @@ func TestPause(t *testing.T) {
 
 	topicName := "test_topic_pause" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
-	err := topic.Pause()
-	test.Nil(t, err)
+	topic.Pause()
 
 	channel := topic.GetChannel("ch1")
 	test.NotNil(t, channel)
 
 	msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
-	err = topic.PutMessage(msg)
+	err := topic.PutMessage(msg)
 	test.Nil(t, err)
 
 	time.Sleep(15 * time.Millisecond)
@@ -186,8 +185,7 @@ func TestPause(t *testing.T) {
 	test.Equal(t, int64(1), topic.Depth())
 	test.Equal(t, int64(0), channel.Depth())
 
-	err = topic.UnPause()
-	test.Nil(t, err)
+	topic.UnPause()
 
 	time.Sleep(15 * time.Millisecond)
 

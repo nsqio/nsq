@@ -253,31 +253,33 @@ func (c *Channel) Depth() int64 {
 	return int64(len(c.memoryMsgChan)) + c.backend.Depth()
 }
 
-func (c *Channel) Pause() error {
+func (c *Channel) Pause() bool {
 	return c.doPause(true)
 }
 
-func (c *Channel) UnPause() error {
+func (c *Channel) UnPause() bool {
 	return c.doPause(false)
 }
 
-func (c *Channel) doPause(pause bool) error {
+func (c *Channel) doPause(pause bool) bool {
+	setv := int32(0)
 	if pause {
-		atomic.StoreInt32(&c.paused, 1)
-	} else {
-		atomic.StoreInt32(&c.paused, 0)
+		setv = int32(1)
 	}
+	prev := atomic.SwapInt32(&c.paused, setv)
 
-	c.RLock()
-	for _, client := range c.clients {
-		if pause {
-			client.Pause()
-		} else {
-			client.UnPause()
+	if prev != setv {
+		c.RLock()
+		for _, client := range c.clients {
+			if pause {
+				client.Pause()
+			} else {
+				client.UnPause()
+			}
 		}
+		c.RUnlock()
 	}
-	c.RUnlock()
-	return nil
+	return prev != 0
 }
 
 func (c *Channel) IsPaused() bool {
