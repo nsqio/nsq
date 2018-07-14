@@ -446,33 +446,28 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 	return latencyStream
 }
 
-func (t *Topic) Pause() error {
+func (t *Topic) Pause() bool {
 	return t.doPause(true)
 }
 
-func (t *Topic) UnPause() error {
+func (t *Topic) UnPause() bool {
 	return t.doPause(false)
 }
 
-func (t *Topic) doPause(pause bool) error {
+func (t *Topic) doPause(pause bool) bool {
 	setv := int32(0)
 	if pause {
 		setv = int32(1)
 	}
 	prev := atomic.SwapInt32(&t.paused, setv)
 
-	if prev == setv {
-		if pause {
-			return ErrAlreadyPaused
-		} else {
-			return ErrAlreadyUnPaused
+	if prev != setv {
+		select {
+		case t.pauseChan <- 1:
+		case <-t.exitChan:
 		}
 	}
-	select {
-	case t.pauseChan <- 1:
-	case <-t.exitChan:
-	}
-	return nil
+	return prev != 0
 }
 
 func (t *Topic) IsPaused() bool {
