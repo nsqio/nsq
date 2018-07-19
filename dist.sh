@@ -2,16 +2,15 @@
 
 # 1. commit to bump the version and update the changelog/readme
 # 2. tag that commit
-# 3. use dist.sh to produce tar.gz for linux and darwin
-# 4. upload *.tar.gz to our bitly s3 bucket
+# 3. use dist.sh to produce tar.gz for all platforms
+# 4. upload *.tar.gz to bitly s3 bucket
 # 5. docker push nsqio/nsq
 # 6. push to nsqio/master
 # 7. update the release metadata on github / upload the binaries there too
-# 8. update the gh-pages branch with versions / download links
-# 9. update homebrew version
-# 10. send release announcement emails
-# 11. update IRC channel topic
-# 12. tweet
+# 8. update nsqio/nsqio.github.io/_posts/2014-03-01-installing.md
+# 9. send release announcement emails
+# 10. update IRC channel topic
+# 11. tweet
 
 set -e
 
@@ -35,9 +34,6 @@ for os in linux darwin freebsd windows; do
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
         make DESTDIR=$BUILD PREFIX=/$TARGET GOFLAGS="$GOFLAGS" install
     pushd $BUILD
-    if [ "$os" == "linux" ]; then
-        cp -r $TARGET/bin $DIR/dist/docker/
-    fi
     sudo chown -R 0:0 $TARGET
     tar czvf $TARGET.tar.gz $TARGET
     mv $TARGET.tar.gz $DIR/dist
@@ -49,5 +45,5 @@ done
 docker build -t nsqio/nsq:v$version .
 if [[ ! $version == *"-"* ]]; then
     echo "Tagging nsqio/nsq:v$version as the latest release."
-    docker tag -f nsqio/nsq:v$version nsqio/nsq:latest
+    docker tag nsqio/nsq:v$version nsqio/nsq:latest
 fi
