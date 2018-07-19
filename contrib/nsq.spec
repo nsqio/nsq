@@ -40,7 +40,6 @@ make PREFIX=/${path} DESTDIR=$RPM_BUILD_ROOT install
 /%{path}/bin/nsqadmin
 /%{path}/bin/nsqd
 /%{path}/bin/nsqlookupd
-/%{path}/bin/nsq_pubsub
 /%{path}/bin/nsq_to_file
 /%{path}/bin/nsq_to_http
 /%{path}/bin/nsq_to_nsq
