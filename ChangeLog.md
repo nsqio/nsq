@@ -1,6 +1,62 @@
 # NSQ Changelog
 
-## Binaries
+## Releases
+
+### 1.1.0-rc1 - 2018-07-dd
+
+**Upgrading from 1.0.0-compat**: Just a few backwards incompatible changes:
+
+ * #1056 - Removed the `nsq_pubsub` utility
+ * #873 - `nsqd` flags `--msg-timeout` and `--statsd-interval` only take duration strings
+   * plain integer no longer supported
+ * #921 - `nsqd`: http `/mpub` endpoint `binary` param interprets "0" or "false" to mean text mode
+   * previously any value meant to use binary mode instead of text mode -  (thanks @andyxning)
+
+The previous release, version "1.0.0-compat", was curiously-named to indicate an almost
+(but not quite) complete transition to a 1.0 api-stable release line. Confusingly, this
+follow-up release which completes the transition comes more than a year later. Because there
+have been a fair number of changes and improvements in the past year, an additional minor
+version bump seems appropriate.
+
+Features:
+
+ * #874 - `nsqd`: add memory stats to http `/stats` response (thanks @sparklxb)
+ * #892 - `nsqd`, `nsqlookupd`, `nsqadmin`: add `--log-level` option (deprecating `--verbose`) (thanks @antihax)
+ * #898 - `nsqd`, `nsqlookupd`, `nsqadmin`: logging refactor to use log levels everywhere
+ * #914 - `nsqadmin`: `X-Forwarded-User` based "admin" permission (thanks @chen-anders)
+ * #929 - `nsqd`: add topic/channel filter to `/stats`, use in `nsqadmin` and `nsq_stat` for efficiency (thanks @andyxning)
+ * #936 - `nsq_to_file`: refactor/cleanup
+ * #945 - `nsq_to_nsq`: support multiple `--topic` flags (thanks @jlr52)
+ * #957 - `nsq_tail`: support multiple `--topic` flags (thanks @soar)
+ * #946 - `nsqd`, `nsqadmin`: update internal http client with new go `http.Transport` features (keepalives, timeouts, dualstack)
+   * affects metadata/stats requests between `nsqadmin`, `nsqd`, `nsqlookupd`
+ * #954 - manage dependencies with `dep` (replacing `gpm`) (thanks @judwhite)
+ * #957 - multi-stage docker image build (thanks @soar)
+ * #996 - `nsqd`: better memory usage when messages have different sizes (thanks @andyxning)
+ * #1019 - `nsqd`: optimize random channel selection in queueScanLoop (thanks @vearne)
+ * #1025 - `nsqd`: buffer and spread statsd udp sends (avoid big burst of udp, less chance of loss)
+ * #1038 - `nsqlookupd`: optimize for many producers (thousands) (thanks @andyxning)
+ * #1050/#1053 - `nsqd`: new topic can be unlocked faster after creation
+
+Bugs:
+
+ * #867 - `to_nsq`: fix divide-by-zero issue when `--rate` not specified (thanks @adamweiner)
+ * #868 - `nsqd`: clamp requeue timeout to range instead of dropping connection (thanks @tsholmes)
+ * #891 - `nsqd`: fix race when client subscribes to ephemeral topic or channel while it is being cleaned up (reported by @slayercat)
+ * #927 - `nsqd`: fix deflate level handling
+ * #934 - `nsqd`: fix channel shutdown flush race
+ * #935 - `nsq_to_file`: fix connection leaks when using `--topic-pattern` (thanks @jxskiss)
+ * #951 - mention docker images and binaries for additional platforms in README (thanks @DAXaholic)
+ * #950 - `nsqlookupd`: close connection when magic read fails (thanks @yc90s)
+ * #971 - `nsqd`: fix some races getting ChannelStats (thanks @daroot)
+ * #988 - `nsqd`: fix e2e timings config example, add range validation (thanks @protoss-player)
+ * #991 - `nsq_tail`: logging to stderr (only nsq messages to stdout)
+ * #1000 - `nsq_to_http`: fix http connect/request timeout flags (thanks @kamyanskiy)
+ * #993/#1008 - `nsqd`: fix possible lookupd-identify-error busy-loop (reported by @andyxning)
+ * #1005 - `nsqadmin`: fix typo "Delfate" in connection attrs list (thanks @arussellsaw)
+ * #1032 - `nsqd`: fix loading metadata with messages queued on un-paused topic with multiple channels (thanks @michaelyou)
+ * #1004 - `nsqlookupd`: exit with error when failed to listen on ports (thanks @stephens2424)
+ * misc test suite improvements and updates (go versions, tls certs, ...)
 
 ### 1.0.0-compat - 2017-03-21
 
