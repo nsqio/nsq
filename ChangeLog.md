@@ -2,7 +2,7 @@
 
 ## Releases
 
-### 1.1.0-rc1 - 2018-07-dd
+### 1.1.0-rc1 - 2018-07-31
 
 **Upgrading from 1.0.0-compat**: Just a few backwards incompatible changes:
 
@@ -37,9 +37,11 @@ Features:
  * #1025 - `nsqd`: buffer and spread statsd udp sends (avoid big burst of udp, less chance of loss)
  * #1038 - `nsqlookupd`: optimize for many producers (thousands) (thanks @andyxning)
  * #1050/#1053 - `nsqd`: new topic can be unlocked faster after creation
+ * #1062 - `nsqadmin`: update JS deps
 
 Bugs:
 
+ * #753 - `nsqadmin`: fix missing channels in topic list
  * #867 - `to_nsq`: fix divide-by-zero issue when `--rate` not specified (thanks @adamweiner)
  * #868 - `nsqd`: clamp requeue timeout to range instead of dropping connection (thanks @tsholmes)
  * #891 - `nsqd`: fix race when client subscribes to ephemeral topic or channel while it is being cleaned up (reported by @slayercat)
@@ -57,6 +59,7 @@ Bugs:
  * #1032 - `nsqd`: fix loading metadata with messages queued on un-paused topic with multiple channels (thanks @michaelyou)
  * #1004 - `nsqlookupd`: exit with error when failed to listen on ports (thanks @stephens2424)
  * misc test suite improvements and updates (go versions, tls certs, ...)
+ 
 
 ### 1.0.0-compat - 2017-03-21
 
