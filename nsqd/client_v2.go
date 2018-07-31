@@ -473,6 +473,9 @@ func (c *clientV2) UpgradeTLS() error {
 	}
 	c.tlsConn = tlsConn
 
+	var zeroTime time.Time
+	tlsConn.SetDeadline(zeroTime)
+
 	c.Reader = bufio.NewReaderSize(c.tlsConn, defaultBufferSize)
 	c.Writer = bufio.NewWriterSize(c.tlsConn, c.OutputBufferSize)
 
