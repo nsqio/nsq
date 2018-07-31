@@ -92,6 +92,8 @@ func New(opts *Options) *NSQD {
 	httpcli := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
 	n.ci = clusterinfo.New(n.logf, httpcli)
 
+	n.lookupPeers.Store([]*lookupPeer{})
+
 	n.swapOpts(opts)
 	n.errValue.Store(errStore{})
 
