@@ -37,6 +37,7 @@ Features:
  * #1025 - `nsqd`: buffer and spread statsd udp sends (avoid big burst of udp, less chance of loss)
  * #1038 - `nsqlookupd`: optimize for many producers (thousands) (thanks @andyxning)
  * #1050/#1053 - `nsqd`: new topic can be unlocked faster after creation
+ * #1062 - `nsqadmin`: update jquery, handlebars, static asset build tools
 
 Bugs:
 
@@ -56,6 +57,7 @@ Bugs:
  * #1005 - `nsqadmin`: fix typo "Delfate" in connection attrs list (thanks @arussellsaw)
  * #1032 - `nsqd`: fix loading metadata with messages queued on un-paused topic with multiple channels (thanks @michaelyou)
  * #1004 - `nsqlookupd`: exit with error when failed to listen on ports (thanks @stephens2424)
+ * #753 - `nsqadmin`: fix channel list when nodes have differing channel lists
  * misc test suite improvements and updates (go versions, tls certs, ...)
 
 ### 1.0.0-compat - 2017-03-21
