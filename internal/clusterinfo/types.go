@@ -115,8 +115,8 @@ func (t *TopicStats) Add(a *TopicStats) {
 	if a.Paused {
 		t.Paused = a.Paused
 	}
-	found := false
 	for _, aChannelStats := range a.Channels {
+		found := false
 		for _, channelStats := range t.Channels {
 			if aChannelStats.ChannelName == channelStats.ChannelName {
 				found = true
