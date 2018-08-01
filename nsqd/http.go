@@ -527,26 +527,32 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 func (s *httpServer) printStats(stats []TopicStats, ms memStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
-	now := time.Now()
-	io.WriteString(w, fmt.Sprintf("%s\n", version.String("nsqd")))
-	io.WriteString(w, fmt.Sprintf("start_time %v\n", startTime.Format(time.RFC3339)))
-	io.WriteString(w, fmt.Sprintf("uptime %s\n", uptime))
-	if len(stats) == 0 {
-		io.WriteString(w, "\nNO_TOPICS\n")
-		return buf.Bytes()
-	}
-	fmt.Fprintf(w, "\nMemory:\n")
-	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_objects", ms.HeapObjects)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_idle_bytes", ms.HeapIdleBytes)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_in_use_bytes", ms.HeapInUseBytes)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_released_bytes", ms.HeapReleasedBytes)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_pause_usec_100", ms.GCPauseUsec100)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_pause_usec_99", ms.GCPauseUsec99)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_pause_usec_95", ms.GCPauseUsec95)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "next_gc_bytes", ms.NextGCBytes)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_total_runs", ms.GCTotalRuns)
 
-	io.WriteString(w, fmt.Sprintf("\nHealth: %s\n", health))
+	now := time.Now()
+
+	fmt.Fprintf(w, "%s\n", version.String("nsqd"))
+	fmt.Fprintf(w, "start_time %v\n", startTime.Format(time.RFC3339))
+	fmt.Fprintf(w, "uptime %s\n", uptime)
+
+	fmt.Fprintf(w, "\nHealth: %s\n", health)
+
+	fmt.Fprintf(w, "\nMemory:\n")
+	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_objects", ms.HeapObjects)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_idle_bytes", ms.HeapIdleBytes)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_in_use_bytes", ms.HeapInUseBytes)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_released_bytes", ms.HeapReleasedBytes)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_100", ms.GCPauseUsec100)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_99", ms.GCPauseUsec99)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_95", ms.GCPauseUsec95)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "next_gc_bytes", ms.NextGCBytes)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_total_runs", ms.GCTotalRuns)
+
+	if len(stats) == 0 {
+		fmt.Fprintf(w, "\nTopics: None\n")
+	} else {
+		fmt.Fprintf(w, "\nTopics:")
+	}
+
 	for _, t := range stats {
 		var pausedPrefix string
 		if t.Paused {
@@ -554,36 +560,37 @@ func (s *httpServer) printStats(stats []TopicStats, ms memStats, health string, 
 		} else {
 			pausedPrefix = "   "
 		}
-		io.WriteString(w, fmt.Sprintf("\n%s[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
+		fmt.Fprintf(w, "\n%s[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
 			pausedPrefix,
 			t.TopicName,
 			t.Depth,
 			t.BackendDepth,
 			t.MessageCount,
-			t.E2eProcessingLatency))
+			t.E2eProcessingLatency,
+		)
 		for _, c := range t.Channels {
 			if c.Paused {
 				pausedPrefix = "   *P "
 			} else {
 				pausedPrefix = "      "
 			}
-			io.WriteString(w,
-				fmt.Sprintf("%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d e2e%%: %s\n",
-					pausedPrefix,
-					c.ChannelName,
-					c.Depth,
-					c.BackendDepth,
-					c.InFlightCount,
-					c.DeferredCount,
-					c.RequeueCount,
-					c.TimeoutCount,
-					c.MessageCount,
-					c.E2eProcessingLatency))
+			fmt.Fprintf(w, "%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d e2e%%: %s\n",
+				pausedPrefix,
+				c.ChannelName,
+				c.Depth,
+				c.BackendDepth,
+				c.InFlightCount,
+				c.DeferredCount,
+				c.RequeueCount,
+				c.TimeoutCount,
+				c.MessageCount,
+				c.E2eProcessingLatency,
+			)
 			for _, client := range c.Clients {
 				connectTime := time.Unix(client.ConnectTime, 0)
 				// truncate to the second
 				duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
-				io.WriteString(w, fmt.Sprintf("        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
+				fmt.Fprintf(w, "        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
 					client.Version,
 					client.ClientID,
 					client.State,
@@ -593,7 +600,7 @@ func (s *httpServer) printStats(stats []TopicStats, ms memStats, health string, 
 					client.RequeueCount,
 					client.MessageCount,
 					duration,
-				))
+				)
 			}
 		}
 	}
