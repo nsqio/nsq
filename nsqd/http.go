@@ -486,24 +486,19 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	startTime := s.ctx.nsqd.GetStartTime()
 	uptime := time.Since(startTime)
 
-	// If we WERE given a topic-name, remove stats for all the other topics:
+	// filter by topic (if specified)
 	if len(topicName) > 0 {
-		// Find the desired-topic-index:
 		for _, topicStats := range stats {
 			if topicStats.TopicName == topicName {
-				// If we WERE given a channel-name, remove stats for all the other channels:
+				// filter by channel (if specified)
 				if len(channelName) > 0 {
-					// Find the desired-channel:
 					for _, channelStats := range topicStats.Channels {
 						if channelStats.ChannelName == channelName {
 							topicStats.Channels = []ChannelStats{channelStats}
-							// We've got the channel we were looking for:
 							break
 						}
 					}
 				}
-
-				// We've got the topic we were looking for:
 				stats = []TopicStats{topicStats}
 				break
 			}
