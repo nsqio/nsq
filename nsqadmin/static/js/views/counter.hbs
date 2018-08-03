@@ -203,9 +203,6 @@ body {
 <p class="processed">Messages Processed</p>
 <p class="messagerate"></p>
 {{#if graph_active}}
-    <script type="text/javascript">
-    var LARGE_GRAPH_URL = "{{large_graph "counter" "*" "" "" "message_count"}}";
-    </script>
-    <img id="big_graph" height="500" src=""/>
+    <img id="big_graph" height="500" src="{{large_graph "counter" "*" "" "" "message_count"}}"/>
 {{/if}}
 </div>

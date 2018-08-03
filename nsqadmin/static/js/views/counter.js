@@ -30,6 +30,7 @@ var CounterView = BaseView.extend({
         this.targetPollInterval = 10000;
         this.currentNum = -1;
         this.interval = 100;
+        this.graphUrl = null;
         this.updateStats();
     },
 
@@ -87,7 +88,11 @@ var CounterView = BaseView.extend({
         }.bind(this));
 
         if ($('#big_graph').length) {
-            $('#big_graph').attr('src', LARGE_GRAPH_URL + '&_uniq=' + Math.random() * 1000000);
+            if (!this.graphUrl) {
+                this.graphUrl = $('#big_graph').attr('src');
+            }
+            var uniq = Math.floor(Math.random() * 1000000);
+            $('#big_graph').attr('src', this.graphUrl + '&_uniq=' + uniq);
         }
     },
 
