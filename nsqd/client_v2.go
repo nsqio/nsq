@@ -55,6 +55,8 @@ type clientV2 struct {
 	FinishCount   uint64
 	RequeueCount  uint64
 
+	pubCounts map[string]uint64
+
 	writeLock sync.RWMutex
 	metaLock  sync.RWMutex
 
@@ -141,6 +143,8 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 
 		// heartbeats are client configurable but default to 30s
 		HeartbeatInterval: ctx.nsqd.getOpts().ClientTimeout / 2,
+
+		pubCounts: make(map[string]uint64),
 	}
 	c.lenSlice = c.lenBuf[:]
 	return c
@@ -211,6 +215,13 @@ func (c *clientV2) Stats() ClientStats {
 		identity = c.AuthState.Identity
 		identityURL = c.AuthState.IdentityURL
 	}
+	pubCounts := make([]PubCount, 0, len(c.pubCounts))
+	for topic, count := range c.pubCounts {
+		pubCounts = append(pubCounts, PubCount{
+			Topic: topic,
+			Count: count,
+		})
+	}
 	c.metaLock.RUnlock()
 	stats := ClientStats{
 		Version:         "V2",
@@ -232,6 +243,7 @@ func (c *clientV2) Stats() ClientStats {
 		Authed:          c.HasAuthorizations(),
 		AuthIdentity:    identity,
 		AuthIdentityURL: identityURL,
+		PubCounts:       pubCounts,
 	}
 	if stats.TLS {
 		p := prettyConnectionState{c.tlsConn.ConnectionState()}
@@ -241,6 +253,13 @@ func (c *clientV2) Stats() ClientStats {
 		stats.TLSNegotiatedProtocolIsMutual = p.NegotiatedProtocolIsMutual
 	}
 	return stats
+}
+
+func (c *clientV2) IsProducer() bool {
+	c.metaLock.RLock()
+	retval := len(c.pubCounts) > 0
+	c.metaLock.RUnlock()
+	return retval
 }
 
 // struct to convert from integers to the human readable strings
@@ -341,6 +360,12 @@ func (c *clientV2) Empty() {
 func (c *clientV2) SendingMessage() {
 	atomic.AddInt64(&c.InFlightCount, 1)
 	atomic.AddUint64(&c.MessageCount, 1)
+}
+
+func (c *clientV2) PublishedMessage(topic string, count uint64) {
+	c.metaLock.Lock()
+	c.pubCounts[topic] += count
+	c.metaLock.Unlock()
 }
 
 func (c *clientV2) TimedOutMessage() {

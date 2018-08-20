@@ -481,72 +481,98 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	channelName, _ := reqParams.Get("channel")
 	jsonFormat := formatString == "json"
 
+	producerStats := s.ctx.nsqd.GetProducerStats()
+
 	stats := s.ctx.nsqd.GetStats(topicName, channelName)
 	health := s.ctx.nsqd.GetHealth()
 	startTime := s.ctx.nsqd.GetStartTime()
 	uptime := time.Since(startTime)
 
-	// If we WERE given a topic-name, remove stats for all the other topics:
+	// filter by topic (if specified)
 	if len(topicName) > 0 {
-		// Find the desired-topic-index:
 		for _, topicStats := range stats {
 			if topicStats.TopicName == topicName {
-				// If we WERE given a channel-name, remove stats for all the other channels:
+				// filter by channel (if specified)
 				if len(channelName) > 0 {
-					// Find the desired-channel:
 					for _, channelStats := range topicStats.Channels {
 						if channelStats.ChannelName == channelName {
 							topicStats.Channels = []ChannelStats{channelStats}
-							// We've got the channel we were looking for:
 							break
 						}
 					}
 				}
-
-				// We've got the topic we were looking for:
 				stats = []TopicStats{topicStats}
 				break
 			}
 		}
+
+		filteredProducerStats := make([]ClientStats, 0)
+		for _, clientStat := range producerStats {
+			var found bool
+			var count uint64
+			for _, v := range clientStat.PubCounts {
+				if v.Topic == topicName {
+					count = v.Count
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+			clientStat.PubCounts = []PubCount{PubCount{
+				Topic: topicName,
+				Count: count,
+			}}
+			filteredProducerStats = append(filteredProducerStats, clientStat)
+		}
+		producerStats = filteredProducerStats
 	}
 
 	ms := getMemStats()
 	if !jsonFormat {
-		return s.printStats(stats, ms, health, startTime, uptime), nil
+		return s.printStats(stats, producerStats, ms, health, startTime, uptime), nil
 	}
 
 	return struct {
-		Version   string       `json:"version"`
-		Health    string       `json:"health"`
-		StartTime int64        `json:"start_time"`
-		Topics    []TopicStats `json:"topics"`
-		Memory    memStats     `json:"memory"`
-	}{version.Binary, health, startTime.Unix(), stats, ms}, nil
+		Version   string        `json:"version"`
+		Health    string        `json:"health"`
+		StartTime int64         `json:"start_time"`
+		Topics    []TopicStats  `json:"topics"`
+		Memory    memStats      `json:"memory"`
+		Producers []ClientStats `json:"producers"`
+	}{version.Binary, health, startTime.Unix(), stats, ms, producerStats}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, ms memStats, health string, startTime time.Time, uptime time.Duration) []byte {
+func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats, ms memStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
-	now := time.Now()
-	io.WriteString(w, fmt.Sprintf("%s\n", version.String("nsqd")))
-	io.WriteString(w, fmt.Sprintf("start_time %v\n", startTime.Format(time.RFC3339)))
-	io.WriteString(w, fmt.Sprintf("uptime %s\n", uptime))
-	if len(stats) == 0 {
-		io.WriteString(w, "\nNO_TOPICS\n")
-		return buf.Bytes()
-	}
-	fmt.Fprintf(w, "\nMemory:\n")
-	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_objects", ms.HeapObjects)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_idle_bytes", ms.HeapIdleBytes)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_in_use_bytes", ms.HeapInUseBytes)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "heap_released_bytes", ms.HeapReleasedBytes)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_pause_usec_100", ms.GCPauseUsec100)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_pause_usec_99", ms.GCPauseUsec99)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_pause_usec_95", ms.GCPauseUsec95)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "next_gc_bytes", ms.NextGCBytes)
-	fmt.Fprintf(w, "  %-25s\t%d\n", "gc_total_runs", ms.GCTotalRuns)
 
-	io.WriteString(w, fmt.Sprintf("\nHealth: %s\n", health))
+	now := time.Now()
+
+	fmt.Fprintf(w, "%s\n", version.String("nsqd"))
+	fmt.Fprintf(w, "start_time %v\n", startTime.Format(time.RFC3339))
+	fmt.Fprintf(w, "uptime %s\n", uptime)
+
+	fmt.Fprintf(w, "\nHealth: %s\n", health)
+
+	fmt.Fprintf(w, "\nMemory:\n")
+	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_objects", ms.HeapObjects)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_idle_bytes", ms.HeapIdleBytes)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_in_use_bytes", ms.HeapInUseBytes)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_released_bytes", ms.HeapReleasedBytes)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_100", ms.GCPauseUsec100)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_99", ms.GCPauseUsec99)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_95", ms.GCPauseUsec95)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "next_gc_bytes", ms.NextGCBytes)
+	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_total_runs", ms.GCTotalRuns)
+
+	if len(stats) == 0 {
+		fmt.Fprintf(w, "\nTopics: None\n")
+	} else {
+		fmt.Fprintf(w, "\nTopics:")
+	}
+
 	for _, t := range stats {
 		var pausedPrefix string
 		if t.Paused {
@@ -554,36 +580,37 @@ func (s *httpServer) printStats(stats []TopicStats, ms memStats, health string, 
 		} else {
 			pausedPrefix = "   "
 		}
-		io.WriteString(w, fmt.Sprintf("\n%s[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
+		fmt.Fprintf(w, "\n%s[%-15s] depth: %-5d be-depth: %-5d msgs: %-8d e2e%%: %s\n",
 			pausedPrefix,
 			t.TopicName,
 			t.Depth,
 			t.BackendDepth,
 			t.MessageCount,
-			t.E2eProcessingLatency))
+			t.E2eProcessingLatency,
+		)
 		for _, c := range t.Channels {
 			if c.Paused {
 				pausedPrefix = "   *P "
 			} else {
 				pausedPrefix = "      "
 			}
-			io.WriteString(w,
-				fmt.Sprintf("%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d e2e%%: %s\n",
-					pausedPrefix,
-					c.ChannelName,
-					c.Depth,
-					c.BackendDepth,
-					c.InFlightCount,
-					c.DeferredCount,
-					c.RequeueCount,
-					c.TimeoutCount,
-					c.MessageCount,
-					c.E2eProcessingLatency))
+			fmt.Fprintf(w, "%s[%-25s] depth: %-5d be-depth: %-5d inflt: %-4d def: %-4d re-q: %-5d timeout: %-5d msgs: %-8d e2e%%: %s\n",
+				pausedPrefix,
+				c.ChannelName,
+				c.Depth,
+				c.BackendDepth,
+				c.InFlightCount,
+				c.DeferredCount,
+				c.RequeueCount,
+				c.TimeoutCount,
+				c.MessageCount,
+				c.E2eProcessingLatency,
+			)
 			for _, client := range c.Clients {
 				connectTime := time.Unix(client.ConnectTime, 0)
 				// truncate to the second
 				duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
-				io.WriteString(w, fmt.Sprintf("        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
+				fmt.Fprintf(w, "        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
 					client.Version,
 					client.ClientID,
 					client.State,
@@ -593,10 +620,38 @@ func (s *httpServer) printStats(stats []TopicStats, ms memStats, health string, 
 					client.RequeueCount,
 					client.MessageCount,
 					duration,
-				))
+				)
 			}
 		}
 	}
+
+	if len(producerStats) == 0 {
+		fmt.Fprintf(w, "\nProducers: None\n")
+	} else {
+		fmt.Fprintf(w, "\nProducers:")
+		for _, client := range producerStats {
+			connectTime := time.Unix(client.ConnectTime, 0)
+			// truncate to the second
+			duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
+			var totalPubCount uint64
+			for _, v := range client.PubCounts {
+				totalPubCount += v.Count
+			}
+			fmt.Fprintf(w, "\n   [%s %-21s] msgs: %-8d connected: %s\n",
+				client.Version,
+				client.ClientID,
+				totalPubCount,
+				duration,
+			)
+			for _, v := range client.PubCounts {
+				fmt.Fprintf(w, "      [%-15s] msgs: %-8d\n",
+					v.Topic,
+					v.Count,
+				)
+			}
+		}
+	}
+
 	return buf.Bytes()
 }
 

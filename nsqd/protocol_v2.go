@@ -40,6 +40,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 	clientID := atomic.AddInt64(&p.ctx.nsqd.clientIDSequence, 1)
 	client := newClientV2(clientID, conn, p.ctx)
+	p.ctx.nsqd.AddClient(client.ID, client)
 
 	// synchronize the startup of messagePump in order
 	// to guarantee that it gets a chance to initialize
@@ -117,6 +118,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		client.Channel.RemoveClient(client.ID)
 	}
 
+	p.ctx.nsqd.RemoveClient(client.ID)
 	return err
 }
 
@@ -799,6 +801,8 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
 	}
 
+	client.PublishedMessage(topicName, 1)
+
 	return okBytes, nil
 }
 
@@ -849,6 +853,8 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", "MPUB failed "+err.Error())
 	}
+
+	client.PublishedMessage(topicName, uint64(len(messages)))
 
 	return okBytes, nil
 }
@@ -911,6 +917,8 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_DPUB_FAILED", "DPUB failed "+err.Error())
 	}
+
+	client.PublishedMessage(topicName, 1)
 
 	return okBytes, nil
 }
