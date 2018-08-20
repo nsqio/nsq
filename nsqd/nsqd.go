@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -13,7 +12,6 @@ import (
 	"net"
 	"os"
 	"path"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -274,10 +272,6 @@ func newMetadataFile(opts *Options) string {
 	return path.Join(opts.DataPath, "nsqd.dat")
 }
 
-func oldMetadataFile(opts *Options) string {
-	return path.Join(opts.DataPath, fmt.Sprintf("nsqd.%d.dat", opts.ID))
-}
-
 func readOrEmpty(fn string) ([]byte, error) {
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
@@ -307,30 +301,13 @@ func (n *NSQD) LoadMetadata() error {
 	defer atomic.StoreInt32(&n.isLoading, 0)
 
 	fn := newMetadataFile(n.getOpts())
-	// old metadata filename with ID, maintained in parallel to enable roll-back
-	fnID := oldMetadataFile(n.getOpts())
 
 	data, err := readOrEmpty(fn)
 	if err != nil {
 		return err
 	}
-	dataID, errID := readOrEmpty(fnID)
-	if errID != nil {
-		return errID
-	}
-
-	if data == nil && dataID == nil {
-		return nil // fresh start
-	}
-	if data != nil && dataID != nil {
-		if bytes.Compare(data, dataID) != 0 {
-			return fmt.Errorf("metadata in %s and %s do not match (delete one)", fn, fnID)
-		}
-	}
 	if data == nil {
-		// only old metadata file exists, use it
-		fn = fnID
-		data = dataID
+		return nil // fresh start
 	}
 
 	var m meta
@@ -366,8 +343,6 @@ func (n *NSQD) LoadMetadata() error {
 func (n *NSQD) PersistMetadata() error {
 	// persist metadata about what topics/channels we have, across restarts
 	fileName := newMetadataFile(n.getOpts())
-	// old metadata filename with ID, maintained in parallel to enable roll-back
-	fileNameID := oldMetadataFile(n.getOpts())
 
 	n.logf(LOG_INFO, "NSQ: persisting topic/channel metadata to %s", fileName)
 
@@ -413,33 +388,6 @@ func (n *NSQD) PersistMetadata() error {
 		return err
 	}
 	err = os.Rename(tmpFileName, fileName)
-	if err != nil {
-		return err
-	}
-	// technically should fsync DataPath here
-
-	stat, err := os.Lstat(fileNameID)
-	if err == nil && stat.Mode()&os.ModeSymlink != 0 {
-		return nil
-	}
-
-	// if no symlink (yet), race condition:
-	// crash right here may cause next startup to see metadata conflict and abort
-
-	tmpFileNameID := fmt.Sprintf("%s.%d.tmp", fileNameID, rand.Int())
-
-	if runtime.GOOS != "windows" {
-		err = os.Symlink(fileName, tmpFileNameID)
-	} else {
-		// on Windows need Administrator privs to Symlink
-		// instead write copy every time
-		err = writeSyncFile(tmpFileNameID, data)
-	}
-	if err != nil {
-		return err
-	}
-
-	err = os.Rename(tmpFileNameID, fileNameID)
 	if err != nil {
 		return err
 	}
