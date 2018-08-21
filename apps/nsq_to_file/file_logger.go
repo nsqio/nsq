@@ -82,7 +82,7 @@ func (f *FileLogger) router(r *nsq.Consumer) {
 	pos := 0
 	output := make([]*nsq.Message, *maxInFlight)
 	sync := false
-	ticker := time.NewTicker(*rotateCheckInterval)
+	ticker := time.NewTicker(*syncInterval)
 	closing := false
 	closeFile := false
 	exit := false
