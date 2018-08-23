@@ -87,12 +87,12 @@ func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httpr
 func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_TOPIC"}
 	}
 
 	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
@@ -104,17 +104,17 @@ func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps htt
 func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_TOPIC"}
 	}
 
 	registration := s.ctx.nsqlookupd.DB.FindRegistrations("topic", topicName, "")
 	if len(registration) == 0 {
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{http.StatusNotFound, "TOPIC_NOT_FOUND"}
 	}
 
 	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
@@ -130,16 +130,16 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_TOPIC"}
 	}
 
 	if !protocol.IsValidTopicName(topicName) {
-		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_ARG_TOPIC"}
 	}
 
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding topic(%s)", topicName)
@@ -152,12 +152,12 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_TOPIC"}
 	}
 
 	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*")
@@ -178,17 +178,17 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_TOPIC"}
 	}
 
 	node, err := reqParams.Get("node")
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_NODE"}
+		return nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_NODE"}
 	}
 
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: setting tombstone for producer@%s of topic(%s)", node, topicName)
@@ -206,12 +206,12 @@ func (s *httpServer) doTombstoneTopicProducer(w http.ResponseWriter, req *http.R
 func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
+		return nil, http_api.Err{http.StatusBadRequest, err.Error()}
 	}
 
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding channel(%s) in topic(%s)", channelName, topicName)
@@ -228,17 +228,17 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
+		return nil, http_api.Err{http.StatusBadRequest, err.Error()}
 	}
 
 	registrations := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, channelName)
 	if len(registrations) == 0 {
-		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+		return nil, http_api.Err{http.StatusNotFound, "CHANNEL_NOT_FOUND"}
 	}
 
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: removing channel(%s) from topic(%s)", channelName, topicName)

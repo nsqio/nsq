@@ -66,8 +66,8 @@ retry:
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != 200 {
-		if resp.StatusCode == 403 && !strings.HasPrefix(endpoint, "https") {
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusForbidden && !strings.HasPrefix(endpoint, "https") {
 			endpoint, err = httpsEndpoint(endpoint, body)
 			if err != nil {
 				return err
@@ -105,8 +105,8 @@ retry:
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != 200 {
-		if resp.StatusCode == 403 && !strings.HasPrefix(endpoint, "https") {
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusForbidden && !strings.HasPrefix(endpoint, "https") {
 			endpoint, err = httpsEndpoint(endpoint, body)
 			if err != nil {
 				return err

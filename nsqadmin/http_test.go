@@ -112,7 +112,7 @@ func TestPing(t *testing.T) {
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -135,7 +135,7 @@ func TestHTTPTopicsGET(t *testing.T) {
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -163,7 +163,7 @@ func TestHTTPTopicGET(t *testing.T) {
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -193,7 +193,7 @@ func TestHTTPNodesGET(t *testing.T) {
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -230,7 +230,7 @@ func TestHTTPChannelGET(t *testing.T) {
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -270,7 +270,7 @@ func TestHTTPNodesSingleGET(t *testing.T) {
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -308,7 +308,7 @@ func TestHTTPCreateTopicPOST(t *testing.T) {
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -332,7 +332,7 @@ func TestHTTPCreateTopicChannelPOST(t *testing.T) {
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -355,7 +355,7 @@ func TestHTTPTombstoneTopicNodePOST(t *testing.T) {
 	req, _ := http.NewRequest("DELETE", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -375,7 +375,7 @@ func TestHTTPDeleteTopicPOST(t *testing.T) {
 	req, _ := http.NewRequest("DELETE", url, nil)
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -396,7 +396,7 @@ func TestHTTPDeleteChannelPOST(t *testing.T) {
 	req, _ := http.NewRequest("DELETE", url, nil)
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -420,7 +420,7 @@ func TestHTTPPauseTopicPOST(t *testing.T) {
 	resp, err := client.Do(req)
 	test.Nil(t, err)
 	body, _ = ioutil.ReadAll(resp.Body)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
 	url = fmt.Sprintf("http://%s/api/topics/%s", nsqadmin1.RealHTTPAddr(), topicName)
@@ -430,7 +430,7 @@ func TestHTTPPauseTopicPOST(t *testing.T) {
 	req, _ = http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err = client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -455,7 +455,7 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	resp, err := client.Do(req)
 	test.Nil(t, err)
 	body, _ = ioutil.ReadAll(resp.Body)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
 	url = fmt.Sprintf("http://%s/api/topics/%s/ch", nsqadmin1.RealHTTPAddr(), topicName)
@@ -465,7 +465,7 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	req, _ = http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err = client.Do(req)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 }
 
@@ -491,7 +491,7 @@ func TestHTTPEmptyTopicPOST(t *testing.T) {
 	resp, err := client.Do(req)
 	test.Nil(t, err)
 	body, _ = ioutil.ReadAll(resp.Body)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
 	test.Equal(t, int64(0), topic.Depth())
@@ -521,7 +521,7 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	resp, err := client.Do(req)
 	test.Nil(t, err)
 	body, _ = ioutil.ReadAll(resp.Body)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
 	test.Equal(t, int64(0), channel.Depth())
@@ -549,7 +549,7 @@ func TestHTTPconfig(t *testing.T) {
 	test.Nil(t, err)
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	origaddrs := fmt.Sprintf(`["%s"]`, nsqlookupds[0].RealHTTPAddr().String())
 	test.Equal(t, origaddrs, string(body))
 
@@ -562,7 +562,7 @@ func TestHTTPconfig(t *testing.T) {
 	test.Nil(t, err)
 	defer resp.Body.Close()
 	body, _ = ioutil.ReadAll(resp.Body)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	test.Equal(t, addrs, string(body))
 
 	url = fmt.Sprintf("http://%s/config/log_level", nsqadmin1.RealHTTPAddr())
@@ -572,7 +572,7 @@ func TestHTTPconfig(t *testing.T) {
 	test.Nil(t, err)
 	defer resp.Body.Close()
 	body, _ = ioutil.ReadAll(resp.Body)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	test.Equal(t, LOG_FATAL, nsqadmin1.getOpts().logLevel)
 
 	url = fmt.Sprintf("http://%s/config/log_level", nsqadmin1.RealHTTPAddr())
@@ -582,7 +582,7 @@ func TestHTTPconfig(t *testing.T) {
 	test.Nil(t, err)
 	defer resp.Body.Close()
 	body, _ = ioutil.ReadAll(resp.Body)
-	test.Equal(t, 400, resp.StatusCode)
+	test.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestHTTPconfigCIDR(t *testing.T) {
@@ -602,5 +602,5 @@ func TestHTTPconfigCIDR(t *testing.T) {
 	test.Nil(t, err)
 	defer resp.Body.Close()
 	_, _ = ioutil.ReadAll(resp.Body)
-	test.Equal(t, 403, resp.StatusCode)
+	test.Equal(t, http.StatusForbidden, resp.StatusCode)
 }

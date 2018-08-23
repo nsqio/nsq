@@ -39,7 +39,7 @@ var (
 
 	topic       = flag.String("topic", "", "nsq topic")
 	channel     = flag.String("channel", "nsq_to_http", "nsq channel")
-	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
+	maxInFlight = flag.Int("max-in-flight", http.StatusOK, "max number of messages to allow in flight")
 
 	numPublishers      = flag.Int("n", 100, "number of concurrent publishers")
 	mode               = flag.String("mode", "hostpool", "the upstream request mode options: round-robin, hostpool (default), epsilon-greedy")
@@ -147,7 +147,7 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	io.Copy(ioutil.Discard, resp.Body)
 	resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("got status code %d", resp.StatusCode)
 	}
 	return nil

@@ -34,7 +34,7 @@ func acceptVersion(req *http.Request) int {
 
 func PlainText(f APIHandler) APIHandler {
 	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-		code := 200
+		code := http.StatusOK
 		data, err := f(w, req, ps)
 		if err != nil {
 			code = err.(Err).Code
@@ -61,7 +61,7 @@ func V1(f APIHandler) APIHandler {
 			RespondV1(w, err.(Err).Code, err)
 			return nil, nil
 		}
-		RespondV1(w, 200, data)
+		RespondV1(w, http.StatusOK, data)
 		return nil, nil
 	}
 }
@@ -71,7 +71,7 @@ func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 	var err error
 	var isJSON bool
 
-	if code == 200 {
+	if code == http.StatusOK {
 		switch data.(type) {
 		case string:
 			response = []byte(data.(string))
@@ -83,13 +83,13 @@ func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 			isJSON = true
 			response, err = json.Marshal(data)
 			if err != nil {
-				code = 500
+				code = http.StatusInternalServerError
 				data = err
 			}
 		}
 	}
 
-	if code != 200 {
+	if code != http.StatusOK {
 		isJSON = true
 		response = []byte(fmt.Sprintf(`{"message":"%s"}`, data))
 	}
@@ -118,7 +118,7 @@ func Log(logf lg.AppLogFunc) Decorator {
 			start := time.Now()
 			response, err := f(w, req, ps)
 			elapsed := time.Since(start)
-			status := 200
+			status := http.StatusOK
 			if e, ok := err.(Err); ok {
 				status = e.Code
 			}
@@ -133,7 +133,7 @@ func LogPanicHandler(logf lg.AppLogFunc) func(w http.ResponseWriter, req *http.R
 	return func(w http.ResponseWriter, req *http.Request, p interface{}) {
 		logf(lg.ERROR, "panic in HTTP handler - %s", p)
 		Decorate(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-			return nil, Err{500, "INTERNAL_ERROR"}
+			return nil, Err{http.StatusInternalServerError, "INTERNAL_ERROR"}
 		}, Log(logf), V1)(w, req, nil)
 	}
 }
@@ -141,7 +141,7 @@ func LogPanicHandler(logf lg.AppLogFunc) func(w http.ResponseWriter, req *http.R
 func LogNotFoundHandler(logf lg.AppLogFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		Decorate(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-			return nil, Err{404, "NOT_FOUND"}
+			return nil, Err{http.StatusNotFound, "NOT_FOUND"}
 		}, Log(logf), V1)(w, req, nil)
 	})
 }

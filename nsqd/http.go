@@ -105,7 +105,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			s.ctx.nsqd.RealHTTPSAddr().Port)
 		w.Header().Set("X-NSQ-Content-Type", "nsq; version=1.0")
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(403)
+		w.WriteHeader(http.StatusForbidden)
 		io.WriteString(w, resp)
 		return
 	}
@@ -115,7 +115,7 @@ func (s *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	health := s.ctx.nsqd.GetHealth()
 	if !s.ctx.nsqd.IsHealthy() {
-		return nil, http_api.Err{500, health}
+		return nil, http_api.Err{http.StatusInternalServerError, health}
 	}
 	return health, nil
 }
@@ -123,7 +123,7 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		return nil, http_api.Err{500, err.Error()}
+		return nil, http_api.Err{http.StatusInternalServerError, err.Error()}
 	}
 	return struct {
 		Version          string `json:"version"`
@@ -146,17 +146,17 @@ func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.Req
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
-		return nil, nil, "", http_api.Err{400, "INVALID_REQUEST"}
+		return nil, nil, "", http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, channelName, err := http_api.GetTopicChannelArgs(reqParams)
 	if err != nil {
-		return nil, nil, "", http_api.Err{400, err.Error()}
+		return nil, nil, "", http_api.Err{http.StatusBadRequest, err.Error()}
 	}
 
 	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		return nil, nil, "", http_api.Err{404, "TOPIC_NOT_FOUND"}
+		return nil, nil, "", http_api.Err{http.StatusNotFound, "TOPIC_NOT_FOUND"}
 	}
 
 	return reqParams, topic, channelName, err
@@ -166,17 +166,17 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	reqParams, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
-		return nil, nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicNames, ok := reqParams["topic"]
 	if !ok {
-		return nil, nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_TOPIC"}
 	}
 	topicName := topicNames[0]
 
 	if !protocol.IsValidTopicName(topicName) {
-		return nil, nil, http_api.Err{400, "INVALID_TOPIC"}
+		return nil, nil, http_api.Err{http.StatusBadRequest, "INVALID_TOPIC"}
 	}
 
 	return reqParams, s.ctx.nsqd.GetTopic(topicName), nil
@@ -187,7 +187,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	// to be able to fail "too big" requests before we even read
 
 	if req.ContentLength > s.ctx.nsqd.getOpts().MaxMsgSize {
-		return nil, http_api.Err{413, "MSG_TOO_BIG"}
+		return nil, http_api.Err{http.StatusRequestEntityTooLarge, "MSG_TOO_BIG"}
 	}
 
 	// add 1 so that it's greater than our max when we test for it
@@ -195,13 +195,13 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	readMax := s.ctx.nsqd.getOpts().MaxMsgSize + 1
 	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
 	if err != nil {
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{http.StatusInternalServerError, "INTERNAL_ERROR"}
 	}
 	if int64(len(body)) == readMax {
-		return nil, http_api.Err{413, "MSG_TOO_BIG"}
+		return nil, http_api.Err{http.StatusRequestEntityTooLarge, "MSG_TOO_BIG"}
 	}
 	if len(body) == 0 {
-		return nil, http_api.Err{400, "MSG_EMPTY"}
+		return nil, http_api.Err{http.StatusBadRequest, "MSG_EMPTY"}
 	}
 
 	reqParams, topic, err := s.getTopicFromQuery(req)
@@ -214,11 +214,11 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		var di int64
 		di, err = strconv.ParseInt(ds[0], 10, 64)
 		if err != nil {
-			return nil, http_api.Err{400, "INVALID_DEFER"}
+			return nil, http_api.Err{http.StatusBadRequest, "INVALID_DEFER"}
 		}
 		deferred = time.Duration(di) * time.Millisecond
 		if deferred < 0 || deferred > s.ctx.nsqd.getOpts().MaxReqTimeout {
-			return nil, http_api.Err{400, "INVALID_DEFER"}
+			return nil, http_api.Err{http.StatusBadRequest, "INVALID_DEFER"}
 		}
 	}
 
@@ -226,7 +226,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	msg.deferred = deferred
 	err = topic.PutMessage(msg)
 	if err != nil {
-		return nil, http_api.Err{503, "EXITING"}
+		return nil, http_api.Err{http.StatusServiceUnavailable, "EXITING"}
 	}
 
 	return "OK", nil
@@ -240,7 +240,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	// to be able to fail "too big" requests before we even read
 
 	if req.ContentLength > s.ctx.nsqd.getOpts().MaxBodySize {
-		return nil, http_api.Err{413, "BODY_TOO_BIG"}
+		return nil, http_api.Err{http.StatusRequestEntityTooLarge, "BODY_TOO_BIG"}
 	}
 
 	reqParams, topic, err := s.getTopicFromQuery(req)
@@ -261,7 +261,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		msgs, err = readMPUB(req.Body, tmp, topic,
 			s.ctx.nsqd.getOpts().MaxMsgSize, s.ctx.nsqd.getOpts().MaxBodySize)
 		if err != nil {
-			return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
+			return nil, http_api.Err{http.StatusRequestEntityTooLarge, err.(*protocol.FatalClientErr).Code[2:]}
 		}
 	} else {
 		// add 1 so that it's greater than our max when we test for it
@@ -274,13 +274,13 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 			block, err = rdr.ReadBytes('\n')
 			if err != nil {
 				if err != io.EOF {
-					return nil, http_api.Err{500, "INTERNAL_ERROR"}
+					return nil, http_api.Err{http.StatusInternalServerError, "INTERNAL_ERROR"}
 				}
 				exit = true
 			}
 			total += len(block)
 			if int64(total) == readMax {
-				return nil, http_api.Err{413, "BODY_TOO_BIG"}
+				return nil, http_api.Err{http.StatusRequestEntityTooLarge, "BODY_TOO_BIG"}
 			}
 
 			if len(block) > 0 && block[len(block)-1] == '\n' {
@@ -294,7 +294,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 			}
 
 			if int64(len(block)) > s.ctx.nsqd.getOpts().MaxMsgSize {
-				return nil, http_api.Err{413, "MSG_TOO_BIG"}
+				return nil, http_api.Err{http.StatusRequestEntityTooLarge, "MSG_TOO_BIG"}
 			}
 
 			msg := NewMessage(topic.GenerateID(), block)
@@ -304,7 +304,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 
 	err = topic.PutMessages(msgs)
 	if err != nil {
-		return nil, http_api.Err{503, "EXITING"}
+		return nil, http_api.Err{http.StatusServiceUnavailable, "EXITING"}
 	}
 
 	return "OK", nil
@@ -319,26 +319,26 @@ func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps h
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_TOPIC"}
 	}
 
 	if !protocol.IsValidTopicName(topicName) {
-		return nil, http_api.Err{400, "INVALID_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_TOPIC"}
 	}
 
 	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{http.StatusNotFound, "TOPIC_NOT_FOUND"}
 	}
 
 	err = topic.Empty()
 	if err != nil {
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{http.StatusInternalServerError, "INTERNAL_ERROR"}
 	}
 
 	return nil, nil
@@ -348,17 +348,17 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_TOPIC"}
 	}
 
 	err = s.ctx.nsqd.DeleteExistingTopic(topicName)
 	if err != nil {
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{http.StatusNotFound, "TOPIC_NOT_FOUND"}
 	}
 
 	return nil, nil
@@ -368,17 +368,17 @@ func (s *httpServer) doPauseTopic(w http.ResponseWriter, req *http.Request, ps h
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 
 	topicName, err := reqParams.Get("topic")
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{http.StatusBadRequest, "MISSING_ARG_TOPIC"}
 	}
 
 	topic, err := s.ctx.nsqd.GetExistingTopic(topicName)
 	if err != nil {
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
+		return nil, http_api.Err{http.StatusNotFound, "TOPIC_NOT_FOUND"}
 	}
 
 	if strings.Contains(req.URL.Path, "unpause") {
@@ -388,7 +388,7 @@ func (s *httpServer) doPauseTopic(w http.ResponseWriter, req *http.Request, ps h
 	}
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failure in %s - %s", req.URL.Path, err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{http.StatusInternalServerError, "INTERNAL_ERROR"}
 	}
 
 	// pro-actively persist metadata so in case of process failure
@@ -416,12 +416,12 @@ func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps
 
 	channel, err := topic.GetExistingChannel(channelName)
 	if err != nil {
-		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+		return nil, http_api.Err{http.StatusNotFound, "CHANNEL_NOT_FOUND"}
 	}
 
 	err = channel.Empty()
 	if err != nil {
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{http.StatusInternalServerError, "INTERNAL_ERROR"}
 	}
 
 	return nil, nil
@@ -435,7 +435,7 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 
 	err = topic.DeleteExistingChannel(channelName)
 	if err != nil {
-		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+		return nil, http_api.Err{http.StatusNotFound, "CHANNEL_NOT_FOUND"}
 	}
 
 	return nil, nil
@@ -449,7 +449,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 
 	channel, err := topic.GetExistingChannel(channelName)
 	if err != nil {
-		return nil, http_api.Err{404, "CHANNEL_NOT_FOUND"}
+		return nil, http_api.Err{http.StatusNotFound, "CHANNEL_NOT_FOUND"}
 	}
 
 	if strings.Contains(req.URL.Path, "unpause") {
@@ -459,7 +459,7 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 	}
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failure in %s - %s", req.URL.Path, err)
-		return nil, http_api.Err{500, "INTERNAL_ERROR"}
+		return nil, http_api.Err{http.StatusInternalServerError, "INTERNAL_ERROR"}
 	}
 
 	// pro-actively persist metadata so in case of process failure
@@ -474,7 +474,7 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_REQUEST"}
 	}
 	formatString, _ := reqParams.Get("format")
 	topicName, _ := reqParams.Get("topic")
@@ -520,7 +520,7 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 			if !found {
 				continue
 			}
-			clientStat.PubCounts = []PubCount{PubCount{
+			clientStat.PubCounts = []PubCount{{
 				Topic: topicName,
 				Count: count,
 			}}
@@ -664,10 +664,10 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 		readMax := s.ctx.nsqd.getOpts().MaxMsgSize + 1
 		body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
 		if err != nil {
-			return nil, http_api.Err{500, "INTERNAL_ERROR"}
+			return nil, http_api.Err{http.StatusInternalServerError, "INTERNAL_ERROR"}
 		}
 		if int64(len(body)) == readMax || len(body) == 0 {
-			return nil, http_api.Err{413, "INVALID_VALUE"}
+			return nil, http_api.Err{http.StatusRequestEntityTooLarge, "INVALID_VALUE"}
 		}
 
 		opts := *s.ctx.nsqd.getOpts()
@@ -675,23 +675,23 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 		case "nsqlookupd_tcp_addresses":
 			err := json.Unmarshal(body, &opts.NSQLookupdTCPAddresses)
 			if err != nil {
-				return nil, http_api.Err{400, "INVALID_VALUE"}
+				return nil, http_api.Err{http.StatusBadRequest, "INVALID_VALUE"}
 			}
 		case "log_level":
 			logLevelStr := string(body)
 			logLevel, err := lg.ParseLogLevel(logLevelStr, opts.Verbose)
 			if err != nil {
-				return nil, http_api.Err{400, "INVALID_VALUE"}
+				return nil, http_api.Err{http.StatusBadRequest, "INVALID_VALUE"}
 			}
 			opts.LogLevel = logLevelStr
 			opts.logLevel = logLevel
 		case "verbose":
 			err := json.Unmarshal(body, &opts.Verbose)
 			if err != nil {
-				return nil, http_api.Err{400, "INVALID_VALUE"}
+				return nil, http_api.Err{http.StatusBadRequest, "INVALID_VALUE"}
 			}
 		default:
-			return nil, http_api.Err{400, "INVALID_OPTION"}
+			return nil, http_api.Err{http.StatusBadRequest, "INVALID_OPTION"}
 		}
 		s.ctx.nsqd.swapOpts(&opts)
 		s.ctx.nsqd.triggerOptsNotification()
@@ -699,7 +699,7 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 
 	v, ok := getOptByCfgName(s.ctx.nsqd.getOpts(), opt)
 	if !ok {
-		return nil, http_api.Err{400, "INVALID_OPTION"}
+		return nil, http_api.Err{http.StatusBadRequest, "INVALID_OPTION"}
 	}
 
 	return v, nil

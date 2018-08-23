@@ -203,7 +203,7 @@ func TestChannelHealth(t *testing.T) {
 	url := fmt.Sprintf("http://%s/ping", httpAddr)
 	resp, err := http.Get(url)
 	test.Nil(t, err)
-	test.Equal(t, 500, resp.StatusCode)
+	test.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "NOK - never gonna happen", string(body))
@@ -216,7 +216,7 @@ func TestChannelHealth(t *testing.T) {
 
 	resp, err = http.Get(url)
 	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
+	test.Equal(t, http.StatusOK, resp.StatusCode)
 	body, _ = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "OK", string(body))
