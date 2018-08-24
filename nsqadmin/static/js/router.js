@@ -24,7 +24,8 @@ var Router = Backbone.Router.extend({
 
     start: function() {
         Backbone.history.start({
-            'pushState': true
+            'pushState': true,
+            root: window.webRoot || '/',
         });
     },
 

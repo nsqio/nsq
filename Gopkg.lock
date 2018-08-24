@@ -2,72 +2,108 @@
 
 
 [[projects]]
+  digest = "1:478d56d0b0608633e28f3dc014c57fca39cfc46166bd3c5417898b75d416d653"
   name = "github.com/BurntSushi/toml"
   packages = ["."]
+  pruneopts = ""
   revision = "2dff11163ee667d51dcc066660925a92ce138deb"
 
 [[projects]]
+  digest = "1:90899f76443f9a7f6de1547f1e713951c383cca970eeff5bc7bff3607fc1a48c"
   name = "github.com/bitly/go-hostpool"
   packages = ["."]
+  pruneopts = ""
   revision = "a3a6125de9329587178a9792dc8f4bc98e620d2d"
 
 [[projects]]
+  digest = "1:8a9da1c39fae2a5f1375ca430d8f6fd07e154231534f93eb83542a6eff74b178"
   name = "github.com/bitly/timer_metrics"
   packages = ["."]
+  pruneopts = ""
   revision = "afad1794bb13e2a094720aeb27c088aa64564895"
 
 [[projects]]
+  digest = "1:5c5697517631eefbbc2e219ab4c0a1c7e409b45f210e541e7a3625b0125f6a09"
   name = "github.com/blang/semver"
   packages = ["."]
+  pruneopts = ""
   revision = "9bf7bff48b0388cb75991e58c6df7d13e982f1f2"
 
 [[projects]]
+  digest = "1:8fa80cf8a1f5310403a95f270f84da643209554e8a0929285eee60dece466c9f"
   name = "github.com/bmizerany/perks"
   packages = ["quantile"]
+  pruneopts = ""
   revision = "6cb9d9d729303ee2628580d9aec5db968da3a607"
 
 [[projects]]
+  digest = "1:55f8ee9140c98eb97df4363bdea6b72c4f5fc4b397b72c44c301967081cb8d3d"
   name = "github.com/golang/snappy"
   packages = ["."]
+  pruneopts = ""
   revision = "d9eb7a3d35ec988b8585d4a0068e462c27d28380"
 
 [[projects]]
+  digest = "1:588fccacebfd731e835e3f8f5adb848535f9aa57def5465f19a69a07354598d6"
   name = "github.com/judwhite/go-svc"
   packages = ["svc"]
+  pruneopts = ""
   revision = "63c12402f579f0bdf022653c821a1aa5d7544f01"
 
 [[projects]]
+  digest = "1:c39d893e17bbf49d0d77ea0c59755862531ea7c7145fc16b60d94f117242a12b"
   name = "github.com/julienschmidt/httprouter"
   packages = ["."]
+  pruneopts = ""
   revision = "6aacfd5ab513e34f7e64ea9627ab9670371b34e7"
 
 [[projects]]
+  digest = "1:9408fb9c637c103010e5147469c232ce6b68edc840879cc730a2a15918e6cae8"
   name = "github.com/mreiferson/go-options"
   packages = ["."]
+  pruneopts = ""
   revision = "77551d20752b54535462404ad9d877ebdb26e53d"
 
 [[projects]]
+  digest = "1:429404163b76e0c0bcfdb1086c2a343bf490c9538ac545be5ae552da55ad7317"
   name = "github.com/nsqio/go-diskqueue"
   packages = ["."]
+  pruneopts = ""
   revision = "0681a1afee1245efa503b7543989fc26d8f268bc"
 
 [[projects]]
+  digest = "1:f17e8dde0efd1585bd6629cf82ebf346776ddcbdf848c6e1e3adfbcb9aad6664"
   name = "github.com/nsqio/go-nsq"
   packages = ["."]
+  pruneopts = ""
   revision = "a53d495e81424aaf7a7665a9d32a97715c40e953"
 
 [[projects]]
   branch = "master"
+  digest = "1:48977491bac1aadf4a18af6460178620debb35a9ba2c73bdc786108492c014e0"
   name = "golang.org/x/sys"
   packages = [
     "windows",
-    "windows/svc"
+    "windows/svc",
   ]
+  pruneopts = ""
   revision = "661970f62f5897bc0cd5fdca7e087ba8a98a8fa1"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d47ae3c107eee6969aec751badb5b6e788202f5351f8a9dd83ef9059804d5882"
+  input-imports = [
+    "github.com/BurntSushi/toml",
+    "github.com/bitly/go-hostpool",
+    "github.com/bitly/timer_metrics",
+    "github.com/blang/semver",
+    "github.com/bmizerany/perks/quantile",
+    "github.com/golang/snappy",
+    "github.com/judwhite/go-svc/svc",
+    "github.com/julienschmidt/httprouter",
+    "github.com/mreiferson/go-options",
+    "github.com/nsqio/go-diskqueue",
+    "github.com/nsqio/go-nsq",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1

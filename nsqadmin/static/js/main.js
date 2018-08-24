@@ -18,6 +18,14 @@ var start = function() {
     Router.start();
 };
 
+
+if (!window.webRoot) {
+    window.webRoot = '/'
+}
+if (window.webRoot[window.webRoot.length - 1] !== '/') {
+    window.webRoot += '/'
+}
+
 // Pubsub.on('all', function() {
 //     console.log.apply(console, arguments);
 // });

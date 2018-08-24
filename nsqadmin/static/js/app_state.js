@@ -31,7 +31,7 @@ var AppState = Backbone.Model.extend({
     },
 
     url: function(url) {
-        return '/api' + url;
+        return window.webRoot + 'api/' + url;
     }
 });
 

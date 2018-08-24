@@ -57,6 +57,11 @@ func New(opts *Options) *NSQAdmin {
 		os.Exit(1)
 	}
 
+	if len(opts.WebRoot) == 0 || opts.WebRoot[len(opts.WebRoot)-1] != '/' {
+		n.logf(LOG_FATAL, "--web-root must been set end with '/'")
+		os.Exit(1)
+	}
+
 	// verify that the supplied address is valid
 	verifyAddress := func(arg string, address string) *net.TCPAddr {
 		addr, err := net.ResolveTCPAddr("tcp", address)
