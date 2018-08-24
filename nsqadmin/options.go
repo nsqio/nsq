@@ -14,6 +14,7 @@ type Options struct {
 	logLevel  lg.LogLevel // private, not really an option
 
 	HTTPAddress string `flag:"http-address"`
+	WebRoot     string `flag:"web-root"`
 
 	GraphiteURL   string `flag:"graphite-url"`
 	ProxyGraphite bool   `flag:"proxy-graphite"`
@@ -57,5 +58,6 @@ func NewOptions() *Options {
 		AllowConfigFromCIDR:      "127.0.0.1/8",
 		AclHttpHeader:            "X-Forwarded-User",
 		AdminUsers:               []string{},
+		WebRoot:                  "/",
 	}
 }

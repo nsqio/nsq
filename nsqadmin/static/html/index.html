@@ -2,9 +2,9 @@
 <html>
 <head>
     <title>nsqadmin</title>
-    <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/bootstrap.min.css">
-    <link rel="stylesheet" href="/static/base.css">
+    <link rel="icon" type="image/png" href="{{.WebRoot}}static/favicon.png">
+    <link rel="stylesheet" href="{{.WebRoot}}static/bootstrap.min.css">
+    <link rel="stylesheet" href="{{.WebRoot}}static/base.css">
     <meta http-equiv="Content-type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
@@ -24,8 +24,9 @@
         var STATSD_PREFIX = '{{.StatsdPrefix}}';
         var NSQLOOKUPD = [{{range .NSQLookupd}}'{{.}}',{{end}}];
         var IS_ADMIN ={{.IsAdmin}};
+        window.webRoot = '{{.WebRoot}}';
     </script>
-    <script src="/static/vendor.js"></script>
-    <script src="/static/main.js"></script>
+    <script src="{{.WebRoot}}static/vendor.js"></script>
+    <script src="{{.WebRoot}}static/main.js"></script>
 </body>
 </html>

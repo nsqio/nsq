@@ -59,7 +59,7 @@ func NewHTTPServer(ctx *Context) *httpServer {
 
 	client := http_api.NewClient(ctx.nsqadmin.httpClientTLSConfig, ctx.nsqadmin.getOpts().HTTPClientConnectTimeout,
 		ctx.nsqadmin.getOpts().HTTPClientRequestTimeout)
-
+	webRoot := ctx.nsqadmin.getOpts().WebRoot
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
 	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqadmin.logf)
@@ -72,41 +72,41 @@ func NewHTTPServer(ctx *Context) *httpServer {
 		ci:     clusterinfo.New(ctx.nsqadmin.logf, client),
 	}
 
-	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
+	router.Handle("GET", webRoot+"ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
 
-	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/topics", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/topics/:topic/:channel", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/nodes", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/nodes/:node", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/counter", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/lookup", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", webRoot+"", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", webRoot+"topics", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", webRoot+"topics/:topic", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", webRoot+"topics/:topic/:channel", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", webRoot+"nodes", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", webRoot+"nodes/:node", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", webRoot+"counter", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", webRoot+"lookup", http_api.Decorate(s.indexHandler, log))
 
-	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
-	router.Handle("GET", "/fonts/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
+	router.Handle("GET", webRoot+"static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
+	router.Handle("GET", webRoot+"fonts/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
 	if s.ctx.nsqadmin.getOpts().ProxyGraphite {
 		proxy := NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, ctx.nsqadmin.getOpts().HTTPClientConnectTimeout,
 			ctx.nsqadmin.getOpts().HTTPClientRequestTimeout)
-		router.Handler("GET", "/render", proxy)
+		router.Handler("GET", webRoot+"render", proxy)
 	}
 
 	// v1 endpoints
-	router.Handle("GET", "/api/topics", http_api.Decorate(s.topicsHandler, log, http_api.V1))
-	router.Handle("GET", "/api/topics/:topic", http_api.Decorate(s.topicHandler, log, http_api.V1))
-	router.Handle("GET", "/api/topics/:topic/:channel", http_api.Decorate(s.channelHandler, log, http_api.V1))
-	router.Handle("GET", "/api/nodes", http_api.Decorate(s.nodesHandler, log, http_api.V1))
-	router.Handle("GET", "/api/nodes/:node", http_api.Decorate(s.nodeHandler, log, http_api.V1))
-	router.Handle("POST", "/api/topics", http_api.Decorate(s.createTopicChannelHandler, log, http_api.V1))
-	router.Handle("POST", "/api/topics/:topic", http_api.Decorate(s.topicActionHandler, log, http_api.V1))
-	router.Handle("POST", "/api/topics/:topic/:channel", http_api.Decorate(s.channelActionHandler, log, http_api.V1))
-	router.Handle("DELETE", "/api/nodes/:node", http_api.Decorate(s.tombstoneNodeForTopicHandler, log, http_api.V1))
-	router.Handle("DELETE", "/api/topics/:topic", http_api.Decorate(s.deleteTopicHandler, log, http_api.V1))
-	router.Handle("DELETE", "/api/topics/:topic/:channel", http_api.Decorate(s.deleteChannelHandler, log, http_api.V1))
-	router.Handle("GET", "/api/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
-	router.Handle("GET", "/api/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
-	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
-	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
+	router.Handle("GET", webRoot+"api/topics", http_api.Decorate(s.topicsHandler, log, http_api.V1))
+	router.Handle("GET", webRoot+"api/topics/:topic", http_api.Decorate(s.topicHandler, log, http_api.V1))
+	router.Handle("GET", webRoot+"api/topics/:topic/:channel", http_api.Decorate(s.channelHandler, log, http_api.V1))
+	router.Handle("GET", webRoot+"api/nodes", http_api.Decorate(s.nodesHandler, log, http_api.V1))
+	router.Handle("GET", webRoot+"api/nodes/:node", http_api.Decorate(s.nodeHandler, log, http_api.V1))
+	router.Handle("POST", webRoot+"api/topics", http_api.Decorate(s.createTopicChannelHandler, log, http_api.V1))
+	router.Handle("POST", webRoot+"api/topics/:topic", http_api.Decorate(s.topicActionHandler, log, http_api.V1))
+	router.Handle("POST", webRoot+"api/topics/:topic/:channel", http_api.Decorate(s.channelActionHandler, log, http_api.V1))
+	router.Handle("DELETE", webRoot+"api/nodes/:node", http_api.Decorate(s.tombstoneNodeForTopicHandler, log, http_api.V1))
+	router.Handle("DELETE", webRoot+"api/topics/:topic", http_api.Decorate(s.deleteTopicHandler, log, http_api.V1))
+	router.Handle("DELETE", webRoot+"api/topics/:topic/:channel", http_api.Decorate(s.deleteChannelHandler, log, http_api.V1))
+	router.Handle("GET", webRoot+"api/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
+	router.Handle("GET", webRoot+"api/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
+	router.Handle("GET", webRoot+"config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
+	router.Handle("PUT", webRoot+"config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
 	return s
 }
@@ -135,6 +135,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 		StatsdPrefix        string
 		NSQLookupd          []string
 		IsAdmin             bool
+		WebRoot             string
 	}{
 		Version:             version.Binary,
 		ProxyGraphite:       s.ctx.nsqadmin.getOpts().ProxyGraphite,
@@ -146,6 +147,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 		StatsdPrefix:        s.ctx.nsqadmin.getOpts().StatsdPrefix,
 		NSQLookupd:          s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses,
 		IsAdmin:             s.isAuthorizedAdminRequest(req),
+		WebRoot:             s.ctx.nsqadmin.getOpts().WebRoot,
 	})
 
 	return nil, nil
