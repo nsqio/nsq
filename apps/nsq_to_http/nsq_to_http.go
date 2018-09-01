@@ -49,14 +49,17 @@ var (
 	statusEvery        = flag.Int("status-every", 250, "the # of requests between logging status (per handler), 0 disables")
 	contentType        = flag.String("content-type", "application/octet-stream", "the Content-Type used for POST requests")
 
-	getAddrs         = app.StringArray{}
-	postAddrs        = app.StringArray{}
-	nsqdTCPAddrs     = app.StringArray{}
-	lookupdHTTPAddrs = app.StringArray{}
+	getAddrs           = app.StringArray{}
+	postAddrs          = app.StringArray{}
+	customHeaders      = app.StringArray{}
+	nsqdTCPAddrs       = app.StringArray{}
+	lookupdHTTPAddrs   = app.StringArray{}
+	validCustomHeaders map[string]string
 )
 
 func init() {
 	flag.Var(&postAddrs, "post", "HTTP address to make a POST request to.  data will be in the body (may be given multiple times)")
+	flag.Var(&customHeaders, "header", "Custom header for HTTP requests (may be given multiple times)")
 	flag.Var(&getAddrs, "get", "HTTP address to make a GET request to. '%s' will be printf replaced with data (may be given multiple times)")
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
@@ -180,6 +183,14 @@ func main() {
 		return
 	}
 
+	if len(customHeaders) > 0 {
+		var err error
+		validCustomHeaders, err = parseCustomHeaders(customHeaders)
+		if err != nil {
+			log.Fatal("--header value format should be 'key=value'")
+		}
+	}
+
 	if *topic == "" || *channel == "" {
 		log.Fatal("--topic and --channel are required")
 	}
@@ -288,4 +299,22 @@ func main() {
 			consumer.Stop()
 		}
 	}
+}
+
+func parseCustomHeaders(strs []string) (map[string]string, error) {
+	parsedHeaders := make(map[string]string)
+	for _, s := range strs {
+		sp := strings.SplitN(s, ":", 2)
+		if len(sp) != 2 {
+			return nil, fmt.Errorf("Invalid headers: %q", s)
+		}
+		key := strings.TrimSpace(sp[0])
+		val := strings.TrimSpace(sp[1])
+		if key == "" || val == "" {
+			return nil, fmt.Errorf("Invalid headers: %q", s)
+		}
+		parsedHeaders[key] = val
+
+	}
+	return parsedHeaders, nil
 }
