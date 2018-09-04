@@ -54,10 +54,9 @@ var AppView = BaseView.extend({
                     'format': 'json',
                 };
                 var formatRate = function(data) {
-                    if (data[0]                     == null ||
-                        data[0]['datapoints'][0]    == null ||
-                        data[0]['datapoints'][0][0] <  0      )
-                    {
+                    if (data[0] === null ||
+                        data[0]['datapoints'][0] === null ||
+                        data[0]['datapoints'][0][0] < 0) {
                         return 'N/A';
                     } else {
                         return (data[0]['datapoints'][0][0] / interval).toFixed(2);
@@ -69,7 +68,7 @@ var AppView = BaseView.extend({
                     dataType: 'jsonp',
                     jsonp: 'jsonp'
                 })
-                    .done(function(data) { $el.html(formatRate(data)) })
+                    .done(function(data) { $el.html(formatRate(data)); })
                     .fail(function() { $el.html('ERROR'); });
             });
         });
@@ -104,7 +103,11 @@ var AppView = BaseView.extend({
 
     showChannel: function(topic, channel) {
         this.showView(function() {
-            var model = new Channel({'topic': topic, 'name': channel, 'isAdmin': AppState.get('IS_ADMIN')});
+            var model = new Channel({
+                'topic': topic,
+                'name': channel,
+                'isAdmin': AppState.get('IS_ADMIN')
+            });
             return new ChannelView({'model': model});
         });
     },
@@ -136,8 +139,8 @@ var AppView = BaseView.extend({
 
     onLinkClick: function(e) {
         if (e.ctrlKey || e.metaKey) {
-          // allow ctrl+click to open in a new tab
-          return;
+            // allow ctrl+click to open in a new tab
+            return;
         }
         e.preventDefault();
         e.stopPropagation();

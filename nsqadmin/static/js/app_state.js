@@ -24,7 +24,7 @@ var AppState = Backbone.Model.extend({
         });
 
         var qp = _.object(_.compact(_.map(window.location.search.slice(1).split('&'),
-            function(item) { if (item) { return item.split('='); } })));
+            function(item) { return item ? item.split('=') : false; })));
 
         var def = this.get('GRAPH_ENABLED') ? '2h' : 'off';
         var interval = qp['t'] || localStorage.getItem('graph_interval') || def;
@@ -33,7 +33,7 @@ var AppState = Backbone.Model.extend({
 
     basePath: function(p) {
         // if base path is / then don't prefix
-        var bp = this.get('BASE_PATH') == '/' ? '' : this.get('BASE_PATH');
+        var bp = this.get('BASE_PATH') === '/' ? '' : this.get('BASE_PATH');
         // remove trailing /, but guarantee at least /
         return (bp + p).replace(/\/$/, '') || '/';
     },
