@@ -15,7 +15,7 @@ var Topics = Backbone.Collection.extend({
     },
 
     url: function() {
-        return AppState.url('/topics');
+        return AppState.apiPath('/topics');
     },
 
     parse: function(resp) {

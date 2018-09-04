@@ -19,6 +19,7 @@ import (
 var (
 	flagSet = flag.NewFlagSet("nsqadmin", flag.ExitOnError)
 
+	basePath    = flagSet.String("base-path", "/", "URL base path")
 	config      = flagSet.String("config", "", "path to config file")
 	showVersion = flagSet.Bool("version", false, "print version string")
 

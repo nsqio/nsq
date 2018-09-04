@@ -40,7 +40,7 @@ var CounterView = BaseView.extend({
     },
 
     updateStats: function() {
-        $.get(AppState.url('/counter')).done(function(data) {
+        $.get(AppState.apiPath('/counter')).done(function(data) {
             if (this.removed) {
                 return;
             }

@@ -48,10 +48,11 @@ func NewSingleHostReverseProxy(target *url.URL, connectTimeout time.Duration, re
 }
 
 type httpServer struct {
-	ctx    *Context
-	router http.Handler
-	client *http_api.Client
-	ci     *clusterinfo.ClusterInfo
+	ctx      *Context
+	router   http.Handler
+	client   *http_api.Client
+	ci       *clusterinfo.ClusterInfo
+	basePath string
 }
 
 func NewHTTPServer(ctx *Context) *httpServer {
@@ -66,47 +67,52 @@ func NewHTTPServer(ctx *Context) *httpServer {
 	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqadmin.logf)
 	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqadmin.logf)
 	s := &httpServer{
-		ctx:    ctx,
-		router: router,
-		client: client,
-		ci:     clusterinfo.New(ctx.nsqadmin.logf, client),
+		ctx:      ctx,
+		router:   router,
+		client:   client,
+		ci:       clusterinfo.New(ctx.nsqadmin.logf, client),
+		basePath: ctx.nsqadmin.getOpts().BasePath,
 	}
 
-	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
+	bp := func(p string) string {
+		return path.Join(s.basePath, p)
+	}
 
-	router.Handle("GET", "/", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/topics", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/topics/:topic", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/topics/:topic/:channel", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/nodes", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/nodes/:node", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/counter", http_api.Decorate(s.indexHandler, log))
-	router.Handle("GET", "/lookup", http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/"), http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/ping"), http_api.Decorate(s.pingHandler, log, http_api.PlainText))
 
-	router.Handle("GET", "/static/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
-	router.Handle("GET", "/fonts/:asset", http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
+	router.Handle("GET", bp("/topics"), http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/topics/:topic"), http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/topics/:topic/:channel"), http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/nodes"), http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/nodes/:node"), http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/counter"), http_api.Decorate(s.indexHandler, log))
+	router.Handle("GET", bp("/lookup"), http_api.Decorate(s.indexHandler, log))
+
+	router.Handle("GET", bp("/static/:asset"), http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
+	router.Handle("GET", bp("/fonts/:asset"), http_api.Decorate(s.staticAssetHandler, log, http_api.PlainText))
 	if s.ctx.nsqadmin.getOpts().ProxyGraphite {
 		proxy := NewSingleHostReverseProxy(ctx.nsqadmin.graphiteURL, ctx.nsqadmin.getOpts().HTTPClientConnectTimeout,
 			ctx.nsqadmin.getOpts().HTTPClientRequestTimeout)
-		router.Handler("GET", "/render", proxy)
+		router.Handler("GET", bp("/render"), proxy)
 	}
 
 	// v1 endpoints
-	router.Handle("GET", "/api/topics", http_api.Decorate(s.topicsHandler, log, http_api.V1))
-	router.Handle("GET", "/api/topics/:topic", http_api.Decorate(s.topicHandler, log, http_api.V1))
-	router.Handle("GET", "/api/topics/:topic/:channel", http_api.Decorate(s.channelHandler, log, http_api.V1))
-	router.Handle("GET", "/api/nodes", http_api.Decorate(s.nodesHandler, log, http_api.V1))
-	router.Handle("GET", "/api/nodes/:node", http_api.Decorate(s.nodeHandler, log, http_api.V1))
-	router.Handle("POST", "/api/topics", http_api.Decorate(s.createTopicChannelHandler, log, http_api.V1))
-	router.Handle("POST", "/api/topics/:topic", http_api.Decorate(s.topicActionHandler, log, http_api.V1))
-	router.Handle("POST", "/api/topics/:topic/:channel", http_api.Decorate(s.channelActionHandler, log, http_api.V1))
-	router.Handle("DELETE", "/api/nodes/:node", http_api.Decorate(s.tombstoneNodeForTopicHandler, log, http_api.V1))
-	router.Handle("DELETE", "/api/topics/:topic", http_api.Decorate(s.deleteTopicHandler, log, http_api.V1))
-	router.Handle("DELETE", "/api/topics/:topic/:channel", http_api.Decorate(s.deleteChannelHandler, log, http_api.V1))
-	router.Handle("GET", "/api/counter", http_api.Decorate(s.counterHandler, log, http_api.V1))
-	router.Handle("GET", "/api/graphite", http_api.Decorate(s.graphiteHandler, log, http_api.V1))
-	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
-	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
+	router.Handle("GET", bp("/api/topics"), http_api.Decorate(s.topicsHandler, log, http_api.V1))
+	router.Handle("GET", bp("/api/topics/:topic"), http_api.Decorate(s.topicHandler, log, http_api.V1))
+	router.Handle("GET", bp("/api/topics/:topic/:channel"), http_api.Decorate(s.channelHandler, log, http_api.V1))
+	router.Handle("GET", bp("/api/nodes"), http_api.Decorate(s.nodesHandler, log, http_api.V1))
+	router.Handle("GET", bp("/api/nodes/:node"), http_api.Decorate(s.nodeHandler, log, http_api.V1))
+	router.Handle("POST", bp("/api/topics"), http_api.Decorate(s.createTopicChannelHandler, log, http_api.V1))
+	router.Handle("POST", bp("/api/topics/:topic"), http_api.Decorate(s.topicActionHandler, log, http_api.V1))
+	router.Handle("POST", bp("/api/topics/:topic/:channel"), http_api.Decorate(s.channelActionHandler, log, http_api.V1))
+	router.Handle("DELETE", bp("/api/nodes/:node"), http_api.Decorate(s.tombstoneNodeForTopicHandler, log, http_api.V1))
+	router.Handle("DELETE", bp("/api/topics/:topic"), http_api.Decorate(s.deleteTopicHandler, log, http_api.V1))
+	router.Handle("DELETE", bp("/api/topics/:topic/:channel"), http_api.Decorate(s.deleteChannelHandler, log, http_api.V1))
+	router.Handle("GET", bp("/api/counter"), http_api.Decorate(s.counterHandler, log, http_api.V1))
+	router.Handle("GET", bp("/api/graphite"), http_api.Decorate(s.graphiteHandler, log, http_api.V1))
+	router.Handle("GET", bp("/config/:opt"), http_api.Decorate(s.doConfig, log, http_api.V1))
+	router.Handle("PUT", bp("/config/:opt"), http_api.Decorate(s.doConfig, log, http_api.V1))
 
 	return s
 }
@@ -121,7 +127,11 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 
 func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	asset, _ := Asset("index.html")
-	t, _ := template.New("index").Parse(string(asset))
+	t, _ := template.New("index").Funcs(template.FuncMap{
+		"basePath": func(p string) string {
+			return path.Join(s.basePath, p)
+		},
+	}).Parse(string(asset))
 
 	w.Header().Set("Content-Type", "text/html")
 	t.Execute(w, struct {

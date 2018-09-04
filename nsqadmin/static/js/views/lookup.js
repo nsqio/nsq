@@ -22,7 +22,7 @@ var LookupView = BaseView.extend({
     initialize: function() {
         BaseView.prototype.initialize.apply(this, arguments);
         var isAdmin = arguments[0]['isAdmin'];
-        $.ajax(AppState.url('/topics?inactive=true'))
+        $.ajax(AppState.apiPath('/topics?inactive=true'))
             .done(function(data) {
                 this.template = require('./lookup.hbs');
                 this.render({
@@ -45,7 +45,7 @@ var LookupView = BaseView.extend({
         if (topic === '' && channel === '') {
             return;
         }
-        $.post(AppState.url('/topics'), JSON.stringify({
+        $.post(AppState.apiPath('/topics'), JSON.stringify({
                 'topic': topic,
                 'channel': channel
             }))

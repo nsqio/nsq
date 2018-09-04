@@ -1,25 +1,23 @@
 var Backbone = require('backbone');
 
+var AppState = require('./app_state');
 var Pubsub = require('./lib/pubsub');
 
 
 var Router = Backbone.Router.extend({
-    routes: {
-        '': 'topics',
-        'topics/(:topic)(/:channel)': 'topic',
-        'lookup': 'lookup',
-        'nodes(/:node)': 'nodes',
-        'counter': 'counter'
-    },
-
-    defaultRoute: 'topics',
-
     initialize: function() {
-        this.currentRoute = this.defaultRoute;
-        this.listenTo(this, 'route', function(route, params) {
-            this.currentRoute = route || this.defaultRoute;
-            // console.log('Route: %o; params: %o', route, params);
-        });
+        var bp = function(p) {
+            // remove leading slash
+            return AppState.basePath(p).substring(1);
+        };
+        this.route(bp('/'), 'topics');
+        this.route(bp('/topics/(:topic)(/:channel)'), 'topic');
+        this.route(bp('/lookup'), 'lookup');
+        this.route(bp('/nodes(/:node)'), 'nodes');
+        this.route(bp('/counter'), 'counter');
+        // this.listenTo(this, 'route', function(route, params) {
+        //     console.log('Route: %o; params: %o', route, params);
+        // });
     },
 
     start: function() {

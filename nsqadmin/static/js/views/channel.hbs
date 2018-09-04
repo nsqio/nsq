@@ -2,8 +2,8 @@
 {{> error}}
 
 <ol class="breadcrumb">
-  <li><a class="link" href="/">Streams</a>
-  <li><a class="link" href="/topics/{{urlencode topic}}">{{topic}}</a>
+  <li><a class="link" href="{{basePath "/"}}">Streams</a>
+  <li><a class="link" href="{{basePath "/topics"}}/{{urlencode topic}}">{{topic}}</a>
   <li class="active">{{name}}</li>
 </ol>
 
@@ -21,7 +21,7 @@
     <div class="col-md-6">
         <div class="alert alert-warning">
             <h4>Notice</h4> No producers exist for this topic/channel.
-            <p>See <a class="link" href="/lookup">Lookup</a> for more information.
+            <p>See <a class="link" href="{{basePath "/lookup"}}">Lookup</a> for more information.
         </div>
     </div>
 </div>
@@ -75,9 +75,9 @@
         <tr>
             <td>
                 {{#if show_broadcast_address}}
-                {{hostname_port}} (<a class="link" href="/nodes/{{node}}">{{node}}</a>)
+                {{hostname_port}} (<a class="link" href="{{basePath "/nodes"}}/{{node}}">{{node}}</a>)
                 {{else}}
-                <a class="link" href="/nodes/{{node}}">{{hostname_port}}</a>
+                <a class="link" href="{{basePath "/nodes"}}/{{node}}">{{hostname_port}}</a>
                 {{/if}}
                 {{#if paused}} <span class="label label-primary">paused</span>{{/if}}
             </td>
@@ -210,7 +210,7 @@
                         </span>
                     {{/if}}
                 </td>
-                <td><a class="link" href="/nodes/{{node}}">{{node}}</a></td>
+                <td><a class="link" href="{{basePath "/nodes"}}/{{node}}">{{node}}</a></td>
                 <td>{{commafy in_flight_count}}</td>
                 <td>{{commafy ready_count}}</td>
                 <td>{{commafy finish_count}}</td>

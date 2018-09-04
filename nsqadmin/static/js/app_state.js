@@ -13,7 +13,8 @@ var AppState = Backbone.Model.extend({
             'STATSD_PREFIX': STATSD_PREFIX,
             'NSQLOOKUPD': NSQLOOKUPD,
             'graph_interval': '2h',
-            'IS_ADMIN': IS_ADMIN
+            'IS_ADMIN': IS_ADMIN,
+            'BASE_PATH': BASE_PATH
         };
     },
 
@@ -30,8 +31,15 @@ var AppState = Backbone.Model.extend({
         this.set('graph_interval', interval);
     },
 
-    url: function(url) {
-        return '/api' + url;
+    basePath: function(p) {
+        // if base path is / then don't prefix
+        var bp = this.get('BASE_PATH') == '/' ? '' : this.get('BASE_PATH');
+        // remove trailing /, but guarantee at least /
+        return (bp + p).replace(/\/$/, '') || '/';
+    },
+
+    apiPath: function(p) {
+        return this.basePath('/api' + p);
     }
 });
 

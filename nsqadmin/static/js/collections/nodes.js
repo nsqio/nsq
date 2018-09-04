@@ -14,7 +14,7 @@ var Nodes = Backbone.Collection.extend({
     },
 
     url: function() {
-        return AppState.url('/nodes');
+        return AppState.apiPath('/nodes');
     },
 
     parse: function(resp) {

@@ -24,7 +24,7 @@
             {{#each collection}}
             <tr {{#if out_of_date}}class="warning"{{/if}}>
                 <td>{{hostname}}</td>
-                <td><a class="link" href="/nodes/{{broadcast_address}}:{{http_port}}">{{broadcast_address}}</a></td>
+                <td><a class="link" href="{{basePath "/nodes"}}/{{broadcast_address}}:{{http_port}}">{{broadcast_address}}</a></td>
                 <td>{{tcp_port}}</td>
                 <td>{{http_port}}</td>
                 <td>{{version}}</td>
@@ -40,7 +40,7 @@
                 {{#if topics.length}}
                     <span class="badge">{{topics.length}}</span>
                     {{#each topics}}
-                    <a href="/topics/{{topic}}" class="link label {{#if tombstoned}}label-warning{{else}}label-primary{{/if}}" {{#if tombstoned}}title="this topic is currently tombstoned on this node"{{/if}}>{{topic}}</a>
+                    <a href="{{basePath "/topics"}}/{{topic}}" class="link label {{#if tombstoned}}label-warning{{else}}label-primary{{/if}}" {{#if tombstoned}}title="this topic is currently tombstoned on this node"{{/if}}>{{topic}}</a>
                     {{/each}}
                 {{/if}}
                 </td>
