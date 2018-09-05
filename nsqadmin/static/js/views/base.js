@@ -96,7 +96,7 @@ var BaseView = Backbone.View.extend({
             try {
                 var parsed = JSON.parse(jqXHR.responseText);
                 msg = parsed['message'];
-            } catch(err) {
+            } catch (err) {
                 msg = 'ERROR: failed to decode JSON - ' + err.message;
             }
         }

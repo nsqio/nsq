@@ -6,13 +6,14 @@ var AppState = require('../app_state');
 
 var formatStatsdKey = function(metricType, key) {
     var fullKey = key;
+    var fmt;
 
     if (metricType === 'counter') {
-        var format = AppState.get('STATSD_COUNTER_FORMAT');
-        fullKey = format.replace(/%s/g, key)
+        fmt = AppState.get('STATSD_COUNTER_FORMAT');
+        fullKey = fmt.replace(/%s/g, key);
     } else if (metricType === 'gauge') {
-        var format = AppState.get('STATSD_GAUGE_FORMAT');
-        fullKey = format.replace(/%s/g, key)
+        fmt = AppState.get('STATSD_GAUGE_FORMAT');
+        fullKey = fmt.replace(/%s/g, key);
     }
 
     return fullKey;
@@ -63,19 +64,21 @@ var genColorList = function(typ, key) {
 var genTargets = function(typ, node, ns1, ns2, key) {
     var targets = [];
     var prefix = statsdPrefix(node ? node : '*');
+    var fullKey;
+    var target;
     if (typ === 'topic') {
-        var fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.' + key);
+        fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.' + key);
         targets.push('sumSeries(' + fullKey + ')');
     } else if (typ === 'channel') {
-        var fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.channel.' + ns2 + '.' + key);
+        fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.channel.' +
+            ns2 + '.' + key);
         targets.push('sumSeries(' + fullKey + ')');
     } else if (typ === 'node') {
-        var target = prefix + 'mem.' + key;
+        target = prefix + 'mem.' + key;
         if (key === 'gc_runs') {
             target = 'movingAverage(' + target + ',45)';
         }
-        var fullKey = formatStatsdKey(metricType(key), target);
-        targets.push(target);
+        targets.push(formatStatsdKey(metricType(key), target));
     } else if (typ === 'e2e') {
         targets = _.map(ns1['percentiles'], function(p) {
             var t;
@@ -88,11 +91,10 @@ var genTargets = function(typ, node, ns1, ns2, key) {
             if (node === '*') {
                 t = 'averageSeries(' + t + ')';
             }
-            var fullKey = formatStatsdKey(metricType(key), t);
-            return 'scale(' + t + ',0.000001)';
+            return 'scale(' + formatStatsdKey(metricType(key), t) + ',0.000001)';
         });
     } else if (typ === 'counter') {
-        var fullKey = formatStatsdKey(metricType(key), prefix + 'topic.*.channel.*.' + key);
+        fullKey = formatStatsdKey(metricType(key), prefix + 'topic.*.channel.*.' + key);
         targets.push('sumSeries(' + fullKey + ')');
     }
     return targets;

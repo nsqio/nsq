@@ -1,7 +1,7 @@
 var $ = require('jquery');
 var Backbone = require('backbone');
 
-var Pubsub = require('./lib/pubsub');
+// var Pubsub = require('./lib/pubsub');
 var Router = require('./router');
 
 var AppView = require('./views/app');

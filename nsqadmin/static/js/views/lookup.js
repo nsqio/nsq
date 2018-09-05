@@ -46,9 +46,9 @@ var LookupView = BaseView.extend({
             return;
         }
         $.post(AppState.apiPath('/topics'), JSON.stringify({
-                'topic': topic,
-                'channel': channel
-            }))
+            'topic': topic,
+            'channel': channel
+        }))
             .done(function() { window.location.reload(true); })
             .fail(this.handleAJAXError.bind(this));
     },
