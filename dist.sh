@@ -32,7 +32,7 @@ for os in linux darwin freebsd windows; do
     BUILD=$(mktemp -d ${TMPDIR:-/tmp}/nsq-XXXXX)
     TARGET="nsq-$version.$os-$arch.$goversion"
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
-        make DESTDIR=$BUILD PREFIX=/$TARGET GOFLAGS="$GOFLAGS" install
+        make DESTDIR=$BUILD PREFIX=/$TARGET BLDFLAGS="$GOFLAGS" install
     pushd $BUILD
     sudo chown -R 0:0 $TARGET
     tar czvf $TARGET.tar.gz $TARGET
