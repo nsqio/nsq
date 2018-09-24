@@ -1,9 +1,8 @@
 PREFIX=/usr/local
-DESTDIR=
-GOFLAGS=
 BINDIR=${PREFIX}/bin
-
+DESTDIR=
 BLDDIR = build
+BLDFLAGS=
 EXT=
 ifeq (${GOOS},windows)
     EXT=.exe
@@ -24,7 +23,7 @@ $(BLDDIR)/to_nsq:      $(wildcard apps/to_nsq/*.go               internal/*/*.go
 
 $(BLDDIR)/%:
 	@mkdir -p $(dir $@)
-	go build ${GOFLAGS} -o $@ ./apps/$*
+	go build ${BLDFLAGS} -o $@ ./apps/$*
 
 $(APPS): %: $(BLDDIR)/%
 
