@@ -141,7 +141,8 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 		return ProducerMap2Slice(r.registrationMap[k])
 	}
 
-	results := make(map[string]*Producer)
+	results := make(map[string]struct{})
+	var retProducers Producers
 	for k, producers := range r.registrationMap {
 		if !k.IsMatch(category, key, subkey) {
 			continue
@@ -149,11 +150,12 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 		for _, producer := range producers {
 			_, found := results[producer.peerInfo.id]
 			if found == false {
-				results[producer.peerInfo.id] = producer
+				results[producer.peerInfo.id] = struct{}{}
+				retProducers = append(retProducers, producer)
 			}
 		}
 	}
-	return ProducerMap2Slice(results)
+	return retProducers
 }
 
 func (r *RegistrationDB) LookupRegistrations(id string) Registrations {

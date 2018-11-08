@@ -265,6 +265,7 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 	producers := s.ctx.nsqlookupd.DB.FindProducers("client", "", "").FilterByActive(
 		s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
 	nodes := make([]*node, len(producers))
+	topicProducersMap := make(map[string]Producers)
 	for i, p := range producers {
 		topics := s.ctx.nsqlookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "").Keys()
 
@@ -272,10 +273,15 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 		// to add tombstone information
 		tombstones := make([]bool, len(topics))
 		for j, t := range topics {
-			topicProducers := s.ctx.nsqlookupd.DB.FindProducers("topic", t, "")
+			if _, exists := topicProducersMap[t]; !exists {
+				topicProducersMap[t] = s.ctx.nsqlookupd.DB.FindProducers("topic", t, "")
+			}
+
+			topicProducers := topicProducersMap[t]
 			for _, tp := range topicProducers {
 				if tp.peerInfo == p.peerInfo {
 					tombstones[j] = tp.IsTombstoned(s.ctx.nsqlookupd.opts.TombstoneLifetime)
+					break
 				}
 			}
 		}
