@@ -194,9 +194,10 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-	for _, m := range msgs {
+	for i, m := range msgs {
 		err := t.put(m)
 		if err != nil {
+			atomic.AddUint64(&t.messageCount, uint64(i))
 			return err
 		}
 	}
