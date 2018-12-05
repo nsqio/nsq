@@ -35,9 +35,9 @@ type FileLogger struct {
 }
 
 func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic string) (*FileLogger, error) {
-	if gzipEnabled || *rotateSize > 0 || *rotateInterval > 0 {
+	if gzipEnabled || *rotateSize > 0 || *rotateInterval > 0 || *workDir != *outputDir {
 		if strings.Index(filenameFormat, "<REV>") == -1 {
-			return nil, errors.New("missing <REV> in --filename-format when gzip or rotation enabled")
+			return nil, errors.New("missing <REV> in --filename-format when gzip, rotation, or work dir enabled")
 		}
 	} else {
 		// remove <REV> as we don't need it
@@ -164,6 +164,45 @@ func (f *FileLogger) Close() {
 			f.gzipWriter.Close()
 		}
 		f.out.Close()
+
+		// Move file from work dir to output dir if necessary, taking care not
+		// to overwrite existing files
+		if *workDir != *outputDir {
+			src := f.out.Name()
+			dst := makeOutputPath(src, *workDir, *outputDir)
+
+			// Optimistic rename
+			log.Printf("INFO: moving finished file %s to %s", src, dst)
+			err := atomicRename(src, dst)
+			if err == nil {
+				return
+			} else if !os.IsExist(err) {
+				log.Fatalf("ERROR: unable to move file from %s to %s: %s", src, dst, err)
+				return
+			}
+
+			// Optimistic rename failed, so we need to generate a new
+			// destination file name by bumping the revision number.
+			_, filenameTmpl := filepath.Split(f.lastFilename)
+			dstDir, _ := filepath.Split(dst)
+			dstTmpl := filepath.Join(dstDir, filenameTmpl)
+
+			for i := f.rev + 1; ; i++ {
+				log.Printf("INFO: destination file already exists: %s", dst)
+				dst := strings.Replace(dstTmpl, "<REV>", fmt.Sprintf("-%06d", i), -1)
+				err := atomicRename(src, dst)
+				if err != nil {
+					if os.IsExist(err) {
+						continue // next rev
+					}
+					log.Fatalf("ERROR: unable to rename file from %s to %s: %s", src, dst, err)
+					return
+				}
+				log.Printf("INFO: renamed finished file %s to %s to avoid overwrite", src, dst)
+				break
+			}
+		}
+
 		f.out = nil
 	}
 }
@@ -227,14 +266,8 @@ func (f *FileLogger) updateFile() {
 	f.lastFilename = filename
 	f.lastOpenTime = time.Now()
 
-	fullPath := path.Join(*outputDir, filename)
-	dir, _ := filepath.Split(fullPath)
-	if dir != "" {
-		err := os.MkdirAll(dir, 0770)
-		if err != nil {
-			log.Fatalf("ERROR: %s Unable to create %s", err, dir)
-		}
-	}
+	fullPath := path.Join(*workDir, filename)
+	makeOutputDir(fullPath)
 
 	f.Close()
 
@@ -242,6 +275,24 @@ func (f *FileLogger) updateFile() {
 	var fi os.FileInfo
 	for ; ; f.rev++ {
 		absFilename := strings.Replace(fullPath, "<REV>", fmt.Sprintf("-%06d", f.rev), -1)
+
+		// If we're using a working directory for in-progress files,
+		// proactively check for duplicate file names in the output dir to
+		// prevent conflicts on rename in the normal case
+		if *workDir != *outputDir {
+			outputFileName := makeOutputPath(absFilename, *workDir, *outputDir)
+			makeOutputDir(outputFileName)
+
+			_, err := os.Stat(outputFileName)
+			if err == nil {
+				log.Printf("INFO: output file already exists: %s", outputFileName)
+				continue // next rev
+			} else if !os.IsNotExist(err) {
+				log.Fatalf("ERROR: unable to stat output file %s: %s", outputFileName, err)
+				return
+			}
+		}
+
 		openFlag := os.O_WRONLY | os.O_CREATE
 		if f.gzipEnabled {
 			openFlag |= os.O_EXCL
@@ -251,7 +302,7 @@ func (f *FileLogger) updateFile() {
 		f.out, err = os.OpenFile(absFilename, openFlag, 0666)
 		if err != nil {
 			if os.IsExist(err) {
-				log.Printf("INFO: file already exists: %s", absFilename)
+				log.Printf("INFO: working file already exists: %s", absFilename)
 				continue
 			}
 			log.Fatalf("ERROR: %s Unable to open %s", err, absFilename)
@@ -277,4 +328,36 @@ func (f *FileLogger) updateFile() {
 	} else {
 		f.writer = f
 	}
+}
+
+// makeOutputFilename translates a file path from work dir to output dir
+func makeOutputPath(workPath string, workDir string, outputDir string) string {
+	if workDir == outputDir {
+		return workPath
+	}
+	return filepath.Join(outputDir, strings.TrimPrefix(workPath, workDir))
+}
+
+func makeOutputDir(path string) {
+	dir, _ := filepath.Split(path)
+	if dir != "" {
+		err := os.MkdirAll(dir, 0770)
+		if err != nil {
+			log.Fatalf("ERROR: %s Unable to create %s", err, dir)
+		}
+	}
+}
+
+func atomicRename(src, dst string) error {
+	err := os.Link(src, dst)
+	if err != nil {
+		return err
+	}
+
+	err = os.Remove(src)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

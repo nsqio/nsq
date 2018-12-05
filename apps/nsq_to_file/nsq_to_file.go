@@ -23,6 +23,7 @@ var (
 	maxInFlight = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 
 	outputDir      = flag.String("output-dir", "/tmp", "directory to write output files to")
+	workDir        = flag.String("work-dir", "", "directory for in-progress files before moving to output-dir")
 	datetimeFormat = flag.String("datetime-format", "%Y-%m-%d_%H", "strftime compatible format for <DATETIME> in filename format")
 	filenameFormat = flag.String("filename-format", "<TOPIC>.<HOST><REV>.<DATETIME>.log", "output filename format (<TOPIC>, <HOST>, <PID>, <DATETIME>, <REV> are replaced. <REV> is increased when file already exists)")
 	hostIdentifier = flag.String("host-identifier", "", "value to output in log filename in place of hostname. <SHORT_HOST> and <HOSTNAME> are valid replacement tokens")
@@ -34,7 +35,7 @@ var (
 
 	rotateSize     = flag.Int64("rotate-size", 0, "rotate the file when it grows bigger than `rotate-size` bytes")
 	rotateInterval = flag.Duration("rotate-interval", 0*time.Second, "rotate the file every duration")
-	syncInterval = flag.Duration("sync-interval", 30*time.Second, "sync file to disk every duration")
+	syncInterval   = flag.Duration("sync-interval", 30*time.Second, "sync file to disk every duration")
 
 	httpConnectTimeout = flag.Duration("http-client-connect-timeout", 2*time.Second, "timeout for HTTP connect")
 	httpRequestTimeout = flag.Duration("http-client-request-timeout", 5*time.Second, "timeout for HTTP request")
@@ -100,6 +101,10 @@ func main() {
 
 	if len(topics) == 0 && len(lookupdHTTPAddrs) == 0 {
 		log.Fatal("--lookupd-http-address must be specified when no --topic specified")
+	}
+
+	if *workDir == "" {
+		*workDir = *outputDir
 	}
 
 	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", version.Binary, nsq.VERSION)
