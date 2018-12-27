@@ -1,6 +1,8 @@
 github.com/BurntSushi/toml v0.0.0-20130929175405-2dff11163ee6/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932/go.mod h1:NOuUCSz6Q9T7+igc/hlvDOUdtWKryOrtFyIVABv/p7k=
 github.com/bitly/timer_metrics v0.0.0-20150203034119-afad1794bb13/go.mod h1:EJqiy/5FjJk5tEOxXhnxvFijOmeB5ka1D2fvqHOXUXA=
+github.com/bitly/timer_metrics v0.0.0-20170606164300-b1c65ca7ae62 h1:XweEvNzrfQJdCmTP7Uo8LQP6P5cwQWwqvXobrZQcW0M=
+github.com/bitly/timer_metrics v0.0.0-20170606164300-b1c65ca7ae62/go.mod h1:EJqiy/5FjJk5tEOxXhnxvFijOmeB5ka1D2fvqHOXUXA=
 github.com/blang/semver v2.1.0+incompatible h1:TtbN5kU/oDXfHg4iuCEQ+vUTdr8ED02yUWG0f5VPVs8=
 github.com/blang/semver v2.1.0+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
 github.com/blang/semver v3.5.1+incompatible h1:cQNTCjp13qL8KC3Nbxr/y2Bqb63oX6wdnnjpJbkM4JQ=

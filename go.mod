@@ -3,7 +3,7 @@ module github.com/nsqio/nsq
 require (
 	github.com/BurntSushi/toml v0.0.0-20130929175405-2dff11163ee6
 	github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932
-	github.com/bitly/timer_metrics v0.0.0-20150203034119-afad1794bb13
+	github.com/bitly/timer_metrics v0.0.0-20170606164300-b1c65ca7ae62
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/golang/snappy v0.0.0-20160529050041-d9eb7a3d35ec
