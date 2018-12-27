@@ -1,0 +1,16 @@
+github.com/BurntSushi/toml v0.0.0-20130929175405-2dff11163ee6/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
+github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932/go.mod h1:NOuUCSz6Q9T7+igc/hlvDOUdtWKryOrtFyIVABv/p7k=
+github.com/bitly/timer_metrics v0.0.0-20150203034119-afad1794bb13/go.mod h1:EJqiy/5FjJk5tEOxXhnxvFijOmeB5ka1D2fvqHOXUXA=
+github.com/blang/semver v2.1.0+incompatible h1:TtbN5kU/oDXfHg4iuCEQ+vUTdr8ED02yUWG0f5VPVs8=
+github.com/blang/semver v2.1.0+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
+github.com/bmizerany/perks v0.0.0-20140429223840-6cb9d9d72930 h1:96htJKLOP8bziHYfiB1P1Jox0QVYfKP0cBBM7773OZk=
+github.com/bmizerany/perks v0.0.0-20140429223840-6cb9d9d72930/go.mod h1:ac9efd0D1fsDb3EJvhqgXRbFx7bs2wqZ10HQPeU8U/Q=
+github.com/golang/snappy v0.0.0-20160529050041-d9eb7a3d35ec/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
+github.com/judwhite/go-svc v1.0.0/go.mod h1:EeMSAFO3mLgEQfcvnZ50JDG0O1uQlagpAbMS6talrXE=
+github.com/julienschmidt/httprouter v0.0.0-20150708215400-6aacfd5ab513 h1:yamBJI2MHHq8Ipx5KqOeRxWvVjC4jnOiRlecQmMSyoA=
+github.com/julienschmidt/httprouter v0.0.0-20150708215400-6aacfd5ab513/go.mod h1:SYymIcj16QtmaHHD7aYtjjsJG7VTCxuUUipMqKk8s4w=
+github.com/mreiferson/go-options v0.0.0-20161229190002-77551d20752b/go.mod h1:A0JOgZNsj9V+npbgxH0Ib75PvrHS6Ezri/4HdcTp/DI=
+github.com/nsqio/go-diskqueue v0.0.0-20170827071139-0681a1afee12 h1:yqHOGdU2I1AizhgPABQrDXYiI+284PQVsAwuX3SZosI=
+github.com/nsqio/go-diskqueue v0.0.0-20170827071139-0681a1afee12/go.mod h1:AYinRDfdKMmVKTPI8wOcLgjcw2pTS3jo8fib1VxOzsE=
+github.com/nsqio/go-nsq v0.0.0-20161229185821-a53d495e8142/go.mod h1:XP5zaUs3pqf+Q71EqUJs3HYfBIqfK6G83WQMdNN+Ito=
+golang.org/x/sys v0.0.0-20171028101351-661970f62f58/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
