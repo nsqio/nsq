@@ -8,7 +8,7 @@ require (
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
 	github.com/judwhite/go-svc v1.0.0
-	github.com/julienschmidt/httprouter v0.0.0-20150708215400-6aacfd5ab513
+	github.com/julienschmidt/httprouter v1.2.0
 	github.com/mreiferson/go-options v0.0.0-20161229190002-77551d20752b
 	github.com/nsqio/go-diskqueue v0.0.0-20180306152900-74cfbc9de839
 	github.com/nsqio/go-nsq v1.0.7
