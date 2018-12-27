@@ -5,7 +5,7 @@ require (
 	github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932
 	github.com/bitly/timer_metrics v0.0.0-20150203034119-afad1794bb13
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/bmizerany/perks v0.0.0-20140429223840-6cb9d9d72930
+	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/golang/snappy v0.0.0-20160529050041-d9eb7a3d35ec
 	github.com/judwhite/go-svc v1.0.0
 	github.com/julienschmidt/httprouter v0.0.0-20150708215400-6aacfd5ab513
