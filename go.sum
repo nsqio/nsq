@@ -3,6 +3,8 @@ github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932/go.mod h1:NOuUCS
 github.com/bitly/timer_metrics v0.0.0-20150203034119-afad1794bb13/go.mod h1:EJqiy/5FjJk5tEOxXhnxvFijOmeB5ka1D2fvqHOXUXA=
 github.com/blang/semver v2.1.0+incompatible h1:TtbN5kU/oDXfHg4iuCEQ+vUTdr8ED02yUWG0f5VPVs8=
 github.com/blang/semver v2.1.0+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
+github.com/blang/semver v3.5.1+incompatible h1:cQNTCjp13qL8KC3Nbxr/y2Bqb63oX6wdnnjpJbkM4JQ=
+github.com/blang/semver v3.5.1+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
 github.com/bmizerany/perks v0.0.0-20140429223840-6cb9d9d72930 h1:96htJKLOP8bziHYfiB1P1Jox0QVYfKP0cBBM7773OZk=
 github.com/bmizerany/perks v0.0.0-20140429223840-6cb9d9d72930/go.mod h1:ac9efd0D1fsDb3EJvhqgXRbFx7bs2wqZ10HQPeU8U/Q=
 github.com/golang/snappy v0.0.0-20160529050041-d9eb7a3d35ec h1:ZaSUjYC8aWT/om43c8YVz0SqjT8ABtqw7REbZGsCroE=
