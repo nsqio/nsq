@@ -17,7 +17,6 @@ set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 rm -rf   $DIR/dist/docker
 mkdir -p $DIR/dist/docker
-dep ensure
 
 GOFLAGS='-ldflags="-s -w"'
 arch=$(go env GOARCH)
@@ -31,7 +30,7 @@ for os in linux darwin freebsd windows; do
     echo "... building v$version for $os/$arch"
     BUILD=$(mktemp -d ${TMPDIR:-/tmp}/nsq-XXXXX)
     TARGET="nsq-$version.$os-$arch.$goversion"
-    GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
+    GO111MODULE=on GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
         make DESTDIR=$BUILD PREFIX=/$TARGET BLDFLAGS="$GOFLAGS" install
     pushd $BUILD
     sudo chown -R 0:0 $TARGET

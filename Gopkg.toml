@@ -23,44 +23,44 @@
 
 [[constraint]]
   name = "github.com/BurntSushi/toml"
-  revision = "2dff11163ee667d51dcc066660925a92ce138deb"
+  revision = "v0.3.1"
 
 [[constraint]]
   name = "github.com/bitly/go-hostpool"
-  revision = "a3a6125de9329587178a9792dc8f4bc98e620d2d"
+  revision = "a3a6125de932"
 
 [[constraint]]
   name = "github.com/bitly/timer_metrics"
-  revision = "afad1794bb13e2a094720aeb27c088aa64564895"
+  revision = "b1c65ca7ae62"
 
 [[constraint]]
   name = "github.com/blang/semver"
-  revision = "9bf7bff48b0388cb75991e58c6df7d13e982f1f2"
+  revision = "v3.5.1"
 
 [[constraint]]
   name = "github.com/bmizerany/perks"
-  revision = "6cb9d9d729303ee2628580d9aec5db968da3a607"
+  revision = "d9a9656a3a4b"
 
 [[constraint]]
   name = "github.com/golang/snappy"
-  revision = "d9eb7a3d35ec988b8585d4a0068e462c27d28380"
+  revision = "2e65f85255db"
 
 [[constraint]]
   name = "github.com/judwhite/go-svc"
-  revision = "63c12402f579f0bdf022653c821a1aa5d7544f01"
+  revision = "v1.0.0"
 
 [[constraint]]
   name = "github.com/julienschmidt/httprouter"
-  revision = "6aacfd5ab513e34f7e64ea9627ab9670371b34e7"
+  revision = "v1.2.0"
 
 [[constraint]]
   name = "github.com/mreiferson/go-options"
-  revision = "77551d20752b54535462404ad9d877ebdb26e53d"
+  revision = "77551d20752b"
 
 [[constraint]]
   name = "github.com/nsqio/go-diskqueue"
-  revision = "0681a1afee1245efa503b7543989fc26d8f268bc"
+  revision = "74cfbc9de839"
 
 [[constraint]]
   name = "github.com/nsqio/go-nsq"
-  revision = "a53d495e81424aaf7a7665a9d32a97715c40e953"
+  revision = "v1.0.7"
