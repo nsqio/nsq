@@ -170,16 +170,21 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		// if anything is actually removed
 		registrations := p.ctx.nsqlookupd.DB.FindRegistrations("channel", topic, "*")
 		for _, r := range registrations {
-			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
+			removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id)
+			if removed {
 				p.ctx.nsqlookupd.logf(LOG_WARN, "client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
 					client, "channel", topic, r.SubKey)
 			}
 		}
 
 		key := Registration{"topic", topic, ""}
-		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
+		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id)
+		if removed {
 			p.ctx.nsqlookupd.logf(LOG_INFO, "DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "topic", topic, "")
+		}
+		if left == 0 && strings.HasSuffix(topic, "#ephemeral") {
+			p.ctx.nsqlookupd.DB.RemoveRegistration(key)
 		}
 	}
 
