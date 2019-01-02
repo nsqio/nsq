@@ -15,7 +15,7 @@ import (
 type TopicDiscoverer struct {
 	opts     *Options
 	ci       *clusterinfo.ClusterInfo
-	topics   map[string]*ConsumerFileLogger
+	topics   map[string]*FileLogger
 	hupChan  chan os.Signal
 	termChan chan os.Signal
 	wg       sync.WaitGroup
@@ -27,7 +27,7 @@ func newTopicDiscoverer(opts *Options, cfg *nsq.Config, hupChan chan os.Signal, 
 	return &TopicDiscoverer{
 		opts:     opts,
 		ci:       clusterinfo.New(nil, client),
-		topics:   make(map[string]*ConsumerFileLogger),
+		topics:   make(map[string]*FileLogger),
 		hupChan:  hupChan,
 		termChan: termChan,
 		cfg:      cfg,
@@ -45,18 +45,18 @@ func (t *TopicDiscoverer) updateTopics(topics []string) {
 			continue
 		}
 
-		cfl, err := newConsumerFileLogger(t.opts, topic, t.cfg)
+		fl, err := NewFileLogger(t.opts, topic, t.cfg)
 		if err != nil {
 			log.Printf("ERROR: couldn't create logger for new topic %s: %s", topic, err)
 			continue
 		}
-		t.topics[topic] = cfl
+		t.topics[topic] = fl
 
 		t.wg.Add(1)
-		go func(cfl *ConsumerFileLogger) {
-			cfl.F.router(cfl.C)
+		go func(fl *FileLogger) {
+			fl.router()
 			t.wg.Done()
-		}(cfl)
+		}(fl)
 	}
 }
 
@@ -77,13 +77,13 @@ forloop:
 			}
 			t.updateTopics(newTopics)
 		case <-t.termChan:
-			for _, cfl := range t.topics {
-				close(cfl.F.termChan)
+			for _, fl := range t.topics {
+				close(fl.termChan)
 			}
 			break forloop
 		case <-t.hupChan:
-			for _, cfl := range t.topics {
-				cfl.F.hupChan <- true
+			for _, fl := range t.topics {
+				fl.hupChan <- true
 			}
 		}
 	}
