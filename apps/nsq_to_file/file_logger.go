@@ -16,6 +16,8 @@ import (
 )
 
 type FileLogger struct {
+	opts *Options
+
 	out              *os.File
 	writer           io.Writer
 	gzipWriter       *gzip.Writer
@@ -34,14 +36,16 @@ type FileLogger struct {
 	rev          uint
 }
 
-func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic string) (*FileLogger, error) {
-	if gzipEnabled || *rotateSize > 0 || *rotateInterval > 0 || *workDir != *outputDir {
-		if strings.Index(filenameFormat, "<REV>") == -1 {
+func NewFileLogger(opts *Options, topic string) (*FileLogger, error) {
+	computedFilenameFormat := opts.FilenameFormat
+
+	if opts.GZIP || opts.RotateSize > 0 || opts.RotateInterval > 0 || opts.WorkDir != opts.OutputDir {
+		if strings.Index(computedFilenameFormat, "<REV>") == -1 {
 			return nil, errors.New("missing <REV> in --filename-format when gzip, rotation, or work dir enabled")
 		}
 	} else {
 		// remove <REV> as we don't need it
-		filenameFormat = strings.Replace(filenameFormat, "<REV>", "", -1)
+		computedFilenameFormat = strings.Replace(computedFilenameFormat, "<REV>", "", -1)
 	}
 
 	hostname, err := os.Hostname()
@@ -50,22 +54,23 @@ func NewFileLogger(gzipEnabled bool, compressionLevel int, filenameFormat, topic
 	}
 	shortHostname := strings.Split(hostname, ".")[0]
 	identifier := shortHostname
-	if len(*hostIdentifier) != 0 {
-		identifier = strings.Replace(*hostIdentifier, "<SHORT_HOST>", shortHostname, -1)
+	if len(opts.HostIdentifier) != 0 {
+		identifier = strings.Replace(opts.HostIdentifier, "<SHORT_HOST>", shortHostname, -1)
 		identifier = strings.Replace(identifier, "<HOSTNAME>", hostname, -1)
 	}
-	filenameFormat = strings.Replace(filenameFormat, "<TOPIC>", topic, -1)
-	filenameFormat = strings.Replace(filenameFormat, "<HOST>", identifier, -1)
-	filenameFormat = strings.Replace(filenameFormat, "<PID>", fmt.Sprintf("%d", os.Getpid()), -1)
-	if gzipEnabled && !strings.HasSuffix(filenameFormat, ".gz") {
-		filenameFormat = filenameFormat + ".gz"
+	computedFilenameFormat = strings.Replace(computedFilenameFormat, "<TOPIC>", topic, -1)
+	computedFilenameFormat = strings.Replace(computedFilenameFormat, "<HOST>", identifier, -1)
+	computedFilenameFormat = strings.Replace(computedFilenameFormat, "<PID>", fmt.Sprintf("%d", os.Getpid()), -1)
+	if opts.GZIP && !strings.HasSuffix(computedFilenameFormat, ".gz") {
+		computedFilenameFormat = computedFilenameFormat + ".gz"
 	}
 
 	f := &FileLogger{
+		opts:             opts,
 		logChan:          make(chan *nsq.Message, 1),
-		compressionLevel: compressionLevel,
-		filenameFormat:   filenameFormat,
-		gzipEnabled:      gzipEnabled,
+		compressionLevel: opts.GZIPLevel,
+		filenameFormat:   computedFilenameFormat,
+		gzipEnabled:      opts.GZIP,
 		termChan:         make(chan bool),
 		hupChan:          make(chan bool),
 	}
@@ -80,9 +85,9 @@ func (f *FileLogger) HandleMessage(m *nsq.Message) error {
 
 func (f *FileLogger) router(r *nsq.Consumer) {
 	pos := 0
-	output := make([]*nsq.Message, *maxInFlight)
+	output := make([]*nsq.Message, f.opts.MaxInFlight)
 	sync := false
-	ticker := time.NewTicker(*syncInterval)
+	ticker := time.NewTicker(f.opts.SyncInterval)
 	closing := false
 	closeFile := false
 	exit := false
@@ -103,7 +108,7 @@ func (f *FileLogger) router(r *nsq.Consumer) {
 			closeFile = true
 		case <-ticker.C:
 			if f.needsFileRotate() {
-				if *skipEmptyFiles {
+				if f.opts.SkipEmptyFiles {
 					closeFile = true
 				} else {
 					f.updateFile()
@@ -167,9 +172,9 @@ func (f *FileLogger) Close() {
 
 		// Move file from work dir to output dir if necessary, taking care not
 		// to overwrite existing files
-		if *workDir != *outputDir {
+		if f.opts.WorkDir != f.opts.OutputDir {
 			src := f.out.Name()
-			dst := makeOutputPath(src, *workDir, *outputDir)
+			dst := makeOutputPath(src, f.opts.WorkDir, f.opts.OutputDir)
 
 			// Optimistic rename
 			log.Printf("INFO: moving finished file %s to %s", src, dst)
@@ -227,7 +232,7 @@ func (f *FileLogger) Sync() error {
 
 func (f *FileLogger) calculateCurrentFilename() string {
 	t := time.Now()
-	datetime := strftime(*datetimeFormat, t)
+	datetime := strftime(f.opts.DatetimeFormat, t)
 	return strings.Replace(f.filenameFormat, "<DATETIME>", datetime, -1)
 }
 
@@ -242,14 +247,14 @@ func (f *FileLogger) needsFileRotate() bool {
 		return true // rotate by filename
 	}
 
-	if *rotateInterval > 0 {
-		if s := time.Since(f.lastOpenTime); s > *rotateInterval {
+	if f.opts.RotateInterval > 0 {
+		if s := time.Since(f.lastOpenTime); s > f.opts.RotateInterval {
 			log.Printf("INFO: %s since last open, need rotate", s)
 			return true // rotate by interval
 		}
 	}
 
-	if *rotateSize > 0 && f.filesize > *rotateSize {
+	if f.opts.RotateSize > 0 && f.filesize > f.opts.RotateSize {
 		log.Printf("INFO: %s current %d bytes, need rotate", f.out.Name(), f.filesize)
 		return true // rotate by size
 	}
@@ -266,7 +271,7 @@ func (f *FileLogger) updateFile() {
 	f.lastFilename = filename
 	f.lastOpenTime = time.Now()
 
-	fullPath := path.Join(*workDir, filename)
+	fullPath := path.Join(f.opts.WorkDir, filename)
 	makeOutputDir(fullPath)
 
 	f.Close()
@@ -279,8 +284,8 @@ func (f *FileLogger) updateFile() {
 		// If we're using a working directory for in-progress files,
 		// proactively check for duplicate file names in the output dir to
 		// prevent conflicts on rename in the normal case
-		if *workDir != *outputDir {
-			outputFileName := makeOutputPath(absFilename, *workDir, *outputDir)
+		if f.opts.WorkDir != f.opts.OutputDir {
+			outputFileName := makeOutputPath(absFilename, f.opts.WorkDir, f.opts.OutputDir)
 			makeOutputDir(outputFileName)
 
 			_, err := os.Stat(outputFileName)

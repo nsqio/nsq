@@ -9,25 +9,25 @@ type ConsumerFileLogger struct {
 	C *nsq.Consumer
 }
 
-func newConsumerFileLogger(topic string, cfg *nsq.Config) (*ConsumerFileLogger, error) {
-	f, err := NewFileLogger(*gzipEnabled, *gzipLevel, *filenameFormat, topic)
+func newConsumerFileLogger(opts *Options, topic string, cfg *nsq.Config) (*ConsumerFileLogger, error) {
+	f, err := NewFileLogger(opts, topic)
 	if err != nil {
 		return nil, err
 	}
 
-	c, err := nsq.NewConsumer(topic, *channel, cfg)
+	c, err := nsq.NewConsumer(topic, opts.Channel, cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	c.AddHandler(f)
 
-	err = c.ConnectToNSQDs(nsqdTCPAddrs)
+	err = c.ConnectToNSQDs(opts.NSQDTCPAddrs)
 	if err != nil {
 		return nil, err
 	}
 
-	err = c.ConnectToNSQLookupds(lookupdHTTPAddrs)
+	err = c.ConnectToNSQLookupds(opts.NSQLookupdHTTPAddrs)
 	if err != nil {
 		return nil, err
 	}

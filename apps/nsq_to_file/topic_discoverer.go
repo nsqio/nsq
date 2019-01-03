@@ -13,6 +13,7 @@ import (
 )
 
 type TopicDiscoverer struct {
+	opts     *Options
 	ci       *clusterinfo.ClusterInfo
 	topics   map[string]*ConsumerFileLogger
 	hupChan  chan os.Signal
@@ -21,11 +22,11 @@ type TopicDiscoverer struct {
 	cfg      *nsq.Config
 }
 
-func newTopicDiscoverer(cfg *nsq.Config,
-	hupChan chan os.Signal, termChan chan os.Signal,
-	connectTimeout time.Duration, requestTimeout time.Duration) *TopicDiscoverer {
+func newTopicDiscoverer(opts *Options, cfg *nsq.Config, hupChan chan os.Signal, termChan chan os.Signal) *TopicDiscoverer {
+	client := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
 	return &TopicDiscoverer{
-		ci:       clusterinfo.New(nil, http_api.NewClient(nil, connectTimeout, requestTimeout)),
+		opts:     opts,
+		ci:       clusterinfo.New(nil, client),
 		topics:   make(map[string]*ConsumerFileLogger),
 		hupChan:  hupChan,
 		termChan: termChan,
@@ -33,18 +34,18 @@ func newTopicDiscoverer(cfg *nsq.Config,
 	}
 }
 
-func (t *TopicDiscoverer) updateTopics(topics []string, pattern string) {
+func (t *TopicDiscoverer) updateTopics(topics []string) {
 	for _, topic := range topics {
 		if _, ok := t.topics[topic]; ok {
 			continue
 		}
 
-		if !allowTopicName(pattern, topic) {
-			log.Printf("skipping topic %s (doesn't match pattern %s)", topic, pattern)
+		if !t.isTopicAllowed(topic) {
+			log.Printf("skipping topic %s (doesn't match pattern %s)", topic, t.opts.TopicPattern)
 			continue
 		}
 
-		cfl, err := newConsumerFileLogger(topic, t.cfg)
+		cfl, err := newConsumerFileLogger(t.opts, topic, t.cfg)
 		if err != nil {
 			log.Printf("ERROR: couldn't create logger for new topic %s: %s", topic, err)
 			continue
@@ -59,21 +60,22 @@ func (t *TopicDiscoverer) updateTopics(topics []string, pattern string) {
 	}
 }
 
-func (t *TopicDiscoverer) poller(addrs []string, sync bool, pattern string) {
+func (t *TopicDiscoverer) run() {
 	var ticker <-chan time.Time
-	if sync {
-		ticker = time.Tick(*topicPollRate)
+	if len(t.opts.Topics) == 0 {
+		ticker = time.Tick(t.opts.TopicRefreshInterval)
 	}
+	t.updateTopics(t.opts.Topics)
 forloop:
 	for {
 		select {
 		case <-ticker:
-			newTopics, err := t.ci.GetLookupdTopics(addrs)
+			newTopics, err := t.ci.GetLookupdTopics(t.opts.NSQLookupdHTTPAddrs)
 			if err != nil {
 				log.Printf("ERROR: could not retrieve topic list: %s", err)
 				continue
 			}
-			t.updateTopics(newTopics, pattern)
+			t.updateTopics(newTopics)
 		case <-t.termChan:
 			for _, cfl := range t.topics {
 				close(cfl.F.termChan)
@@ -88,11 +90,11 @@ forloop:
 	t.wg.Wait()
 }
 
-func allowTopicName(pattern string, name string) bool {
-	if pattern == "" {
+func (t *TopicDiscoverer) isTopicAllowed(topic string) bool {
+	if t.opts.TopicPattern == "" {
 		return true
 	}
-	match, err := regexp.MatchString(pattern, name)
+	match, err := regexp.MatchString(t.opts.TopicPattern, topic)
 	if err != nil {
 		return false
 	}
