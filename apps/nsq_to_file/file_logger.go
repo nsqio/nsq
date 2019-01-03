@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -13,9 +12,11 @@ import (
 	"time"
 
 	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/lg"
 )
 
 type FileLogger struct {
+	logf     lg.AppLogFunc
 	opts     *Options
 	consumer *nsq.Consumer
 
@@ -35,7 +36,7 @@ type FileLogger struct {
 	rev      uint
 }
 
-func NewFileLogger(opts *Options, topic string, cfg *nsq.Config) (*FileLogger, error) {
+func NewFileLogger(logf lg.AppLogFunc, opts *Options, topic string, cfg *nsq.Config) (*FileLogger, error) {
 	computedFilenameFormat, err := computeFilenameFormat(opts, topic)
 	if err != nil {
 		return nil, err
@@ -47,6 +48,7 @@ func NewFileLogger(opts *Options, topic string, cfg *nsq.Config) (*FileLogger, e
 	}
 
 	f := &FileLogger{
+		logf:           logf,
 		opts:           opts,
 		consumer:       consumer,
 		logChan:        make(chan *nsq.Message, 1),
@@ -112,11 +114,13 @@ func (f *FileLogger) router() {
 			}
 			_, err := f.Write(m.Body)
 			if err != nil {
-				log.Fatalf("ERROR: writing message to disk - %s", err)
+				f.logf(lg.FATAL, "writing message to disk: %s", err)
+				os.Exit(1)
 			}
 			_, err = f.Write([]byte("\n"))
 			if err != nil {
-				log.Fatalf("ERROR: writing newline to disk - %s", err)
+				f.logf(lg.FATAL, "writing newline to disk: %s", err)
+				os.Exit(1)
 			}
 			output[pos] = m
 			pos++
@@ -127,10 +131,11 @@ func (f *FileLogger) router() {
 
 		if sync || f.consumer.IsStarved() {
 			if pos > 0 {
-				log.Printf("syncing %d records to disk", pos)
+				f.logf(lg.INFO, "syncing %d records to disk", pos)
 				err := f.Sync()
 				if err != nil {
-					log.Fatalf("ERROR: failed syncing messages - %s", err)
+					f.logf(lg.FATAL, "failed syncing messages: %s", err)
+					os.Exit(1)
 				}
 				for pos > 0 {
 					pos--
@@ -161,16 +166,19 @@ func (f *FileLogger) Close() {
 	if f.gzipWriter != nil {
 		err := f.gzipWriter.Close()
 		if err != nil {
-			log.Fatalf("ERROR: failed to close GZIP writer: %s", err)
+			f.logf(lg.FATAL, "failed to close GZIP writer: %s", err)
+			os.Exit(1)
 		}
 	}
 	err := f.out.Sync()
 	if err != nil {
-		log.Fatalf("ERROR: failed to fsync output file: %s", err)
+		f.logf(lg.FATAL, "failed to fsync output file: %s", err)
+		os.Exit(1)
 	}
 	err = f.out.Close()
 	if err != nil {
-		log.Fatalf("ERROR: failed to close output file: %s", err)
+		f.logf(lg.FATAL, "failed to close output file: %s", err)
+		os.Exit(1)
 	}
 
 	// Move file from work dir to output dir if necessary, taking care not
@@ -180,13 +188,13 @@ func (f *FileLogger) Close() {
 		dst := filepath.Join(f.opts.OutputDir, strings.TrimPrefix(src, f.opts.WorkDir))
 
 		// Optimistic rename
-		log.Printf("INFO: moving finished file %s to %s", src, dst)
+		f.logf(lg.INFO, "moving finished file %s to %s", src, dst)
 		err := exclusiveRename(src, dst)
 		if err == nil {
 			return
 		} else if !os.IsExist(err) {
-			log.Fatalf("ERROR: unable to move file from %s to %s: %s", src, dst, err)
-			return
+			f.logf(lg.FATAL, "unable to move file from %s to %s: %s", src, dst, err)
+			os.Exit(1)
 		}
 
 		// Optimistic rename failed, so we need to generate a new
@@ -196,17 +204,17 @@ func (f *FileLogger) Close() {
 		dstTmpl := filepath.Join(dstDir, filenameTmpl)
 
 		for i := f.rev + 1; ; i++ {
-			log.Printf("INFO: destination file already exists: %s", dst)
+			f.logf(lg.WARN, "destination file already exists: %s", dst)
 			dst := strings.Replace(dstTmpl, "<REV>", fmt.Sprintf("-%06d", i), -1)
 			err := exclusiveRename(src, dst)
 			if err != nil {
 				if os.IsExist(err) {
 					continue // next rev
 				}
-				log.Fatalf("ERROR: unable to rename file from %s to %s: %s", src, dst, err)
-				return
+				f.logf(lg.FATAL, "unable to rename file from %s to %s: %s", src, dst, err)
+				os.Exit(1)
 			}
-			log.Printf("INFO: renamed finished file %s to %s to avoid overwrite", src, dst)
+			f.logf(lg.INFO, "renamed finished file %s to %s to avoid overwrite", src, dst)
 			break
 		}
 	}
@@ -243,19 +251,19 @@ func (f *FileLogger) needsRotation() bool {
 
 	filename := f.currentFilename()
 	if filename != f.filename {
-		log.Printf("INFO: new filename %s, rotating...", filename)
+		f.logf(lg.INFO, "new filename %s, rotating...", filename)
 		return true // rotate by filename
 	}
 
 	if f.opts.RotateInterval > 0 {
 		if s := time.Since(f.openTime); s > f.opts.RotateInterval {
-			log.Printf("INFO: %s since last open, rotating...", s)
+			f.logf(lg.INFO, "%s since last open, rotating...", s)
 			return true // rotate by interval
 		}
 	}
 
 	if f.opts.RotateSize > 0 && f.filesize > f.opts.RotateSize {
-		log.Printf("INFO: %s currently %d bytes (> %d), rotating...",
+		f.logf(lg.INFO, "%s currently %d bytes (> %d), rotating...",
 			f.out.Name(), f.filesize, f.opts.RotateSize)
 		return true // rotate by size
 	}
@@ -274,7 +282,7 @@ func (f *FileLogger) updateFile() {
 	f.openTime = time.Now()
 
 	fullPath := path.Join(f.opts.WorkDir, filename)
-	makeDirFromPath(fullPath)
+	makeDirFromPath(f.logf, fullPath)
 
 	f.Close()
 
@@ -288,14 +296,15 @@ func (f *FileLogger) updateFile() {
 		// prevent conflicts on rename in the normal case
 		if f.opts.WorkDir != f.opts.OutputDir {
 			outputFileName := filepath.Join(f.opts.OutputDir, strings.TrimPrefix(absFilename, f.opts.WorkDir))
-			makeDirFromPath(outputFileName)
+			makeDirFromPath(f.logf, outputFileName)
 
 			_, err := os.Stat(outputFileName)
 			if err == nil {
-				log.Printf("INFO: output file already exists: %s", outputFileName)
+				f.logf(lg.WARN, "output file already exists: %s", outputFileName)
 				continue // next rev
 			} else if !os.IsNotExist(err) {
-				log.Fatalf("ERROR: unable to stat output file %s: %s", outputFileName, err)
+				f.logf(lg.FATAL, "unable to stat output file %s: %s", outputFileName, err)
+				os.Exit(1)
 			}
 		}
 
@@ -308,17 +317,18 @@ func (f *FileLogger) updateFile() {
 		f.out, err = os.OpenFile(absFilename, openFlag, 0666)
 		if err != nil {
 			if os.IsExist(err) {
-				log.Printf("INFO: working file already exists: %s", absFilename)
+				f.logf(lg.WARN, "working file already exists: %s", absFilename)
 				continue
 			}
-			log.Fatalf("ERROR: %s Unable to open %s", err, absFilename)
+			f.logf(lg.FATAL, "unable to open %s: %s", absFilename, err)
+			os.Exit(1)
 		}
 
-		log.Printf("INFO: opening %s", absFilename)
+		f.logf(lg.INFO, "opening %s", absFilename)
 
 		fi, err = f.out.Stat()
 		if err != nil {
-			log.Fatalf("ERROR: %s Unable to stat file %s", err, f.out.Name())
+			f.logf(lg.FATAL, "unable to stat file %s: %s", f.out.Name(), err)
 		}
 		f.filesize = fi.Size()
 		if f.filesize == 0 {
@@ -340,12 +350,13 @@ func (f *FileLogger) updateFile() {
 	}
 }
 
-func makeDirFromPath(path string) {
+func makeDirFromPath(logf lg.AppLogFunc, path string) {
 	dir, _ := filepath.Split(path)
 	if dir != "" {
 		err := os.MkdirAll(dir, 0770)
 		if err != nil {
-			log.Fatalf("ERROR: %s Unable to create %s", err, dir)
+			logf(lg.FATAL, "unable to create dir %s: %s", dir, err)
+			os.Exit(1)
 		}
 	}
 }

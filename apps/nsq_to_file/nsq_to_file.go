@@ -14,6 +14,7 @@ import (
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/version"
 )
 
@@ -31,6 +32,8 @@ func flagSet() *flag.FlagSet {
 	fs := flag.NewFlagSet("nsqd", flag.ExitOnError)
 
 	fs.Bool("version", false, "print version string")
+	fs.String("log-level", "info", "set log verbosity: debug, info, warn, error, or fatal")
+	fs.String("log-prefix", "[nsq_to_file] ", "log message prefix")
 
 	fs.String("channel", "nsq_to_file", "nsq channel")
 	fs.Int("max-in-flight", 200, "max number of messages to allow in flight")
@@ -71,6 +74,15 @@ func main() {
 
 	opts := NewOptions()
 	options.Resolve(opts, fs, nil)
+
+	logger := log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
+	logLevel, err := lg.ParseLogLevel(opts.LogLevel, false)
+	if err != nil {
+		log.Fatal("--log-level is invalid")
+	}
+	logf := func(lvl lg.LogLevel, f string, args ...interface{}) {
+		lg.Logf(logger, logLevel, lvl, f, args...)
+	}
 
 	if fs.Lookup("version").Value.(flag.Getter).Get().(bool) {
 		fmt.Printf("nsq_to_file v%s\n", version.Binary)
@@ -125,6 +137,6 @@ func main() {
 	signal.Notify(hupChan, syscall.SIGHUP)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
-	discoverer := newTopicDiscoverer(opts, cfg, hupChan, termChan)
+	discoverer := newTopicDiscoverer(logf, opts, cfg, hupChan, termChan)
 	discoverer.run()
 }

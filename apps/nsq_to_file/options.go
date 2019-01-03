@@ -15,6 +15,8 @@ type Options struct {
 	HTTPClientConnectTimeout time.Duration `flag:"http-client-connect-timeout"`
 	HTTPClientRequestTimeout time.Duration `flag:"http-client-request-timeout"`
 
+	LogPrefix      string        `flag:"log-prefix"`
+	LogLevel       string        `flag:"log-level"`
 	OutputDir      string        `flag:"output-dir"`
 	WorkDir        string        `flag:"work-dir"`
 	DatetimeFormat string        `flag:"datetime-format"`
@@ -30,6 +32,8 @@ type Options struct {
 
 func NewOptions() *Options {
 	return &Options{
+		LogPrefix:                "[nsq_to_file] ",
+		LogLevel:                 "info",
 		Channel:                  "nsq_to_file",
 		MaxInFlight:              200,
 		OutputDir:                "/tmp",

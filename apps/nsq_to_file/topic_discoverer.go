@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"regexp"
 	"sync"
@@ -10,9 +9,11 @@ import (
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 )
 
 type TopicDiscoverer struct {
+	logf     lg.AppLogFunc
 	opts     *Options
 	ci       *clusterinfo.ClusterInfo
 	topics   map[string]*FileLogger
@@ -22,9 +23,10 @@ type TopicDiscoverer struct {
 	cfg      *nsq.Config
 }
 
-func newTopicDiscoverer(opts *Options, cfg *nsq.Config, hupChan chan os.Signal, termChan chan os.Signal) *TopicDiscoverer {
+func newTopicDiscoverer(logf lg.AppLogFunc, opts *Options, cfg *nsq.Config, hupChan chan os.Signal, termChan chan os.Signal) *TopicDiscoverer {
 	client := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
 	return &TopicDiscoverer{
+		logf:     logf,
 		opts:     opts,
 		ci:       clusterinfo.New(nil, client),
 		topics:   make(map[string]*FileLogger),
@@ -41,13 +43,13 @@ func (t *TopicDiscoverer) updateTopics(topics []string) {
 		}
 
 		if !t.isTopicAllowed(topic) {
-			log.Printf("skipping topic %s (doesn't match pattern %s)", topic, t.opts.TopicPattern)
+			t.logf(lg.WARN, "skipping topic %s (doesn't match pattern %s)", topic, t.opts.TopicPattern)
 			continue
 		}
 
-		fl, err := NewFileLogger(t.opts, topic, t.cfg)
+		fl, err := NewFileLogger(t.logf, t.opts, topic, t.cfg)
 		if err != nil {
-			log.Printf("ERROR: couldn't create logger for new topic %s: %s", topic, err)
+			t.logf(lg.ERROR, "couldn't create logger for new topic %s: %s", topic, err)
 			continue
 		}
 		t.topics[topic] = fl
@@ -72,7 +74,7 @@ forloop:
 		case <-ticker:
 			newTopics, err := t.ci.GetLookupdTopics(t.opts.NSQLookupdHTTPAddrs)
 			if err != nil {
-				log.Printf("ERROR: could not retrieve topic list: %s", err)
+				t.logf(lg.ERROR, "could not retrieve topic list: %s", err)
 				continue
 			}
 			t.updateTopics(newTopics)
