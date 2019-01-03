@@ -158,11 +158,20 @@ func (f *FileLogger) Close() {
 		return
 	}
 
-	f.out.Sync()
 	if f.gzipWriter != nil {
-		f.gzipWriter.Close()
+		err := f.gzipWriter.Close()
+		if err != nil {
+			log.Fatalf("ERROR: failed to close GZIP writer: %s", err)
+		}
 	}
-	f.out.Close()
+	err := f.out.Sync()
+	if err != nil {
+		log.Fatalf("ERROR: failed to fsync output file: %s", err)
+	}
+	err = f.out.Close()
+	if err != nil {
+		log.Fatalf("ERROR: failed to close output file: %s", err)
+	}
 
 	// Move file from work dir to output dir if necessary, taking care not
 	// to overwrite existing files
