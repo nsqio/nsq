@@ -41,13 +41,14 @@ type ChannelStats struct {
 	MessageCount  uint64        `json:"message_count"`
 	RequeueCount  uint64        `json:"requeue_count"`
 	TimeoutCount  uint64        `json:"timeout_count"`
+	ClientCount   int           `json:"client_count"`
 	Clients       []ClientStats `json:"clients"`
 	Paused        bool          `json:"paused"`
 
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
 }
 
-func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
+func NewChannelStats(c *Channel, clients []ClientStats, clientCount int) ChannelStats {
 	c.inFlightMutex.Lock()
 	inflight := len(c.inFlightMessages)
 	c.inFlightMutex.Unlock()
@@ -64,6 +65,7 @@ func NewChannelStats(c *Channel, clients []ClientStats) ChannelStats {
 		MessageCount:  atomic.LoadUint64(&c.messageCount),
 		RequeueCount:  atomic.LoadUint64(&c.requeueCount),
 		TimeoutCount:  atomic.LoadUint64(&c.timeoutCount),
+		ClientCount:   clientCount,
 		Clients:       clients,
 		Paused:        c.IsPaused(),
 
@@ -127,7 +129,7 @@ type ChannelsByName struct {
 
 func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Channels[j].name }
 
-func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
+func (n *NSQD) GetStats(topic string, channel string, includeClients bool) []TopicStats {
 	n.RLock()
 	var realTopics []*Topic
 	if topic == "" {
@@ -162,13 +164,18 @@ func (n *NSQD) GetStats(topic string, channel string) []TopicStats {
 		sort.Sort(ChannelsByName{realChannels})
 		channels := make([]ChannelStats, 0, len(realChannels))
 		for _, c := range realChannels {
+			var clients []ClientStats
+			var clientCount int
 			c.RLock()
-			clients := make([]ClientStats, 0, len(c.clients))
-			for _, client := range c.clients {
-				clients = append(clients, client.Stats())
+			if includeClients {
+				clients = make([]ClientStats, 0, len(c.clients))
+				for _, client := range c.clients {
+					clients = append(clients, client.Stats())
+				}
 			}
+			clientCount = len(c.clients)
 			c.RUnlock()
-			channels = append(channels, NewChannelStats(c, clients))
+			channels = append(channels, NewChannelStats(c, clients, clientCount))
 		}
 		topics = append(topics, NewTopicStats(t, channels))
 	}

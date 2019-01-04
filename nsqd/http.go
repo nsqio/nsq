@@ -471,6 +471,8 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 }
 
 func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	var producerStats []ClientStats
+
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
@@ -479,11 +481,18 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	formatString, _ := reqParams.Get("format")
 	topicName, _ := reqParams.Get("topic")
 	channelName, _ := reqParams.Get("channel")
+	includeClientsParam, _ := reqParams.Get("include_clients")
 	jsonFormat := formatString == "json"
 
-	producerStats := s.ctx.nsqd.GetProducerStats()
+	includeClients, ok := boolParams[includeClientsParam]
+	if !ok {
+		includeClients = true
+	}
+	if includeClients {
+		producerStats = s.ctx.nsqd.GetProducerStats()
+	}
 
-	stats := s.ctx.nsqd.GetStats(topicName, channelName)
+	stats := s.ctx.nsqd.GetStats(topicName, channelName, includeClients)
 	health := s.ctx.nsqd.GetHealth()
 	startTime := s.ctx.nsqd.GetStartTime()
 	uptime := time.Since(startTime)
