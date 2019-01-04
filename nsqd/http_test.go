@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/nsqio/go-nsq"
+	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqlookupd"
@@ -498,6 +499,54 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 
 	_, err = nsqd.GetExistingTopic(topicName)
 	test.NotNil(t, err)
+}
+
+func TestHTTPClientStats(t *testing.T) {
+	topicName := "test_http_client_stats" + strconv.Itoa(int(time.Now().Unix()))
+
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	tcpAddr, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Nil(t, err)
+	defer conn.Close()
+
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+
+	var d struct {
+		Topics []struct {
+			Channels []struct {
+				ClientCount int `json:"client_count"`
+				Clients     []struct {
+				} `json:"clients"`
+			} `json:"channels"`
+		} `json:"topics"`
+	}
+
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
+	test.Nil(t, err)
+
+	test.Equal(t, 1, len(d.Topics[0].Channels[0].Clients))
+	test.Equal(t, 1, d.Topics[0].Channels[0].ClientCount)
+
+	endpoint = fmt.Sprintf("http://127.0.0.1:%d/stats?format=json&include_clients=true", httpAddr.Port)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
+	test.Nil(t, err)
+
+	test.Equal(t, 1, len(d.Topics[0].Channels[0].Clients))
+	test.Equal(t, 1, d.Topics[0].Channels[0].ClientCount)
+
+	endpoint = fmt.Sprintf("http://127.0.0.1:%d/stats?format=json&include_clients=false", httpAddr.Port)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
+	test.Nil(t, err)
+
+	test.Equal(t, 0, len(d.Topics[0].Channels[0].Clients))
+	test.Equal(t, 1, d.Topics[0].Channels[0].ClientCount)
 }
 
 func TestHTTPgetStatusJSON(t *testing.T) {
