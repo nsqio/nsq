@@ -72,6 +72,10 @@ func main() {
 	fs := flagSet()
 	fs.Parse(os.Args[1:])
 
+	if args := fs.Args(); len(args) > 0 {
+		log.Fatalf("unknown arguments: %s", args)
+	}
+
 	opts := NewOptions()
 	options.Resolve(opts, fs, nil)
 
