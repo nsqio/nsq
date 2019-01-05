@@ -569,14 +569,18 @@ func (c *clientV2) QueryAuthd() error {
 		return err
 	}
 
-	tls := atomic.LoadInt32(&c.TLS) == 1
-	tlsEnabled := "false"
-	if tls {
-		tlsEnabled = "true"
+	tlsEnabled := atomic.LoadInt32(&c.TLS) == 1
+	commonName := ""
+	if tlsEnabled {
+		tlsConnState := c.tlsConn.ConnectionState()
+		if len(tlsConnState.PeerCertificates) > 0 {
+			commonName = tlsConnState.PeerCertificates[0].Subject.CommonName
+		}
 	}
 
 	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.getOpts().AuthHTTPAddresses,
-		remoteIP, tlsEnabled, c.AuthSecret, c.ctx.nsqd.getOpts().HTTPClientConnectTimeout,
+		remoteIP, tlsEnabled, commonName, c.AuthSecret,
+		c.ctx.nsqd.getOpts().HTTPClientConnectTimeout,
 		c.ctx.nsqd.getOpts().HTTPClientRequestTimeout)
 	if err != nil {
 		return err

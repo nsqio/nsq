@@ -76,10 +76,10 @@ func (a *State) IsExpired() bool {
 	return false
 }
 
-func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string,
+func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
 	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
 	for _, a := range authd {
-		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, authSecret, connectTimeout, requestTimeout)
+		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, commonName, authSecret, connectTimeout, requestTimeout)
 		if err != nil {
 			log.Printf("Error: failed auth against %s %s", a, err)
 			continue
@@ -89,12 +89,17 @@ func QueryAnyAuthd(authd []string, remoteIP, tlsEnabled, authSecret string,
 	return nil, errors.New("Unable to access auth server")
 }
 
-func QueryAuthd(authd, remoteIP, tlsEnabled, authSecret string,
+func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
 	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
 	v := url.Values{}
 	v.Set("remote_ip", remoteIP)
-	v.Set("tls", tlsEnabled)
+	if tlsEnabled {
+		v.Set("tls", "true")
+	} else {
+		v.Set("tls", "false")
+	}
 	v.Set("secret", authSecret)
+	v.Set("common_name", commonName)
 
 	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
 
