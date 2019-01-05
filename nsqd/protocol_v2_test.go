@@ -1466,9 +1466,11 @@ func TestReqTimeoutRange(t *testing.T) {
 func TestClientAuth(t *testing.T) {
 	authResponse := `{"ttl":1, "authorizations":[]}`
 	authSecret := "testsecret"
-	authError := "E_UNAUTHORIZED AUTH No authorizations found"
+	authError := "E_UNAUTHORIZED AUTH no authorizations found"
 	authSuccess := ""
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess)
+	tlsEnabled := false
+	commonName := ""
+	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
 
 	// now one that will succeed
 	authResponse = `{"ttl":10, "authorizations":
@@ -1476,20 +1478,29 @@ func TestClientAuth(t *testing.T) {
 	}`
 	authError = ""
 	authSuccess = `{"identity":"","identity_url":"","permission_count":1}`
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess)
+	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
 
+	// one with TLS enabled
+	tlsEnabled = true
+	commonName = "test.local"
+	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
 }
 
-func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess string) {
+func runAuthTest(t *testing.T, authResponse string, authSecret string, authError string,
+	authSuccess string, tlsEnabled bool, commonName string) {
 	var err error
-	var expectedAuthIP string
-	expectedAuthTLS := "false"
+	var expectedRemoteIP string
+	expectedTLS := "false"
+	if tlsEnabled {
+		expectedTLS = "true"
+	}
 
 	authd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Logf("in test auth handler %s", r.RequestURI)
 		r.ParseForm()
-		test.Equal(t, expectedAuthIP, r.Form.Get("remote_ip"))
-		test.Equal(t, expectedAuthTLS, r.Form.Get("tls"))
+		test.Equal(t, expectedRemoteIP, r.Form.Get("remote_ip"))
+		test.Equal(t, expectedTLS, r.Form.Get("tls"))
+		test.Equal(t, commonName, r.Form.Get("common_name"))
 		test.Equal(t, authSecret, r.Form.Get("secret"))
 		fmt.Fprint(w, authResponse)
 	}))
@@ -1502,6 +1513,11 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = "debug"
 	opts.AuthHTTPAddresses = []string{addr.Host}
+	if tlsEnabled {
+		opts.TLSCert = "./test/certs/server.pem"
+		opts.TLSKey = "./test/certs/server.key"
+		opts.TLSClientAuthPolicy = "require"
+	}
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
@@ -1510,19 +1526,46 @@ func runAuthTest(t *testing.T, authResponse, authSecret, authError, authSuccess 
 	test.Nil(t, err)
 	defer conn.Close()
 
-	expectedAuthIP, _, _ = net.SplitHostPort(conn.LocalAddr().String())
+	data := identify(t, conn, map[string]interface{}{
+		"tls_v1": tlsEnabled,
+	}, frameTypeResponse)
+	r := struct {
+		TLSv1 bool `json:"tls_v1"`
+	}{}
+	err = json.Unmarshal(data, &r)
+	test.Nil(t, err)
+	test.Equal(t, tlsEnabled, r.TLSv1)
 
-	identify(t, conn, map[string]interface{}{
-		"tls_v1": false,
-	}, nsq.FrameTypeResponse)
+	var c io.ReadWriter
+	var tlsConn *tls.Conn
+	c = conn
+	if tlsEnabled {
+		cert, err := tls.LoadX509KeyPair("./test/certs/cert.pem", "./test/certs/key.pem")
+		test.Nil(t, err)
+		tlsConfig := &tls.Config{
+			Certificates:       []tls.Certificate{cert},
+			InsecureSkipVerify: true,
+		}
+		tlsConn = tls.Client(conn, tlsConfig)
+		err = tlsConn.Handshake()
+		test.Nil(t, err)
+		c = tlsConn
 
-	authCmd(t, conn, authSecret, authSuccess)
-	if authError != "" {
-		readValidate(t, conn, nsq.FrameTypeError, authError)
-	} else {
-		sub(t, conn, "test", "ch")
+		resp, _ := nsq.ReadResponse(tlsConn)
+		frameType, data, _ := nsq.UnpackResponse(resp)
+		t.Logf("frameType: %d, data: %s", frameType, data)
+		test.Equal(t, frameTypeResponse, frameType)
+		test.Equal(t, []byte("OK"), data)
 	}
 
+	expectedRemoteIP, _, _ = net.SplitHostPort(conn.LocalAddr().String())
+
+	authCmd(t, c, authSecret, authSuccess)
+	if authError != "" {
+		readValidate(t, c, frameTypeError, authError)
+	} else {
+		sub(t, c, "test", "ch")
+	}
 }
 
 func TestIOLoopReturnsClientErrWhenSendFails(t *testing.T) {
