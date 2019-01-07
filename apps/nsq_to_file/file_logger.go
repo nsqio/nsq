@@ -229,13 +229,19 @@ func (f *FileLogger) Write(p []byte) (int, error) {
 }
 
 func (f *FileLogger) Sync() error {
+	var err error
 	if f.gzipWriter != nil {
-		err := f.gzipWriter.Flush()
+		err = f.gzipWriter.Close()
 		if err != nil {
 			return err
 		}
+		err = f.out.Sync()
+		f.gzipWriter, _ = gzip.NewWriterLevel(f.out, f.opts.GZIPLevel)
+		f.writer = f.gzipWriter
+	} else {
+		err = f.out.Sync()
 	}
-	return f.out.Sync()
+	return err
 }
 
 func (f *FileLogger) currentFilename() string {
