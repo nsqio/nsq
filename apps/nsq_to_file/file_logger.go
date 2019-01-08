@@ -231,6 +231,8 @@ func (f *FileLogger) Write(p []byte) (int, error) {
 func (f *FileLogger) Sync() error {
 	var err error
 	if f.gzipWriter != nil {
+		// finish current gzip stream and start a new one (concatenated)
+		// gzip stream trailer has checksum, and can indicate which messages were ACKed
 		err = f.gzipWriter.Close()
 		if err != nil {
 			return err
