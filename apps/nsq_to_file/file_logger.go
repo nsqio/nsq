@@ -324,7 +324,7 @@ func (f *FileLogger) updateFile() {
 		if err != nil {
 			if os.IsExist(err) {
 				f.logf(lg.WARN, "working file already exists: %s", absFilename)
-				continue
+				continue // next rev
 			}
 			f.logf(lg.FATAL, "unable to open %s: %s", absFilename, err)
 			os.Exit(1)
@@ -337,15 +337,14 @@ func (f *FileLogger) updateFile() {
 			f.logf(lg.FATAL, "unable to stat file %s: %s", f.out.Name(), err)
 		}
 		f.filesize = fi.Size()
-		if f.filesize == 0 {
-			break // ok, new file
-		}
 
-		if f.needsRotation() {
+		if f.opts.RotateSize > 0 && f.filesize > f.opts.RotateSize {
+			f.logf(lg.INFO, "%s currently %d bytes (> %d), rotating...",
+				f.out.Name(), f.filesize, f.opts.RotateSize)
 			continue // next rev
 		}
 
-		break // ok, don't need rotate
+		break // good file
 	}
 
 	if f.opts.GZIP {
