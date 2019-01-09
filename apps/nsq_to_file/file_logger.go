@@ -231,6 +231,8 @@ func (f *FileLogger) Write(p []byte) (int, error) {
 func (f *FileLogger) Sync() error {
 	var err error
 	if f.gzipWriter != nil {
+		// finish current gzip stream and start a new one (concatenated)
+		// gzip stream trailer has checksum, and can indicate which messages were ACKed
 		err = f.gzipWriter.Close()
 		if err != nil {
 			return err
@@ -278,6 +280,8 @@ func (f *FileLogger) needsRotation() bool {
 }
 
 func (f *FileLogger) updateFile() {
+	f.Close() // uses current f.filename and f.rev to resolve rename dst conflict
+
 	filename := f.currentFilename()
 	if filename != f.filename {
 		f.rev = 0 // reset revision to 0 if it is a new filename
@@ -289,8 +293,6 @@ func (f *FileLogger) updateFile() {
 
 	fullPath := path.Join(f.opts.WorkDir, filename)
 	makeDirFromPath(f.logf, fullPath)
-
-	f.Close()
 
 	var err error
 	var fi os.FileInfo
@@ -315,7 +317,7 @@ func (f *FileLogger) updateFile() {
 		}
 
 		openFlag := os.O_WRONLY | os.O_CREATE
-		if f.opts.GZIP {
+		if f.opts.GZIP || f.opts.RotateInterval > 0 {
 			openFlag |= os.O_EXCL
 		} else {
 			openFlag |= os.O_APPEND
@@ -324,7 +326,7 @@ func (f *FileLogger) updateFile() {
 		if err != nil {
 			if os.IsExist(err) {
 				f.logf(lg.WARN, "working file already exists: %s", absFilename)
-				continue
+				continue // next rev
 			}
 			f.logf(lg.FATAL, "unable to open %s: %s", absFilename, err)
 			os.Exit(1)
@@ -337,15 +339,14 @@ func (f *FileLogger) updateFile() {
 			f.logf(lg.FATAL, "unable to stat file %s: %s", f.out.Name(), err)
 		}
 		f.filesize = fi.Size()
-		if f.filesize == 0 {
-			break // ok, new file
-		}
 
-		if f.needsRotation() {
+		if f.opts.RotateSize > 0 && f.filesize > f.opts.RotateSize {
+			f.logf(lg.INFO, "%s currently %d bytes (> %d), rotating...",
+				f.out.Name(), f.filesize, f.opts.RotateSize)
 			continue // next rev
 		}
 
-		break // ok, don't need rotate
+		break // good file
 	}
 
 	if f.opts.GZIP {
