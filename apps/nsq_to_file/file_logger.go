@@ -317,7 +317,7 @@ func (f *FileLogger) updateFile() {
 		}
 
 		openFlag := os.O_WRONLY | os.O_CREATE
-		if f.opts.GZIP {
+		if f.opts.GZIP || f.opts.RotateInterval > 0 {
 			openFlag |= os.O_EXCL
 		} else {
 			openFlag |= os.O_APPEND
