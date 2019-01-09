@@ -280,6 +280,8 @@ func (f *FileLogger) needsRotation() bool {
 }
 
 func (f *FileLogger) updateFile() {
+	f.Close() // uses current f.filename and f.rev to resolve rename dst conflict
+
 	filename := f.currentFilename()
 	if filename != f.filename {
 		f.rev = 0 // reset revision to 0 if it is a new filename
@@ -291,8 +293,6 @@ func (f *FileLogger) updateFile() {
 
 	fullPath := path.Join(f.opts.WorkDir, filename)
 	makeDirFromPath(f.logf, fullPath)
-
-	f.Close()
 
 	var err error
 	var fi os.FileInfo
