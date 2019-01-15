@@ -124,7 +124,7 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 		Writer: bufio.NewWriterSize(conn, defaultBufferSize),
 
 		OutputBufferSize:    defaultBufferSize,
-		OutputBufferTimeout: 250 * time.Millisecond,
+		OutputBufferTimeout: ctx.nsqd.getOpts().OutputBufferTimeout,
 
 		MsgTimeout: ctx.nsqd.getOpts().MsgTimeout,
 
