@@ -17,6 +17,7 @@ import (
 type Topic struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	messageCount uint64
+	messageBytes uint64
 
 	sync.RWMutex
 
@@ -184,6 +185,7 @@ func (t *Topic) PutMessage(m *Message) error {
 		return err
 	}
 	atomic.AddUint64(&t.messageCount, 1)
+	atomic.AddUint64(&t.messageBytes, uint64(len(m.Body)))
 	return nil
 }
 
@@ -194,13 +196,20 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
+
+	messageTotalBytes := 0
+
 	for i, m := range msgs {
 		err := t.put(m)
 		if err != nil {
 			atomic.AddUint64(&t.messageCount, uint64(i))
+			atomic.AddUint64(&t.messageBytes, uint64(messageTotalBytes))
 			return err
 		}
+		messageTotalBytes += len(m.Body)
 	}
+
+	atomic.AddUint64(&t.messageBytes, uint64(messageTotalBytes))
 	atomic.AddUint64(&t.messageCount, uint64(len(msgs)))
 	return nil
 }

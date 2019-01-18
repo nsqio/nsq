@@ -61,6 +61,10 @@ func (n *NSQD) statsdLoop() {
 				stat := fmt.Sprintf("topic.%s.message_count", topic.TopicName)
 				client.Incr(stat, int64(diff))
 
+				diff = topic.MessageBytes - lastTopic.MessageBytes
+				stat = fmt.Sprintf("topic.%s.message_bytes", topic.TopicName)
+				client.Incr(stat, int64(diff))
+
 				stat = fmt.Sprintf("topic.%s.depth", topic.TopicName)
 				client.Gauge(stat, topic.Depth)
 

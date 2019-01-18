@@ -14,6 +14,7 @@ type TopicStats struct {
 	Depth        int64          `json:"depth"`
 	BackendDepth int64          `json:"backend_depth"`
 	MessageCount uint64         `json:"message_count"`
+	MessageBytes uint64         `json:"message_bytes"`
 	Paused       bool           `json:"paused"`
 
 	E2eProcessingLatency *quantile.Result `json:"e2e_processing_latency"`
@@ -26,6 +27,7 @@ func NewTopicStats(t *Topic, channels []ChannelStats) TopicStats {
 		Depth:        t.Depth(),
 		BackendDepth: t.backend.Depth(),
 		MessageCount: atomic.LoadUint64(&t.messageCount),
+		MessageBytes: atomic.LoadUint64(&t.messageBytes),
 		Paused:       t.IsPaused(),
 
 		E2eProcessingLatency: t.AggregateChannelE2eProcessingLatency().Result(),
