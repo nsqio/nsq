@@ -91,7 +91,9 @@ func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 
 	if code != 200 {
 		isJSON = true
-		response = []byte(fmt.Sprintf(`{"message":"%s"}`, data))
+		response, _ = json.Marshal(struct {
+			Message string `json:"message"`
+		}{fmt.Sprintf("%s", data)})
 	}
 
 	if isJSON {
