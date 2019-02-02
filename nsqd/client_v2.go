@@ -451,7 +451,7 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 		c.OutputBufferTimeout = 0
 	case desiredTimeout == 0:
 		// do nothing (use default)
-	case desiredTimeout >= 1 &&
+	case desiredTimeout >= int(c.ctx.nsqd.getOpts().MinOutputBufferTimeout/time.Millisecond) &&
 		desiredTimeout <= int(c.ctx.nsqd.getOpts().MaxOutputBufferTimeout/time.Millisecond):
 		c.OutputBufferTimeout = time.Duration(desiredTimeout) * time.Millisecond
 	default:
