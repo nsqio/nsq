@@ -168,12 +168,7 @@ func (c *clientV2) Identify(data identifyDataV2) error {
 		return err
 	}
 
-	err = c.SetOutputBufferSize(data.OutputBufferSize)
-	if err != nil {
-		return err
-	}
-
-	err = c.SetOutputBufferTimeout(data.OutputBufferTimeout)
+	err = c.SetOutputBuffer(data.OutputBufferSize, data.OutputBufferTimeout)
 	if err != nil {
 		return err
 	}
@@ -413,36 +408,7 @@ func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
 	return nil
 }
 
-func (c *clientV2) SetOutputBufferSize(desiredSize int) error {
-	var size int
-
-	switch {
-	case desiredSize == -1:
-		// effectively no buffer (every write will go directly to the wrapped net.Conn)
-		size = 1
-	case desiredSize == 0:
-		// do nothing (use default)
-	case desiredSize >= 64 && desiredSize <= int(c.ctx.nsqd.getOpts().MaxOutputBufferSize):
-		size = desiredSize
-	default:
-		return fmt.Errorf("output buffer size (%d) is invalid", desiredSize)
-	}
-
-	if size > 0 {
-		c.writeLock.Lock()
-		defer c.writeLock.Unlock()
-		c.OutputBufferSize = size
-		err := c.Writer.Flush()
-		if err != nil {
-			return err
-		}
-		c.Writer = bufio.NewWriterSize(c.Conn, size)
-	}
-
-	return nil
-}
-
-func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
+func (c *clientV2) SetOutputBuffer(desiredSize int, desiredTimeout int) error {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 
@@ -451,11 +417,34 @@ func (c *clientV2) SetOutputBufferTimeout(desiredTimeout int) error {
 		c.OutputBufferTimeout = 0
 	case desiredTimeout == 0:
 		// do nothing (use default)
-	case desiredTimeout >= int(c.ctx.nsqd.getOpts().MinOutputBufferTimeout/time.Millisecond) &&
+	case true &&
+		desiredTimeout >= int(c.ctx.nsqd.getOpts().MinOutputBufferTimeout/time.Millisecond) &&
 		desiredTimeout <= int(c.ctx.nsqd.getOpts().MaxOutputBufferTimeout/time.Millisecond):
+
 		c.OutputBufferTimeout = time.Duration(desiredTimeout) * time.Millisecond
 	default:
 		return fmt.Errorf("output buffer timeout (%d) is invalid", desiredTimeout)
+	}
+
+	switch {
+	case desiredSize == -1:
+		// effectively no buffer (every write will go directly to the wrapped net.Conn)
+		c.OutputBufferSize = 1
+		c.OutputBufferTimeout = 0
+	case desiredSize == 0:
+		// do nothing (use default)
+	case desiredSize >= 64 && desiredSize <= int(c.ctx.nsqd.getOpts().MaxOutputBufferSize):
+		c.OutputBufferSize = desiredSize
+	default:
+		return fmt.Errorf("output buffer size (%d) is invalid", desiredSize)
+	}
+
+	if desiredSize != 0 {
+		err := c.Writer.Flush()
+		if err != nil {
+			return err
+		}
+		c.Writer = bufio.NewWriterSize(c.Conn, c.OutputBufferSize)
 	}
 
 	return nil
