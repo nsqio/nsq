@@ -866,7 +866,7 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", "MPUB failed "+err.Error())
 	}
 
-	client.PublishedMessage(topicName, uint64(len(messages)))
+	client.PublishedMessage(topicName, uint64(len(entries)))
 
 	return okBytes, nil
 }

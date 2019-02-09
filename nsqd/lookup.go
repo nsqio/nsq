@@ -57,7 +57,7 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 				commands = append(commands, nsq.Register(topic.name, ""))
 			} else {
 				for _, channel := range topic.channelMap {
-					commands = append(commands, nsq.Register(channel.topicName, channel.name))
+					commands = append(commands, nsq.Register(topic.name, channel.name))
 				}
 			}
 			topic.RUnlock()

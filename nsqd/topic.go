@@ -150,7 +150,7 @@ func (t *Topic) Pub(entries []wal.EntryWriterTo) error {
 	atomic.AddUint64(&t.messageCount, uint64(len(entries)))
 	var total uint64
 	for _, e := range entries {
-		total += uint64(len(e.Body))
+		total += uint64(e.Len())
 	}
 	atomic.AddUint64(&t.messageBytes, total)
 	return nil
