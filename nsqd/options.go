@@ -56,6 +56,7 @@ type Options struct {
 	MaxRdyCount            int64         `flag:"max-rdy-count"`
 	MaxOutputBufferSize    int64         `flag:"max-output-buffer-size"`
 	MaxOutputBufferTimeout time.Duration `flag:"max-output-buffer-timeout"`
+	MinOutputBufferTimeout time.Duration `flag:"min-output-buffer-timeout"`
 	OutputBufferTimeout    time.Duration `flag:"output-buffer-timeout"`
 
 	// statsd integration
@@ -130,7 +131,8 @@ func NewOptions() *Options {
 		MaxHeartbeatInterval:   60 * time.Second,
 		MaxRdyCount:            2500,
 		MaxOutputBufferSize:    64 * 1024,
-		MaxOutputBufferTimeout: 1 * time.Second,
+		MaxOutputBufferTimeout: 30 * time.Second,
+		MinOutputBufferTimeout: 25 * time.Millisecond,
 		OutputBufferTimeout:    250 * time.Millisecond,
 
 		StatsdPrefix:        "nsq.%s",
