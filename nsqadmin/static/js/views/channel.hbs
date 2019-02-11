@@ -91,7 +91,7 @@
             {{#if ../graph_active}}
                 <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
             {{/if}}
-            <td>{{commafy clients.length}}</td>
+            <td>{{commafy client_count}}</td>
             {{#if e2e_processing_latency.percentiles.length}}
                 {{#each e2e_processing_latency.percentiles}}
                 <td>
@@ -129,10 +129,10 @@
             <td>{{commafy requeue_count}}</td>
             <td>{{commafy timeout_count}}</td>
             <td>{{commafy message_count}}</td>
-            {{#if ../graph_active}}
+            {{#if graph_active}}
                 <td class="bold rate" target="{{rate "topic" node topic_name ""}}"></td>
             {{/if}}
-            <td>{{commafy clients.length}}</td>
+            <td>{{commafy client_count}}</td>
             {{#if e2e_processing_latency.percentiles.length}}
                 {{#each e2e_processing_latency.percentiles}}
                 <td>

@@ -7,8 +7,9 @@ Read the [docs](http://nsq.io/components/nsqadmin.html)
 
 ## Working Locally
 
+ 0. install nodejs 8.x (includes npm)
  1. `$ npm install`
- 2. `$ ./gulp clean watch` or `$ ./gulp clean build`
+ 2. `$ ./gulp --series clean watch` or `$ ./gulp --series clean build`
  3. `$ go-bindata --debug --pkg=nsqadmin --prefix=static/build static/build/...`
  4. `$ go build && ./nsqadmin`
  5. make changes (repeat step 5 if you make changes to any Go code)

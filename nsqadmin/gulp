@@ -1,2 +1,2 @@
-#!/bin/bash
-exec ./node_modules/.bin/gulp $@
+#!/bin/sh
+exec ./node_modules/.bin/gulp "$@"
