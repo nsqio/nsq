@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
@@ -222,9 +223,9 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		}
 	}
 
-	msg := NewMessage(topic.GenerateID(), body)
-	msg.deferred = deferred
-	err = topic.PutMessage(msg)
+	now := time.Now().UnixNano()
+	entry := NewEntry(body, now, now+int64(deferred))
+	err = topic.Pub([]wal.EntryWriterTo{entry})
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
 	}
@@ -233,7 +234,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 }
 
 func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	var msgs []*Message
+	var entries []wal.EntryWriterTo
 	var exit bool
 
 	// TODO: one day I'd really like to just error on chunked requests
@@ -258,7 +259,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	}
 	if binaryMode {
 		tmp := make([]byte, 4)
-		msgs, err = readMPUB(req.Body, tmp, topic,
+		entries, err = readMPUB(req.Body, tmp,
 			s.ctx.nsqd.getOpts().MaxMsgSize, s.ctx.nsqd.getOpts().MaxBodySize)
 		if err != nil {
 			return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
@@ -297,12 +298,11 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 				return nil, http_api.Err{413, "MSG_TOO_BIG"}
 			}
 
-			msg := NewMessage(topic.GenerateID(), block)
-			msgs = append(msgs, msg)
+			entries = append(entries, NewEntry(block, time.Now().UnixNano(), 0))
 		}
 	}
 
-	err = topic.PutMessages(msgs)
+	err = topic.Pub(entries)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
 	}

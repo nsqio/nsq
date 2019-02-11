@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/test"
 )
@@ -23,13 +23,12 @@ func TestStats(t *testing.T) {
 
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), []byte("test body"))
-	topic.PutMessage(msg)
+	body := []byte("test body")
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 
 	accompanyTopicName := "accompany_test_stats" + strconv.Itoa(int(time.Now().Unix()))
 	accompanyTopic := nsqd.GetTopic(accompanyTopicName)
-	msg = NewMessage(accompanyTopic.GenerateID(), []byte("accompany test body"))
-	accompanyTopic.PutMessage(msg)
+	accompanyTopic.Pub([]wal.EntryWriterTo{NewEntry([]byte("accompany test body"), time.Now().UnixNano(), 0)})
 
 	conn, err := mustConnectNSQD(tcpAddr)
 	test.Nil(t, err)
@@ -116,44 +115,4 @@ func TestClientAttributes(t *testing.T) {
 
 	test.Equal(t, userAgent, d.Topics[0].Channels[0].Clients[0].UserAgent)
 	test.Equal(t, true, d.Topics[0].Channels[0].Clients[0].Snappy)
-}
-
-func TestStatsChannelLocking(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(t)
-	_, _, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
-	channel := topic.GetChannel("channel")
-
-	var wg sync.WaitGroup
-
-	wg.Add(2)
-	go func() {
-		for i := 0; i < 25; i++ {
-			msg := NewMessage(topic.GenerateID(), []byte("test"))
-			topic.PutMessage(msg)
-			channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
-		}
-		wg.Done()
-	}()
-
-	go func() {
-		for i := 0; i < 25; i++ {
-			nsqd.GetStats("", "", true)
-		}
-		wg.Done()
-	}()
-
-	wg.Wait()
-
-	stats := nsqd.GetStats(topicName, "channel", false)
-	t.Logf("stats: %+v", stats)
-
-	test.Equal(t, 1, len(stats))
-	test.Equal(t, 1, len(stats[0].Channels))
-	test.Equal(t, 25, stats[0].Channels[0].InFlightCount)
 }

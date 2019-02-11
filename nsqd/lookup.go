@@ -57,7 +57,7 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 				commands = append(commands, nsq.Register(topic.name, ""))
 			} else {
 				for _, channel := range topic.channelMap {
-					commands = append(commands, nsq.Register(channel.topicName, channel.name))
+					commands = append(commands, nsq.Register(topic.name, channel.name))
 				}
 			}
 			topic.RUnlock()
@@ -126,9 +126,9 @@ func (n *NSQD) lookupLoop() {
 				branch = "channel"
 				channel := val.(*Channel)
 				if channel.Exiting() == true {
-					cmd = nsq.UnRegister(channel.topicName, channel.name)
+					cmd = nsq.UnRegister(channel.topic.name, channel.name)
 				} else {
-					cmd = nsq.Register(channel.topicName, channel.name)
+					cmd = nsq.Register(channel.topic.name, channel.name)
 				}
 			case *Topic:
 				// notify all nsqlookupds that a new topic exists, or that it's removed

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/nsqlookupd"
@@ -23,12 +24,13 @@ const (
 	RequestTimeout = 5 * time.Second
 )
 
-func getMetadata(n *NSQD) (*meta, error) {
+func getMetadata(t *testing.T, n *NSQD) (*meta, error) {
 	fn := newMetadataFile(n.getOpts())
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		return nil, err
 	}
+	t.Logf("reading metadata from: %s, %s", fn, data)
 
 	var m meta
 	err = json.Unmarshal(data, &m)
@@ -39,8 +41,6 @@ func getMetadata(n *NSQD) (*meta, error) {
 }
 
 func TestStartup(t *testing.T) {
-	var msg *Message
-
 	iterations := 300
 	doneExitChan := make(chan int)
 
@@ -67,7 +67,7 @@ func TestStartup(t *testing.T) {
 	test.Nil(t, err)
 	atomic.StoreInt32(&nsqd.isLoading, 1)
 	nsqd.GetTopic(topicName) // will not persist if `flagLoading`
-	m, err := getMetadata(nsqd)
+	m, err := getMetadata(t, nsqd)
 	test.Nil(t, err)
 	test.Equal(t, 0, len(m.Topics))
 	nsqd.DeleteExistingTopic(topicName)
@@ -76,37 +76,37 @@ func TestStartup(t *testing.T) {
 	body := make([]byte, 256)
 	topic := nsqd.GetTopic(topicName)
 	for i := 0; i < iterations; i++ {
-		msg := NewMessage(topic.GenerateID(), body)
-		topic.PutMessage(msg)
+		topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	}
 
 	t.Logf("pulling from channel")
 	channel1 := topic.GetChannel("ch1")
+	t.Logf("ch1 depth: %d", channel1.Depth())
 
-	t.Logf("read %d msgs", iterations/2)
+	t.Logf("reading %d msgs", iterations/2)
 	for i := 0; i < iterations/2; i++ {
-		select {
-		case msg = <-channel1.memoryMsgChan:
-		case b := <-channel1.backend.ReadChan():
-			msg, _ = decodeMessage(b)
-		}
+		msg := channelReceiveHelper(channel1)
+		channel1.FinishMessage(0, msg.ID)
 		t.Logf("read message %d", i+1)
 		test.Equal(t, body, msg.Body)
 	}
 
-	for {
-		if channel1.Depth() == int64(iterations/2) {
-			break
+	// make sure metadata shows the topic/channel
+	for i := 0; i < 10; i++ {
+		m, err = getMetadata(t, nsqd)
+		test.Nil(t, err)
+		if len(m.Topics) != 1 ||
+			m.Topics[0].Name != topicName ||
+			len(m.Topics[0].Channels) != 1 ||
+			m.Topics[0].Channels[0].Name != "ch1" {
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
-		time.Sleep(50 * time.Millisecond)
+		goto success
 	}
+	panic("should not happen")
 
-	// make sure metadata shows the topic
-	m, err = getMetadata(nsqd)
-	test.Nil(t, err)
-	test.Equal(t, 1, len(m.Topics))
-	test.Equal(t, topicName, m.Topics[0].Name)
-
+success:
 	exitChan <- 1
 	<-doneExitChan
 
@@ -127,13 +127,12 @@ func TestStartup(t *testing.T) {
 
 	topic = nsqd.GetTopic(topicName)
 	// should be empty; channel should have drained everything
-	count := topic.Depth()
-	test.Equal(t, int64(0), count)
+	test.Equal(t, uint64(0), topic.Depth())
 
 	channel1 = topic.GetChannel("ch1")
 
 	for {
-		if channel1.Depth() == int64(iterations/2) {
+		if channel1.Depth() == uint64(iterations/2) {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -141,18 +140,14 @@ func TestStartup(t *testing.T) {
 
 	// read the other half of the messages
 	for i := 0; i < iterations/2; i++ {
-		select {
-		case msg = <-channel1.memoryMsgChan:
-		case b := <-channel1.backend.ReadChan():
-			msg, _ = decodeMessage(b)
-		}
+		msg := channelReceiveHelper(channel1)
+		channel1.FinishMessage(0, msg.ID)
 		t.Logf("read message %d", i+1)
 		test.Equal(t, body, msg.Body)
 	}
 
 	// verify we drained things
-	test.Equal(t, 0, len(topic.memoryMsgChan))
-	test.Equal(t, int64(0), topic.backend.Depth())
+	test.Equal(t, uint64(0), channel1.Depth())
 
 	exitChan <- 1
 	<-doneExitChan
@@ -182,9 +177,8 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 	client := newClientV2(0, nil, &context{nsqd})
 	ephemeralChannel.AddClient(client.ID, client)
 
-	msg := NewMessage(topic.GenerateID(), body)
-	topic.PutMessage(msg)
-	msg = <-ephemeralChannel.memoryMsgChan
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
+	msg := channelReceiveHelper(ephemeralChannel)
 	test.Equal(t, body, msg.Body)
 
 	ephemeralChannel.RemoveClient(client.ID)
@@ -221,7 +215,7 @@ func TestPauseMetadata(t *testing.T) {
 	nsqd.PersistMetadata()
 
 	var isPaused = func(n *NSQD, topicIndex int, channelIndex int) bool {
-		m, _ := getMetadata(n)
+		m, _ := getMetadata(t, n)
 		return m.Topics[topicIndex].Channels[channelIndex].Paused
 	}
 
@@ -410,7 +404,8 @@ func TestCluster(t *testing.T) {
 func TestSetHealth(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	nsqd := New(opts)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	test.Equal(t, nil, nsqd.GetError())
@@ -436,7 +431,8 @@ func TestCrashingLogger(t *testing.T) {
 		// Test invalid log level causes error
 		opts := NewOptions()
 		opts.LogLevel = "bad"
-		_ = New(opts)
+		mustStartNSQD(opts)
+		defer os.RemoveAll(opts.DataPath)
 		return
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=TestCrashingLogger")

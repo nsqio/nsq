@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/version"
 )
@@ -201,8 +202,8 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 
 func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	var err error
-	var memoryMsgChan chan *Message
-	var backendMsgChan chan []byte
+	var memoryMsgChan <-chan *Message
+	var backendMsgChan <-chan wal.Entry
 	var subChannel *Channel
 	// NOTE: `flusherChan` is used to bound message latency for
 	// the pathological case of a channel on a low volume topic
@@ -247,13 +248,13 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			// last iteration we flushed...
 			// do not select on the flusher ticker channel
 			memoryMsgChan = subChannel.memoryMsgChan
-			backendMsgChan = subChannel.backend.ReadChan()
+			backendMsgChan = subChannel.cursor.ReadCh()
 			flusherChan = nil
 		} else {
 			// we're buffered (if there isn't any more data we should flush)...
 			// select on the flusher ticker channel, too
 			memoryMsgChan = subChannel.memoryMsgChan
-			backendMsgChan = subChannel.backend.ReadChan()
+			backendMsgChan = subChannel.cursor.ReadCh()
 			flusherChan = outputBufferTicker.C
 		}
 
@@ -299,16 +300,27 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			if err != nil {
 				goto exit
 			}
-		case b := <-backendMsgChan:
+		case ev := <-backendMsgChan:
+			entry, err := DecodeWireEntry(ev.Body)
+			if err != nil {
+				p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] DecodeWireEntry error - %s", client, err)
+				// TODO: (WAL) FIN this ID?
+				continue
+			}
+			msg := NewMessage(guid(ev.ID).Hex(), entry.Timestamp, entry.Body)
+			if entry.Deadline != 0 {
+				deferred := time.Unix(0, entry.Deadline).Sub(time.Now())
+				if deferred > 0 {
+					subChannel.StartDeferredTimeout(msg, deferred)
+					continue
+				}
+			}
+
 			if sampleRate > 0 && rand.Int31n(100) > sampleRate {
+				subChannel.SkipMessage(msg.ID)
 				continue
 			}
 
-			msg, err := decodeMessage(b)
-			if err != nil {
-				p.ctx.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
-				continue
-			}
 			msg.Attempts++
 
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
@@ -784,8 +796,8 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxMsgSize))
 	}
 
-	messageBody := make([]byte, bodyLen)
-	_, err = io.ReadFull(client.Reader, messageBody)
+	msgBody := make([]byte, bodyLen)
+	_, err = io.ReadFull(client.Reader, msgBody)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body")
 	}
@@ -795,8 +807,8 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), messageBody)
-	err = topic.PutMessage(msg)
+	entry := NewEntry(msgBody, time.Now().UnixNano(), 0)
+	err = topic.Pub([]wal.EntryWriterTo{entry})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed "+err.Error())
 	}
@@ -840,7 +852,7 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("MPUB body too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxBodySize))
 	}
 
-	messages, err := readMPUB(client.Reader, client.lenSlice, topic,
+	entries, err := readMPUB(client.Reader, client.lenSlice,
 		p.ctx.nsqd.getOpts().MaxMsgSize, p.ctx.nsqd.getOpts().MaxBodySize)
 	if err != nil {
 		return nil, err
@@ -849,12 +861,12 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	// if we've made it this far we've validated all the input,
 	// the only possible error is that the topic is exiting during
 	// this next call (and no messages will be queued in that case)
-	err = topic.PutMessages(messages)
+	err = topic.Pub(entries)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_MPUB_FAILED", "MPUB failed "+err.Error())
 	}
 
-	client.PublishedMessage(topicName, uint64(len(messages)))
+	client.PublishedMessage(topicName, uint64(len(entries)))
 
 	return okBytes, nil
 }
@@ -900,8 +912,8 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("DPUB message too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxMsgSize))
 	}
 
-	messageBody := make([]byte, bodyLen)
-	_, err = io.ReadFull(client.Reader, messageBody)
+	msgBody := make([]byte, bodyLen)
+	_, err = io.ReadFull(client.Reader, msgBody)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "DPUB failed to read message body")
 	}
@@ -911,9 +923,9 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	topic := p.ctx.nsqd.GetTopic(topicName)
-	msg := NewMessage(topic.GenerateID(), messageBody)
-	msg.deferred = timeoutDuration
-	err = topic.PutMessage(msg)
+	now := time.Now().UnixNano()
+	entry := NewEntry(msgBody, now, now+int64(timeoutDuration))
+	err = topic.Pub([]wal.EntryWriterTo{entry})
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_DPUB_FAILED", "DPUB failed "+err.Error())
 	}
@@ -950,47 +962,47 @@ func (p *protocolV2) TOUCH(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
-func readMPUB(r io.Reader, tmp []byte, topic *Topic, maxMessageSize int64, maxBodySize int64) ([]*Message, error) {
-	numMessages, err := readLen(r, tmp)
+func readMPUB(r io.Reader, tmp []byte, maxMsgSize int64, maxBodySize int64) ([]wal.EntryWriterTo, error) {
+	numMsgs, err := readLen(r, tmp)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "MPUB failed to read message count")
 	}
 
 	// 4 == total num, 5 == length + min 1
 	maxMessages := (maxBodySize - 4) / 5
-	if numMessages <= 0 || int64(numMessages) > maxMessages {
+	if numMsgs <= 0 || int64(numMsgs) > maxMessages {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY",
-			fmt.Sprintf("MPUB invalid message count %d", numMessages))
+			fmt.Sprintf("MPUB invalid message count %d", numMsgs))
 	}
 
-	messages := make([]*Message, 0, numMessages)
-	for i := int32(0); i < numMessages; i++ {
-		messageSize, err := readLen(r, tmp)
+	entries := make([]wal.EntryWriterTo, 0, numMsgs)
+	for i := int32(0); i < numMsgs; i++ {
+		size, err := readLen(r, tmp)
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE",
 				fmt.Sprintf("MPUB failed to read message(%d) body size", i))
 		}
 
-		if messageSize <= 0 {
+		if size <= 0 {
 			return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-				fmt.Sprintf("MPUB invalid message(%d) body size %d", i, messageSize))
+				fmt.Sprintf("MPUB invalid message(%d) body size %d", i, size))
 		}
 
-		if int64(messageSize) > maxMessageSize {
+		if int64(size) > maxMsgSize {
 			return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-				fmt.Sprintf("MPUB message too big %d > %d", messageSize, maxMessageSize))
+				fmt.Sprintf("MPUB message too big %d > %d", size, maxMsgSize))
 		}
 
-		msgBody := make([]byte, messageSize)
-		_, err = io.ReadFull(r, msgBody)
+		body := make([]byte, size)
+		_, err = io.ReadFull(r, body)
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
 
-		messages = append(messages, NewMessage(topic.GenerateID(), msgBody))
+		entries = append(entries, NewEntry(body, time.Now().UnixNano(), 0))
 	}
 
-	return messages, nil
+	return entries, nil
 }
 
 // validate and cast the bytes on the wire to a message ID

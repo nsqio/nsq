@@ -57,7 +57,7 @@ func TestHTTPpub(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(1), topic.Depth())
+	test.Equal(t, uint64(1), topic.Depth())
 }
 
 func TestHTTPpubEmpty(t *testing.T) {
@@ -81,7 +81,7 @@ func TestHTTPpubEmpty(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(0), topic.Depth())
+	test.Equal(t, uint64(0), topic.Depth())
 }
 
 func TestHTTPmpub(t *testing.T) {
@@ -110,7 +110,7 @@ func TestHTTPmpub(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(4), topic.Depth())
+	test.Equal(t, uint64(4), topic.Depth())
 }
 
 func TestHTTPmpubEmpty(t *testing.T) {
@@ -141,7 +141,7 @@ func TestHTTPmpubEmpty(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(4), topic.Depth())
+	test.Equal(t, uint64(4), topic.Depth())
 }
 
 func TestHTTPmpubBinary(t *testing.T) {
@@ -170,7 +170,7 @@ func TestHTTPmpubBinary(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(5), topic.Depth())
+	test.Equal(t, uint64(5), topic.Depth())
 }
 
 func TestHTTPmpubForNonNormalizedBinaryParam(t *testing.T) {
@@ -199,13 +199,13 @@ func TestHTTPmpubForNonNormalizedBinaryParam(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(5), topic.Depth())
+	test.Equal(t, uint64(5), topic.Depth())
 }
 
 func TestHTTPpubDefer(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	_, httpAddr, nsqd := mustStartNSQD(opts)
+	tcpAddr, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
@@ -220,6 +220,15 @@ func TestHTTPpubDefer(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Nil(t, err)
+	defer conn.Close()
+
+	identify(t, conn, nil, frameTypeResponse)
+	sub(t, conn, topicName, "ch")
+	_, err = nsq.Ready(1).WriteTo(conn)
+	test.Nil(t, err)
 
 	time.Sleep(5 * time.Millisecond)
 
@@ -271,7 +280,7 @@ func TestHTTPSRequire(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(1), topic.Depth())
+	test.Equal(t, uint64(1), topic.Depth())
 }
 
 func TestHTTPSRequireVerify(t *testing.T) {
@@ -335,7 +344,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(1), topic.Depth())
+	test.Equal(t, uint64(1), topic.Depth())
 }
 
 func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
@@ -365,7 +374,7 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	test.Equal(t, int64(1), topic.Depth())
+	test.Equal(t, uint64(1), topic.Depth())
 }
 
 func TestHTTPV1TopicChannel(t *testing.T) {

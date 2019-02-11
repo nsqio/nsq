@@ -167,6 +167,12 @@ func New(opts *Options) *NSQD {
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
+	err = n.LoadMetadata()
+	if err != nil {
+		n.logf(LOG_FATAL, "failed to load metadata - %s", err)
+		os.Exit(1)
+	}
+
 	return n
 }
 
@@ -361,7 +367,6 @@ func (n *NSQD) LoadMetadata() error {
 				channel.Pause()
 			}
 		}
-		topic.Start()
 	}
 	return nil
 }
@@ -505,8 +510,6 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		n.logf(LOG_ERROR, "no available nsqlookupd to query for channels to pre-create for topic %s", t.name)
 	}
 
-	// now that all channels are added, start topic messagePump
-	t.Start()
 	return t
 }
 
@@ -551,6 +554,7 @@ func (n *NSQD) Notify(v interface{}) {
 	// should not persist metadata while loading it.
 	// nsqd will call `PersistMetadata` it after loading
 	persist := atomic.LoadInt32(&n.isLoading) == 0
+	n.logf(LOG_INFO, "notifying - %v", persist)
 	n.waitGroup.Wrap(func() {
 		// by selecting on exitChan we guarantee that
 		// we do not block exit, see issue #123

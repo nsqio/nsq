@@ -1,16 +1,26 @@
 package nsqd
 
 import (
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/mreiferson/wal"
 	"github.com/nsqio/nsq/internal/test"
 )
+
+func channelReceiveHelper(c *Channel) *Message {
+	var msg *Message
+	select {
+	case msg = <-c.memoryMsgChan:
+	case ev := <-c.cursor.ReadCh():
+		entry, _ := DecodeWireEntry(ev.Body)
+		msg = NewMessage(guid(ev.ID).Hex(), time.Now().UnixNano(), entry.Body)
+	}
+	c.StartInFlightTimeout(msg, 0, time.Second*60)
+	return msg
+}
 
 // ensure that we can push a message through a topic and get it out of a channel
 func TestPutMessage(t *testing.T) {
@@ -24,13 +34,12 @@ func TestPutMessage(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 	channel1 := topic.GetChannel("ch")
 
-	var id MessageID
-	msg := NewMessage(id, []byte("test"))
-	topic.PutMessage(msg)
+	body := []byte("test")
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 
-	outputMsg := <-channel1.memoryMsgChan
-	test.Equal(t, msg.ID, outputMsg.ID)
-	test.Equal(t, msg.Body, outputMsg.Body)
+	outputMsg := channelReceiveHelper(channel1)
+	// test.Equal(t, msg.ID, outputMsg.ID)
+	test.Equal(t, body, outputMsg.Body)
 }
 
 // ensure that both channels get the same message
@@ -46,17 +55,16 @@ func TestPutMessage2Chan(t *testing.T) {
 	channel1 := topic.GetChannel("ch1")
 	channel2 := topic.GetChannel("ch2")
 
-	var id MessageID
-	msg := NewMessage(id, []byte("test"))
-	topic.PutMessage(msg)
+	body := []byte("test")
+	topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 
-	outputMsg1 := <-channel1.memoryMsgChan
-	test.Equal(t, msg.ID, outputMsg1.ID)
-	test.Equal(t, msg.Body, outputMsg1.Body)
+	outputMsg1 := channelReceiveHelper(channel1)
+	// test.Equal(t, msg.ID, outputMsg1.ID)
+	test.Equal(t, body, outputMsg1.Body)
 
-	outputMsg2 := <-channel2.memoryMsgChan
-	test.Equal(t, msg.ID, outputMsg2.ID)
-	test.Equal(t, msg.Body, outputMsg2.Body)
+	outputMsg2 := channelReceiveHelper(channel2)
+	// test.Equal(t, msg.ID, outputMsg2.ID)
+	test.Equal(t, body, outputMsg2.Body)
 }
 
 func TestInFlightWorker(t *testing.T) {
@@ -75,7 +83,7 @@ func TestInFlightWorker(t *testing.T) {
 	channel := topic.GetChannel("channel")
 
 	for i := 0; i < count; i++ {
-		msg := NewMessage(topic.GenerateID(), []byte("test"))
+		msg := NewMessage(guid(i).Hex(), time.Now().UnixNano(), []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
 	}
 
@@ -115,18 +123,19 @@ func TestChannelEmpty(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
 
-	msgs := make([]*Message, 0, 25)
+	body := []byte("test")
 	for i := 0; i < 25; i++ {
-		msg := NewMessage(topic.GenerateID(), []byte("test"))
-		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
-		msgs = append(msgs, msg)
+		topic.Pub([]wal.EntryWriterTo{NewEntry(body, time.Now().UnixNano(), 0)})
 	}
 
-	channel.RequeueMessage(0, msgs[len(msgs)-1].ID, 100*time.Millisecond)
-	test.Equal(t, 24, len(channel.inFlightMessages))
-	test.Equal(t, 24, len(channel.inFlightPQ))
+	channelReceiveHelper(channel)
+	msg := channelReceiveHelper(channel)
+	channel.RequeueMessage(0, msg.ID, 100*time.Millisecond)
+	test.Equal(t, 1, len(channel.inFlightMessages))
+	test.Equal(t, 1, len(channel.inFlightPQ))
 	test.Equal(t, 1, len(channel.deferredMessages))
 	test.Equal(t, 1, len(channel.deferredPQ))
+	test.Equal(t, uint64(25), channel.Depth())
 
 	channel.Empty()
 
@@ -134,7 +143,7 @@ func TestChannelEmpty(t *testing.T) {
 	test.Equal(t, 0, len(channel.inFlightPQ))
 	test.Equal(t, 0, len(channel.deferredMessages))
 	test.Equal(t, 0, len(channel.deferredPQ))
-	test.Equal(t, int64(0), channel.Depth())
+	test.Equal(t, uint64(0), channel.Depth())
 }
 
 func TestChannelEmptyConsumer(t *testing.T) {
@@ -155,7 +164,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	channel.AddClient(client.ID, client)
 
 	for i := 0; i < 25; i++ {
-		msg := NewMessage(topic.GenerateID(), []byte("test"))
+		msg := NewMessage(guid(0).Hex(), time.Now().UnixNano(), []byte("test"))
 		channel.StartInFlightTimeout(msg, 0, opts.MsgTimeout)
 		client.SendingMessage()
 	}
@@ -171,53 +180,4 @@ func TestChannelEmptyConsumer(t *testing.T) {
 		stats := cl.Stats()
 		test.Equal(t, int64(0), stats.InFlightCount)
 	}
-}
-
-func TestChannelHealth(t *testing.T) {
-	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(t)
-	opts.MemQueueSize = 2
-
-	_, httpAddr, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	topic := nsqd.GetTopic("test")
-
-	channel := topic.GetChannel("channel")
-
-	channel.backend = &errorBackendQueue{}
-
-	msg := NewMessage(topic.GenerateID(), make([]byte, 100))
-	err := channel.PutMessage(msg)
-	test.Nil(t, err)
-
-	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
-	err = channel.PutMessage(msg)
-	test.Nil(t, err)
-
-	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
-	err = channel.PutMessage(msg)
-	test.NotNil(t, err)
-
-	url := fmt.Sprintf("http://%s/ping", httpAddr)
-	resp, err := http.Get(url)
-	test.Nil(t, err)
-	test.Equal(t, 500, resp.StatusCode)
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	test.Equal(t, "NOK - never gonna happen", string(body))
-
-	channel.backend = &errorRecoveredBackendQueue{}
-
-	msg = NewMessage(topic.GenerateID(), make([]byte, 100))
-	err = channel.PutMessage(msg)
-	test.Nil(t, err)
-
-	resp, err = http.Get(url)
-	test.Nil(t, err)
-	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	test.Equal(t, "OK", string(body))
 }

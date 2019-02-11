@@ -10,8 +10,8 @@ echo "# using --mem-queue-size=$memQueueSize --data-path=$dataPath --size=$messa
 echo "# compiling/running nsqd"
 pushd apps/nsqd >/dev/null
 go build
-rm -f *.dat
-./nsqd --mem-queue-size=$memQueueSize --data-path=$dataPath >/dev/null 2>&1 &
+rm -f *.dat *.map
+./nsqd --mem-queue-size=$memQueueSize --data-path=$dataPath --sync-timeout=0 >/dev/null 2>&1 &
 nsqd_pid=$!
 popd >/dev/null
 

@@ -1,10 +1,10 @@
 package nsqd
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 )
 
@@ -14,6 +14,11 @@ const (
 )
 
 type MessageID [MsgIDLength]byte
+
+func (m MessageID) Int64() int64 {
+	i, _ := strconv.ParseInt(string(m[:]), 16, 64)
+	return i
+}
 
 type Message struct {
 	ID        MessageID
@@ -26,14 +31,13 @@ type Message struct {
 	clientID   int64
 	pri        int64
 	index      int
-	deferred   time.Duration
 }
 
-func NewMessage(id MessageID, body []byte) *Message {
+func NewMessage(id MessageID, timestamp int64, body []byte) *Message {
 	return &Message{
 		ID:        id,
 		Body:      body,
-		Timestamp: time.Now().UnixNano(),
+		Timestamp: timestamp,
 	}
 }
 
@@ -65,8 +69,8 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 	return total, nil
 }
 
-// decodeMessage deserializes data (as []byte) and creates a new Message
-// message format:
+// decodeWireMessage deserializes data (as []byte) and creates a new Message
+//
 // [x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]...
 // |       (int64)        ||    ||      (hex string encoded in ASCII)           || (binary)
 // |       8-byte         ||    ||                 16-byte                      || N-byte
@@ -75,7 +79,8 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 //                        (uint16)
 //                         2-byte
 //                        attempts
-func decodeMessage(b []byte) (*Message, error) {
+//
+func decodeWireMessage(b []byte) (*Message, error) {
 	var msg Message
 
 	if len(b) < minValidMsgLength {
@@ -88,13 +93,4 @@ func decodeMessage(b []byte) (*Message, error) {
 	msg.Body = b[10+MsgIDLength:]
 
 	return &msg, nil
-}
-
-func writeMessageToBackend(buf *bytes.Buffer, msg *Message, bq BackendQueue) error {
-	buf.Reset()
-	_, err := msg.WriteTo(buf)
-	if err != nil {
-		return err
-	}
-	return bq.Put(buf.Bytes())
 }
