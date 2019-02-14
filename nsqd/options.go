@@ -82,6 +82,9 @@ type Options struct {
 	DeflateEnabled  bool `flag:"deflate"`
 	MaxDeflateLevel int  `flag:"max-deflate-level"`
 	SnappyEnabled   bool `flag:"snappy"`
+
+	// Contrib/Optional Modules
+	ModOpt []string `flag:"mod-opt"`
 }
 
 func NewOptions() *Options {
@@ -147,5 +150,7 @@ func NewOptions() *Options {
 		SnappyEnabled:   true,
 
 		TLSMinVersion: tls.VersionTLS10,
+
+		ModOpt: make([]string, 0),
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
+	"github.com/nsqio/nsq/contrib"
 	"github.com/nsqio/nsq/internal/app"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqd"
@@ -147,6 +148,9 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int("max-deflate-level", opts.MaxDeflateLevel, "max deflate compression level a client can negotiate (> values == > nsqd CPU usage)")
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 
+	optModulesOptions := app.StringArray{}
+	flagSet.Var(&optModulesOptions, "mod-opt", "optional module options, of form: --mod-opt={{moduleName}}={{moduleOpt}}={{moduleOptValue}}")
+
 	return flagSet
 }
 
@@ -234,6 +238,10 @@ func (p *program) Start() error {
 		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
 	}
 	nsqd.Main()
+
+	// hook into addons
+	addons := contrib.NewEnabledNSQDAddons(opts.ModOpt, nsqd)
+	addons.Start()
 
 	p.nsqd = nsqd
 	return nil
