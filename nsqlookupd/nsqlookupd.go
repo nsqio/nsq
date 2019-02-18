@@ -62,6 +62,7 @@ func (l *NSQLookupd) Main() error {
 
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
+		defer tcpListener.Close()
 		protocol.TCPServer(tcpListener, tcpServer, l.logf)
 	})
 	httpServer := newHTTPServer(ctx)

@@ -263,6 +263,7 @@ func (n *NSQD) Main() {
 
 	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
+		defer n.tcpListener.Close()
 		protocol.TCPServer(n.tcpListener, tcpServer, n.logf)
 	})
 	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
