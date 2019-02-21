@@ -279,6 +279,11 @@ func (t *Topic) messagePump() {
 				t.ctx.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
 				continue
 			}
+
+			nowInNano := time.Now().UnixNano()
+			if nowInNano-msg.absTs < 0 {
+				msg.deferred = time.Duration(msg.absTs - nowInNano)
+			}
 		case <-t.channelUpdateChan:
 			chans = chans[:0]
 			t.RLock()

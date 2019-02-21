@@ -309,6 +309,17 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 				p.ctx.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
 				continue
 			}
+
+			nowInNano := time.Now().UnixNano()
+			if nowInNano-msg.absTs < 0 {
+				msg.deferred = time.Duration(msg.absTs - nowInNano)
+			}
+
+			if msg.deferred != 0 {
+				subChannel.PutMessageDeferred(msg, msg.deferred)
+				continue
+			}
+
 			msg.Attempts++
 
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
