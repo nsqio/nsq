@@ -58,6 +58,7 @@ type Options struct {
 	MaxOutputBufferTimeout time.Duration `flag:"max-output-buffer-timeout"`
 	MinOutputBufferTimeout time.Duration `flag:"min-output-buffer-timeout"`
 	OutputBufferTimeout    time.Duration `flag:"output-buffer-timeout"`
+	MaxChannelConsumers    int           `flag:"max-channel-consumers"`
 
 	// statsd integration
 	StatsdAddress       string        `flag:"statsd-address"`
@@ -134,6 +135,7 @@ func NewOptions() *Options {
 		MaxOutputBufferTimeout: 30 * time.Second,
 		MinOutputBufferTimeout: 25 * time.Millisecond,
 		OutputBufferTimeout:    250 * time.Millisecond,
+		MaxChannelConsumers:    0,
 
 		StatsdPrefix:        "nsq.%s",
 		StatsdInterval:      60 * time.Second,

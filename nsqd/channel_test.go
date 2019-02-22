@@ -152,7 +152,8 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	channel := topic.GetChannel("channel")
 	client := newClientV2(0, conn, &context{nsqd})
 	client.SetReadyCount(25)
-	channel.AddClient(client.ID, client)
+	err := channel.AddClient(client.ID, client)
+	test.Equal(t, err, nil)
 
 	for i := 0; i < 25; i++ {
 		msg := NewMessage(topic.GenerateID(), []byte("test"))
@@ -171,6 +172,32 @@ func TestChannelEmptyConsumer(t *testing.T) {
 		stats := cl.Stats()
 		test.Equal(t, int64(0), stats.InFlightCount)
 	}
+}
+
+func TestMaxChannelConsumers(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	opts.MaxChannelConsumers = 1
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	conn, _ := mustConnectNSQD(tcpAddr)
+	defer conn.Close()
+
+	topicName := "test_max_channel_consumers" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("channel")
+
+	client1 := newClientV2(1, conn, &context{nsqd})
+	client1.SetReadyCount(25)
+	err := channel.AddClient(client1.ID, client1)
+	test.Equal(t, err, nil)
+
+	client2 := newClientV2(2, conn, &context{nsqd})
+	client2.SetReadyCount(25)
+	err = channel.AddClient(client2.ID, client2)
+	test.NotEqual(t, err, nil)
 }
 
 func TestChannelHealth(t *testing.T) {
