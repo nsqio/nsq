@@ -74,6 +74,8 @@ type NSQD struct {
 	exitChan             chan int
 	waitGroup            util.WaitGroupWrapper
 
+	shuttingDown bool
+
 	ci *clusterinfo.ClusterInfo
 }
 
@@ -263,7 +265,9 @@ func (n *NSQD) Main() {
 
 	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
-		protocol.TCPServer(n.tcpListener, tcpServer, n.logf)
+		if err := protocol.TCPServer(n.tcpListener, tcpServer, n.logf); err != nil {
+			go n.Exit()
+		}
 	})
 	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
 	n.waitGroup.Wrap(func() {
@@ -436,6 +440,13 @@ func (n *NSQD) Exit() {
 	}
 
 	n.Lock()
+
+	if n.shuttingDown {
+		n.Unlock()
+		return
+	}
+	n.shuttingDown = true
+
 	err := n.PersistMetadata()
 	if err != nil {
 		n.logf(LOG_ERROR, "failed to persist metadata - %s", err)

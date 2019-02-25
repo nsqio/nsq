@@ -12,9 +12,10 @@ type TCPHandler interface {
 	Handle(net.Conn)
 }
 
-func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) {
+func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) error {
 	logf(lg.INFO, "TCP: listening on %s", listener.Addr())
 
+	var fatalErr error
 	for {
 		clientConn, err := listener.Accept()
 		if err != nil {
@@ -25,7 +26,8 @@ func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) {
 			}
 			// theres no direct way to detect this error because it is not exposed
 			if !strings.Contains(err.Error(), "use of closed network connection") {
-				logf(lg.ERROR, "listener.Accept() - %s", err)
+				logf(lg.FATAL, "listener.Accept() - %s", err)
+				fatalErr = err
 			}
 			break
 		}
@@ -33,4 +35,5 @@ func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) {
 	}
 
 	logf(lg.INFO, "TCP: closing %s", listener.Addr())
+	return fatalErr
 }
