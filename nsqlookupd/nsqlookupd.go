@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/lg"
@@ -62,7 +63,9 @@ func (l *NSQLookupd) Main() error {
 
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		protocol.TCPServer(tcpListener, tcpServer, l.logf)
+		if err := protocol.TCPServer(tcpListener, tcpServer, l.logf); err != nil {
+			syscall.Kill(os.Getpid(), syscall.SIGTERM)
+		}
 	})
 	httpServer := newHTTPServer(ctx)
 	l.waitGroup.Wrap(func() {

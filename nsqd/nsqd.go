@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/nsqio/nsq/internal/clusterinfo"
@@ -263,7 +264,9 @@ func (n *NSQD) Main() {
 
 	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
-		protocol.TCPServer(n.tcpListener, tcpServer, n.logf)
+		if err := protocol.TCPServer(n.tcpListener, tcpServer, n.logf); err != nil {
+			syscall.Kill(os.Getpid(), syscall.SIGTERM)
+		}
 	})
 	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
 	n.waitGroup.Wrap(func() {
