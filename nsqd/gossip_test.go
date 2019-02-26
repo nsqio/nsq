@@ -5,6 +5,8 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/nsqio/nsq/internal/test"
 )
 
 func TestGossip(t *testing.T) {
@@ -16,13 +18,13 @@ func TestGossip(t *testing.T) {
 	for i := 0; i < num; i++ {
 		// find an open port
 		tmpl, err := net.Listen("tcp", "127.0.0.1:0")
-		equal(t, err, nil)
+		test.Equal(t, err, nil)
 		addr := tmpl.Addr().(*net.TCPAddr)
 		tmpl.Close()
 
 		opts := NewOptions()
 		opts.ID = int64(i)
-		opts.Logger = newTestLogger(t)
+		opts.Logger = test.NewTestLogger(t)
 		opts.GossipAddress = addr.String()
 		opts.BroadcastAddress = "127.0.0.1"
 		if seedNode != nil {
@@ -50,7 +52,7 @@ func TestGossip(t *testing.T) {
 		}
 		return true
 	})
-	equal(t, converged, true)
+	test.Equal(t, converged, true)
 
 	// all nodes in the cluster should have registrations
 	for _, nsqd := range nsqds {
@@ -61,8 +63,8 @@ func TestGossip(t *testing.T) {
 		}
 		sort.Ints(actTCPPorts)
 
-		equal(t, len(producers), num)
-		equal(t, tcpPorts, actTCPPorts)
+		test.Equal(t, len(producers), num)
+		test.Equal(t, tcpPorts, actTCPPorts)
 	}
 
 	// create a topic/channel on the first node
@@ -80,16 +82,16 @@ func TestGossip(t *testing.T) {
 		}
 		return true
 	})
-	equal(t, converged, true)
+	test.Equal(t, converged, true)
 
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("topic", topicName, "")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 
 		producers = nsqd.rdb.FindProducers("channel", topicName, "ch")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 	}
 
 }
@@ -103,13 +105,13 @@ func TestGossipResync(t *testing.T) {
 	for i := 0; i < num; i++ {
 		// find an open port
 		tmpl, err := net.Listen("tcp", "127.0.0.1:0")
-		equal(t, err, nil)
+		test.Equal(t, err, nil)
 		addr := tmpl.Addr().(*net.TCPAddr)
 		tmpl.Close()
 
 		opts := NewOptions()
 		opts.ID = int64(i)
-		opts.Logger = newTestLogger(t)
+		opts.Logger = test.NewTestLogger(t)
 		opts.GossipAddress = addr.String()
 		opts.BroadcastAddress = "127.0.0.1"
 		opts.GossipReapInterval = 200 * time.Millisecond
@@ -147,16 +149,16 @@ func TestGossipResync(t *testing.T) {
 		}
 		return true
 	})
-	equal(t, converged, true)
+	test.Equal(t, converged, true)
 
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("topic", topicName, "")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 
 		producers = nsqd.rdb.FindProducers("channel", topicName, "ch")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 	}
 
 	// test re-gossiping; close a node
@@ -172,7 +174,7 @@ func TestGossipResync(t *testing.T) {
 		}
 		return true
 	})
-	equal(t, converged, true)
+	test.Equal(t, converged, true)
 
 	// restart stopped node
 	_, _, nsqd := mustStartNSQD(nsqds[num-1].getOpts())
@@ -188,7 +190,7 @@ func TestGossipResync(t *testing.T) {
 		}
 		return true
 	})
-	equal(t, converged, true)
+	test.Equal(t, converged, true)
 
 	// check that all nodes see the restarted first node
 	converged = converge(10*time.Second, nsqds, func() bool {
@@ -200,17 +202,17 @@ func TestGossipResync(t *testing.T) {
 		}
 		return true
 	})
-	equal(t, converged, true)
+	test.Equal(t, converged, true)
 
 	// we should have producers for the topic/channel back now
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("topic", topicName, "")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 
 		producers = nsqd.rdb.FindProducers("channel", topicName, "ch")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 	}
 }
 
@@ -223,13 +225,13 @@ func TestRegossip(t *testing.T) {
 	for i := 0; i < num; i++ {
 		// find an open port
 		tmpl, err := net.Listen("tcp", "127.0.0.1:0")
-		equal(t, err, nil)
+		test.Equal(t, err, nil)
 		addr := tmpl.Addr().(*net.TCPAddr)
 		tmpl.Close()
 
 		opts := NewOptions()
 		opts.ID = int64(i)
-		opts.Logger = newTestLogger(t)
+		opts.Logger = test.NewTestLogger(t)
 		opts.GossipAddress = addr.String()
 		opts.BroadcastAddress = "127.0.0.1"
 		opts.GossipRegossipInterval = 1 * time.Second
@@ -264,16 +266,16 @@ func TestRegossip(t *testing.T) {
 		}
 		return true
 	})
-	equal(t, converged, true)
+	test.Equal(t, converged, true)
 
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("topic", topicName, "")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 
 		producers = nsqd.rdb.FindProducers("channel", topicName, "ch")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 	}
 
 	// test re-gossiping; delete info on one node
@@ -293,17 +295,17 @@ func TestRegossip(t *testing.T) {
 		}
 		return true
 	})
-	equal(t, converged, true)
+	test.Equal(t, converged, true)
 
 	// we should have producers for the topic/channel back now on all nodes
 	for _, nsqd := range nsqds {
 		producers := nsqd.rdb.FindProducers("topic", topicName, "")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 
 		producers = nsqd.rdb.FindProducers("channel", topicName, "ch")
-		equal(t, len(producers), 1)
-		equal(t, producers[0].TCPPort, firstPort)
+		test.Equal(t, len(producers), 1)
+		test.Equal(t, producers[0].TCPPort, firstPort)
 	}
 }
 
