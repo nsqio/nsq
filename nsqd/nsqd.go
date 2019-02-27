@@ -77,7 +77,7 @@ type NSQD struct {
 	ci *clusterinfo.ClusterInfo
 }
 
-func New(opts *Options) *NSQD {
+func New(opts *Options) (*NSQD, error) {
 	dataPath := opts.DataPath
 	if opts.DataPath == "" {
 		cwd, _ := os.Getwd()
@@ -107,32 +107,27 @@ func New(opts *Options) *NSQD {
 	var err error
 	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
 	if err != nil {
-		n.logf(LOG_FATAL, "%s", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to parse log level (%s) - %s", opts.LogLevel, err)
 	}
 
 	err = n.dl.Lock()
 	if err != nil {
-		n.logf(LOG_FATAL, "--data-path=%s in use (possibly by another instance of nsqd)", dataPath)
-		os.Exit(1)
+		return nil, fmt.Errorf("--data-path=%s in use (possibly by another instance of nsqd)", dataPath)
 	}
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
-		n.logf(LOG_FATAL, "--max-deflate-level must be [1,9]")
-		os.Exit(1)
+		return nil, errors.New("--max-deflate-level must be [1,9]")
 	}
 
 	if opts.ID < 0 || opts.ID >= 1024 {
-		n.logf(LOG_FATAL, "--node-id must be [0,1024)")
-		os.Exit(1)
+		return nil, errors.New("--node-id must be [0,1024)")
 	}
 
 	if opts.StatsdPrefix != "" {
 		var port string
 		_, port, err = net.SplitHostPort(opts.HTTPAddress)
 		if err != nil {
-			n.logf(LOG_FATAL, "failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
-			os.Exit(1)
+			return nil, fmt.Errorf("failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
 		}
 		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
 		prefixWithHost := strings.Replace(opts.StatsdPrefix, "%s", statsdHostKey, -1)
@@ -148,26 +143,23 @@ func New(opts *Options) *NSQD {
 
 	tlsConfig, err := buildTLSConfig(opts)
 	if err != nil {
-		n.logf(LOG_FATAL, "failed to build TLS config - %s", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to build TLS config - %s", err)
 	}
 	if tlsConfig == nil && opts.TLSRequired != TLSNotRequired {
-		n.logf(LOG_FATAL, "cannot require TLS client connections without TLS key and cert")
-		os.Exit(1)
+		return nil, errors.New("cannot require TLS client connections without TLS key and cert")
 	}
 	n.tlsConfig = tlsConfig
 
 	for _, v := range opts.E2EProcessingLatencyPercentiles {
 		if v <= 0 || v > 1 {
-			n.logf(LOG_FATAL, "Invalid percentile: %v", v)
-			os.Exit(1)
+			return nil, fmt.Errorf("invalid E2E processing latency percentile: %v", v)
 		}
 	}
 
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
-	return n
+	return n, nil
 }
 
 func (n *NSQD) getOpts() *Options {
@@ -239,40 +231,48 @@ func (n *NSQD) RemoveClient(clientID int64) {
 	n.clientLock.Unlock()
 }
 
-func (n *NSQD) Main() {
+func (n *NSQD) Main() error {
 	var err error
 	ctx := &context{n}
 
 	n.tcpListener, err = net.Listen("tcp", n.getOpts().TCPAddress)
 	if err != nil {
-		n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().TCPAddress, err)
-		os.Exit(1)
+		return fmt.Errorf("listen (%s) failed - %s", n.getOpts().TCPAddress, err)
 	}
 	n.httpListener, err = net.Listen("tcp", n.getOpts().HTTPAddress)
 	if err != nil {
-		n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
-		os.Exit(1)
+		return fmt.Errorf("listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
 	}
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
 		n.httpsListener, err = tls.Listen("tcp", n.getOpts().HTTPSAddress, n.tlsConfig)
 		if err != nil {
-			n.logf(LOG_FATAL, "listen (%s) failed - %s", n.getOpts().HTTPSAddress, err)
-			os.Exit(1)
+			return fmt.Errorf("listen (%s) failed - %s", n.getOpts().HTTPSAddress, err)
 		}
+	}
+
+	exitCh := make(chan error)
+	var once sync.Once
+	exitFunc := func(err error) {
+		once.Do(func() {
+			if err != nil {
+				n.logf(LOG_FATAL, "%s", err)
+			}
+			exitCh <- err
+		})
 	}
 
 	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
-		protocol.TCPServer(n.tcpListener, tcpServer, n.logf)
+		exitFunc(protocol.TCPServer(n.tcpListener, tcpServer, n.logf))
 	})
 	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
 	n.waitGroup.Wrap(func() {
-		http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf)
+		exitFunc(http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf))
 	})
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
 		httpsServer := newHTTPServer(ctx, true, true)
 		n.waitGroup.Wrap(func() {
-			http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf)
+			exitFunc(http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf))
 		})
 	}
 
@@ -281,6 +281,9 @@ func (n *NSQD) Main() {
 	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(n.statsdLoop)
 	}
+
+	err = <-exitCh
+	return err
 }
 
 type meta struct {

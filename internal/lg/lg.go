@@ -3,6 +3,8 @@ package lg
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"strings"
 )
 
@@ -72,4 +74,10 @@ func Logf(logger Logger, cfgLevel LogLevel, msgLevel LogLevel, f string, args ..
 		return
 	}
 	logger.Output(3, fmt.Sprintf(msgLevel.String()+": "+f, args...))
+}
+
+func LogFatal(prefix string, f string, args ...interface{}) {
+	logger := log.New(os.Stderr, prefix, log.Ldate|log.Ltime|log.Lmicroseconds)
+	Logf(logger, FATAL, FATAL, f, args...)
+	os.Exit(1)
 }

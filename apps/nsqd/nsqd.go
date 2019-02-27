@@ -4,12 +4,12 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -17,6 +17,7 @@ import (
 	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqd"
 )
@@ -162,7 +163,7 @@ func (cfg config) Validate() {
 		if err == nil {
 			cfg["tls_required"] = t.String()
 		} else {
-			log.Fatalf("ERROR: failed parsing tls required %v", v)
+			logFatal("failed parsing tls_required %+v", v)
 		}
 	}
 	if v, exists := cfg["tls_min_version"]; exists {
@@ -176,19 +177,20 @@ func (cfg config) Validate() {
 				delete(cfg, "tls_min_version")
 			}
 		} else {
-			log.Fatalf("ERROR: failed parsing tls min version %v", v)
+			logFatal("failed parsing tls_min_version %+v", v)
 		}
 	}
 }
 
 type program struct {
+	once sync.Once
 	nsqd *nsqd.NSQD
 }
 
 func main() {
 	prg := &program{}
 	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM); err != nil {
-		log.Fatal(err)
+		logFatal("%s", err)
 	}
 }
 
@@ -218,31 +220,45 @@ func (p *program) Start() error {
 	if configFile != "" {
 		_, err := toml.DecodeFile(configFile, &cfg)
 		if err != nil {
-			log.Fatalf("ERROR: failed to load config file %s - %s", configFile, err.Error())
+			logFatal("failed to load config file %s - %s", configFile, err)
 		}
 	}
 	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
-	nsqd := nsqd.New(opts)
-
-	err := nsqd.LoadMetadata()
+	nsqd, err := nsqd.New(opts)
 	if err != nil {
-		log.Fatalf("ERROR: %s", err.Error())
+		logFatal("failed to instantiate nsqd- %s", err)
 	}
-	err = nsqd.PersistMetadata()
-	if err != nil {
-		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
-	}
-	nsqd.Main()
-
 	p.nsqd = nsqd
+
+	err = p.nsqd.LoadMetadata()
+	if err != nil {
+		logFatal("failed to load metadata - %s", err)
+	}
+	err = p.nsqd.PersistMetadata()
+	if err != nil {
+		logFatal("failed to persist metadata - %s", err)
+	}
+
+	go func() {
+		err := p.nsqd.Main()
+		if err != nil {
+			p.Stop()
+			os.Exit(1)
+		}
+	}()
+
 	return nil
 }
 
 func (p *program) Stop() error {
-	if p.nsqd != nil {
+	p.once.Do(func() {
 		p.nsqd.Exit()
-	}
+	})
 	return nil
+}
+
+func logFatal(f string, args ...interface{}) {
+	lg.LogFatal("[nsqd] ", f, args...)
 }
