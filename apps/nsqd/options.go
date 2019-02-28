@@ -4,21 +4,10 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"math/rand"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
-	"syscall"
-	"time"
 
-	"github.com/BurntSushi/toml"
-	"github.com/judwhite/go-svc/svc"
-	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/app"
-	"github.com/nsqio/nsq/internal/lg"
-	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqd"
 )
 
@@ -72,6 +61,36 @@ func (t *tlsMinVersionOption) Get() interface{} { return uint16(*t) }
 
 func (t *tlsMinVersionOption) String() string {
 	return strconv.FormatInt(int64(*t), 10)
+}
+
+type config map[string]interface{}
+
+// Validate settings in the config file, and fatal on errors
+func (cfg config) Validate() {
+	// special validation/translation
+	if v, exists := cfg["tls_required"]; exists {
+		var t tlsRequiredOption
+		err := t.Set(fmt.Sprintf("%v", v))
+		if err == nil {
+			cfg["tls_required"] = t.String()
+		} else {
+			logFatal("failed parsing tls_required %+v", v)
+		}
+	}
+	if v, exists := cfg["tls_min_version"]; exists {
+		var t tlsMinVersionOption
+		err := t.Set(fmt.Sprintf("%v", v))
+		if err == nil {
+			newVal := fmt.Sprintf("%v", t.Get())
+			if newVal != "0" {
+				cfg["tls_min_version"] = newVal
+			} else {
+				delete(cfg, "tls_min_version")
+			}
+		} else {
+			logFatal("failed parsing tls_min_version %+v", v)
+		}
+	}
 }
 
 func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
@@ -150,115 +169,4 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 
 	return flagSet
-}
-
-type config map[string]interface{}
-
-// Validate settings in the config file, and fatal on errors
-func (cfg config) Validate() {
-	// special validation/translation
-	if v, exists := cfg["tls_required"]; exists {
-		var t tlsRequiredOption
-		err := t.Set(fmt.Sprintf("%v", v))
-		if err == nil {
-			cfg["tls_required"] = t.String()
-		} else {
-			logFatal("failed parsing tls_required %+v", v)
-		}
-	}
-	if v, exists := cfg["tls_min_version"]; exists {
-		var t tlsMinVersionOption
-		err := t.Set(fmt.Sprintf("%v", v))
-		if err == nil {
-			newVal := fmt.Sprintf("%v", t.Get())
-			if newVal != "0" {
-				cfg["tls_min_version"] = newVal
-			} else {
-				delete(cfg, "tls_min_version")
-			}
-		} else {
-			logFatal("failed parsing tls_min_version %+v", v)
-		}
-	}
-}
-
-type program struct {
-	once sync.Once
-	nsqd *nsqd.NSQD
-}
-
-func main() {
-	prg := &program{}
-	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM); err != nil {
-		logFatal("%s", err)
-	}
-}
-
-func (p *program) Init(env svc.Environment) error {
-	if env.IsWindowsService() {
-		dir := filepath.Dir(os.Args[0])
-		return os.Chdir(dir)
-	}
-	return nil
-}
-
-func (p *program) Start() error {
-	opts := nsqd.NewOptions()
-
-	flagSet := nsqdFlagSet(opts)
-	flagSet.Parse(os.Args[1:])
-
-	rand.Seed(time.Now().UTC().UnixNano())
-
-	if flagSet.Lookup("version").Value.(flag.Getter).Get().(bool) {
-		fmt.Println(version.String("nsqd"))
-		os.Exit(0)
-	}
-
-	var cfg config
-	configFile := flagSet.Lookup("config").Value.String()
-	if configFile != "" {
-		_, err := toml.DecodeFile(configFile, &cfg)
-		if err != nil {
-			logFatal("failed to load config file %s - %s", configFile, err)
-		}
-	}
-	cfg.Validate()
-
-	options.Resolve(opts, flagSet, cfg)
-	nsqd, err := nsqd.New(opts)
-	if err != nil {
-		logFatal("failed to instantiate nsqd- %s", err)
-	}
-	p.nsqd = nsqd
-
-	err = p.nsqd.LoadMetadata()
-	if err != nil {
-		logFatal("failed to load metadata - %s", err)
-	}
-	err = p.nsqd.PersistMetadata()
-	if err != nil {
-		logFatal("failed to persist metadata - %s", err)
-	}
-
-	go func() {
-		err := p.nsqd.Main()
-		if err != nil {
-			p.Stop()
-			os.Exit(1)
-		}
-	}()
-
-	return nil
-}
-
-func (p *program) Stop() error {
-	p.once.Do(func() {
-		p.nsqd.Exit()
-	})
-	return nil
-}
-
-func logFatal(f string, args ...interface{}) {
-	lg.LogFatal("[nsqd] ", f, args...)
 }
