@@ -23,7 +23,7 @@ type NSQLookupd struct {
 	DB           *RegistrationDB
 }
 
-func New(opts *Options) *NSQLookupd {
+func New(opts *Options) (*NSQLookupd, error) {
 	if opts.Logger == nil {
 		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
 	}
@@ -35,41 +35,50 @@ func New(opts *Options) *NSQLookupd {
 	var err error
 	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
 	if err != nil {
-		n.logf(LOG_FATAL, "%s", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to parse log level (%s) - %s", opts.LogLevel, err)
 	}
 
 	n.logf(LOG_INFO, version.String("nsqlookupd"))
-	return n
+	return n, nil
 }
 
 // Main starts an instance of nsqlookupd and returns an
 // error if there was a problem starting up.
 func (l *NSQLookupd) Main() error {
+	var err error
 	ctx := &Context{l}
 
-	tcpListener, err := net.Listen("tcp", l.opts.TCPAddress)
+	l.tcpListener, err = net.Listen("tcp", l.opts.TCPAddress)
 	if err != nil {
 		return fmt.Errorf("listen (%s) failed - %s", l.opts.TCPAddress, err)
 	}
-	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
+	l.httpListener, err = net.Listen("tcp", l.opts.HTTPAddress)
 	if err != nil {
 		return fmt.Errorf("listen (%s) failed - %s", l.opts.TCPAddress, err)
 	}
 
-	l.tcpListener = tcpListener
-	l.httpListener = httpListener
+	exitCh := make(chan error)
+	var once sync.Once
+	exitFunc := func(err error) {
+		once.Do(func() {
+			if err != nil {
+				l.logf(LOG_FATAL, "%s", err)
+			}
+			exitCh <- err
+		})
+	}
 
 	tcpServer := &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		protocol.TCPServer(tcpListener, tcpServer, l.logf)
+		exitFunc(protocol.TCPServer(l.tcpListener, tcpServer, l.logf))
 	})
 	httpServer := newHTTPServer(ctx)
 	l.waitGroup.Wrap(func() {
-		http_api.Serve(httpListener, httpServer, "HTTP", l.logf)
+		exitFunc(http_api.Serve(l.httpListener, httpServer, "HTTP", l.logf))
 	})
 
-	return nil
+	err = <-exitCh
+	return err
 }
 
 func (l *NSQLookupd) RealTCPAddr() *net.TCPAddr {

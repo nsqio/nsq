@@ -3,14 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/BurntSushi/toml"
 	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqlookupd"
 )
@@ -36,13 +37,14 @@ func nsqlookupdFlagSet(opts *nsqlookupd.Options) *flag.FlagSet {
 }
 
 type program struct {
+	once       sync.Once
 	nsqlookupd *nsqlookupd.NSQLookupd
 }
 
 func main() {
 	prg := &program{}
 	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM); err != nil {
-		log.Fatal(err)
+		logFatal("%s", err)
 	}
 }
 
@@ -70,25 +72,35 @@ func (p *program) Start() error {
 	if configFile != "" {
 		_, err := toml.DecodeFile(configFile, &cfg)
 		if err != nil {
-			log.Fatalf("ERROR: failed to load config file %s - %s", configFile, err.Error())
+			logFatal("failed to load config file %s - %s", configFile, err)
 		}
 	}
 
 	options.Resolve(opts, flagSet, cfg)
-	daemon := nsqlookupd.New(opts)
-
-	err := daemon.Main()
+	nsqlookupd, err := nsqlookupd.New(opts)
 	if err != nil {
-		log.Fatalf("ERROR: failed to start nsqlookupd: %v", err)
+		logFatal("failed to instantiate nsqlookupd", err)
 	}
+	p.nsqlookupd = nsqlookupd
 
-	p.nsqlookupd = daemon
+	go func() {
+		err := p.nsqlookupd.Main()
+		if err != nil {
+			p.Stop()
+			os.Exit(1)
+		}
+	}()
+
 	return nil
 }
 
 func (p *program) Stop() error {
-	if p.nsqlookupd != nil {
+	p.once.Do(func() {
 		p.nsqlookupd.Exit()
-	}
+	})
 	return nil
+}
+
+func logFatal(f string, args ...interface{}) {
+	lg.LogFatal("[nsqlookupd] ", f, args...)
 }
