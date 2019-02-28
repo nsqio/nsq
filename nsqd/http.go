@@ -190,15 +190,9 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
 	}
 
-	// add 1 so that it's greater than our max when we test for it
-	// (LimitReader returns a "fake" EOF)
-	readMax := s.ctx.nsqd.getOpts().MaxMsgSize + 1
-	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
+	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
-	}
-	if int64(len(body)) == readMax {
-		return nil, http_api.Err{413, "MSG_TOO_BIG"}
 	}
 	if len(body) == 0 {
 		return nil, http_api.Err{400, "MSG_EMPTY"}
@@ -264,11 +258,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 			return nil, http_api.Err{413, err.(*protocol.FatalClientErr).Code[2:]}
 		}
 	} else {
-		// add 1 so that it's greater than our max when we test for it
-		// (LimitReader returns a "fake" EOF)
-		readMax := s.ctx.nsqd.getOpts().MaxBodySize + 1
-		rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
-		total := 0
+		rdr := bufio.NewReader(req.Body)
 		for !exit {
 			var block []byte
 			block, err = rdr.ReadBytes('\n')
@@ -277,10 +267,6 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 					return nil, http_api.Err{500, "INTERNAL_ERROR"}
 				}
 				exit = true
-			}
-			total += len(block)
-			if int64(total) == readMax {
-				return nil, http_api.Err{413, "BODY_TOO_BIG"}
 			}
 
 			if len(block) > 0 && block[len(block)-1] == '\n' {
@@ -668,14 +654,15 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 	opt := ps.ByName("opt")
 
 	if req.Method == "PUT" {
-		// add 1 so that it's greater than our max when we test for it
-		// (LimitReader returns a "fake" EOF)
-		readMax := s.ctx.nsqd.getOpts().MaxMsgSize + 1
-		body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
+		if req.ContentLength > s.ctx.nsqd.getOpts().MaxMsgSize {
+			return nil, http_api.Err{413, "INVALID_VALUE"}
+		}
+
+		body, err := ioutil.ReadAll(req.Body)
 		if err != nil {
 			return nil, http_api.Err{500, "INTERNAL_ERROR"}
 		}
-		if int64(len(body)) == readMax || len(body) == 0 {
+		if len(body) == 0 {
 			return nil, http_api.Err{413, "INVALID_VALUE"}
 		}
 
