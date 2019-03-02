@@ -80,7 +80,7 @@ func main() {
 	options.Resolve(opts, fs, nil)
 
 	logger := log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
-	logLevel, err := lg.ParseLogLevel(opts.LogLevel, false)
+	logLevel, err := lg.ParseLogLevel(opts.LogLevel)
 	if err != nil {
 		log.Fatal("--log-level is invalid")
 	}
