@@ -765,12 +765,11 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 			}
 		case "log_level":
 			logLevelStr := string(body)
-			logLevel, err := lg.ParseLogLevel(logLevelStr, opts.Verbose)
+			logLevel, err := lg.ParseLogLevel(logLevelStr)
 			if err != nil {
 				return nil, http_api.Err{400, "INVALID_VALUE"}
 			}
-			opts.LogLevel = logLevelStr
-			opts.logLevel = logLevel
+			opts.LogLevel = logLevel
 		default:
 			return nil, http_api.Err{400, "INVALID_OPTION"}
 		}
