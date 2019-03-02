@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/nsqio/nsq/internal/http_api"
-	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/util"
 	"github.com/nsqio/nsq/internal/version"
@@ -27,19 +26,14 @@ func New(opts *Options) (*NSQLookupd, error) {
 	if opts.Logger == nil {
 		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
 	}
-	n := &NSQLookupd{
+	l := &NSQLookupd{
 		opts: opts,
 		DB:   NewRegistrationDB(),
 	}
 
-	var err error
-	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse log level (%s) - %s", opts.LogLevel, err)
-	}
+	l.logf(LOG_INFO, version.String("nsqlookupd"))
 
-	n.logf(LOG_INFO, version.String("nsqlookupd"))
-	return n, nil
+	return l, nil
 }
 
 // Main starts an instance of nsqlookupd and returns an
