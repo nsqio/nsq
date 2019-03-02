@@ -23,6 +23,8 @@ type NSQLookupd struct {
 }
 
 func New(opts *Options) (*NSQLookupd, error) {
+	var err error
+
 	if opts.Logger == nil {
 		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
 	}
@@ -33,23 +35,22 @@ func New(opts *Options) (*NSQLookupd, error) {
 
 	l.logf(LOG_INFO, version.String("nsqlookupd"))
 
+	l.tcpListener, err = net.Listen("tcp", opts.TCPAddress)
+	if err != nil {
+		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
+	}
+	l.httpListener, err = net.Listen("tcp", opts.HTTPAddress)
+	if err != nil {
+		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
+	}
+
 	return l, nil
 }
 
 // Main starts an instance of nsqlookupd and returns an
 // error if there was a problem starting up.
 func (l *NSQLookupd) Main() error {
-	var err error
 	ctx := &Context{l}
-
-	l.tcpListener, err = net.Listen("tcp", l.opts.TCPAddress)
-	if err != nil {
-		return fmt.Errorf("listen (%s) failed - %s", l.opts.TCPAddress, err)
-	}
-	l.httpListener, err = net.Listen("tcp", l.opts.HTTPAddress)
-	if err != nil {
-		return fmt.Errorf("listen (%s) failed - %s", l.opts.TCPAddress, err)
-	}
 
 	exitCh := make(chan error)
 	var once sync.Once
@@ -71,7 +72,7 @@ func (l *NSQLookupd) Main() error {
 		exitFunc(http_api.Serve(l.httpListener, httpServer, "HTTP", l.logf))
 	})
 
-	err = <-exitCh
+	err := <-exitCh
 	return err
 }
 
