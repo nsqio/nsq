@@ -77,6 +77,8 @@ type NSQD struct {
 }
 
 func New(opts *Options) (*NSQD, error) {
+	var err error
+
 	dataPath := opts.DataPath
 	if opts.DataPath == "" {
 		cwd, _ := os.Getwd()
@@ -152,6 +154,21 @@ func New(opts *Options) (*NSQD, error) {
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
+	n.tcpListener, err = net.Listen("tcp", opts.TCPAddress)
+	if err != nil {
+		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
+	}
+	n.httpListener, err = net.Listen("tcp", opts.HTTPAddress)
+	if err != nil {
+		return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPAddress, err)
+	}
+	if n.tlsConfig != nil && opts.HTTPSAddress != "" {
+		n.httpsListener, err = tls.Listen("tcp", opts.HTTPSAddress, n.tlsConfig)
+		if err != nil {
+			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPSAddress, err)
+		}
+	}
+
 	return n, nil
 }
 
@@ -225,23 +242,7 @@ func (n *NSQD) RemoveClient(clientID int64) {
 }
 
 func (n *NSQD) Main() error {
-	var err error
 	ctx := &context{n}
-
-	n.tcpListener, err = net.Listen("tcp", n.getOpts().TCPAddress)
-	if err != nil {
-		return fmt.Errorf("listen (%s) failed - %s", n.getOpts().TCPAddress, err)
-	}
-	n.httpListener, err = net.Listen("tcp", n.getOpts().HTTPAddress)
-	if err != nil {
-		return fmt.Errorf("listen (%s) failed - %s", n.getOpts().HTTPAddress, err)
-	}
-	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
-		n.httpsListener, err = tls.Listen("tcp", n.getOpts().HTTPSAddress, n.tlsConfig)
-		if err != nil {
-			return fmt.Errorf("listen (%s) failed - %s", n.getOpts().HTTPSAddress, err)
-		}
-	}
 
 	exitCh := make(chan error)
 	var once sync.Once
@@ -275,7 +276,7 @@ func (n *NSQD) Main() error {
 		n.waitGroup.Wrap(n.statsdLoop)
 	}
 
-	err = <-exitCh
+	err := <-exitCh
 	return err
 }
 
