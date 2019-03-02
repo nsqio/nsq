@@ -3,8 +3,6 @@ package nsqlookupd
 import (
 	"fmt"
 	"net"
-	"os"
-	"os/exec"
 	"testing"
 	"time"
 
@@ -39,8 +37,16 @@ type LookupDoc struct {
 func mustStartLookupd(opts *Options) (*net.TCPAddr, *net.TCPAddr, *NSQLookupd) {
 	opts.TCPAddress = "127.0.0.1:0"
 	opts.HTTPAddress = "127.0.0.1:0"
-	nsqlookupd := New(opts)
-	nsqlookupd.Main()
+	nsqlookupd, err := New(opts)
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		err := nsqlookupd.Main()
+		if err != nil {
+			panic(err)
+		}
+	}()
 	return nsqlookupd.RealTCPAddr(), nsqlookupd.RealHTTPAddr(), nsqlookupd
 }
 
@@ -350,21 +356,4 @@ func TestTombstonedNodes(t *testing.T) {
 	test.Equal(t, 1, len(producers[0].Topics))
 	test.Equal(t, topicName, producers[0].Topics[0].Topic)
 	test.Equal(t, true, producers[0].Topics[0].Tombstoned)
-}
-
-func TestCrashingLogger(t *testing.T) {
-	if os.Getenv("BE_CRASHER") == "1" {
-		// Test invalid log level causes error
-		opts := NewOptions()
-		opts.LogLevel = "bad"
-		_ = New(opts)
-		return
-	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestCrashingLogger")
-	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
-	err := cmd.Run()
-	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
-		return
-	}
-	t.Fatalf("process ran with err %v, want exit status 1", err)
 }

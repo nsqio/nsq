@@ -70,7 +70,7 @@ func TestClientAttributes(t *testing.T) {
 
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	opts.LogLevel = "debug"
+	opts.LogLevel = LOG_DEBUG
 	opts.SnappyEnabled = true
 	tcpAddr, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

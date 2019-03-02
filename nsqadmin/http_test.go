@@ -49,8 +49,16 @@ type ChannelStatsDoc struct {
 func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqlookupd.NSQLookupd) {
 	opts.TCPAddress = "127.0.0.1:0"
 	opts.HTTPAddress = "127.0.0.1:0"
-	lookupd := nsqlookupd.New(opts)
-	lookupd.Main()
+	lookupd, err := nsqlookupd.New(opts)
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		err := lookupd.Main()
+		if err != nil {
+			panic(err)
+		}
+	}()
 	return lookupd.RealTCPAddr(), lookupd.RealHTTPAddr(), lookupd
 }
 
@@ -66,8 +74,16 @@ func bootstrapNSQClusterWithAuth(t *testing.T, withAuth bool) (string, []*nsqd.N
 	nsqlookupdOpts.HTTPAddress = "127.0.0.1:0"
 	nsqlookupdOpts.BroadcastAddress = "127.0.0.1"
 	nsqlookupdOpts.Logger = lgr
-	nsqlookupd1 := nsqlookupd.New(nsqlookupdOpts)
-	nsqlookupd1.Main()
+	nsqlookupd1, err := nsqlookupd.New(nsqlookupdOpts)
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		err := nsqlookupd1.Main()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -82,8 +98,16 @@ func bootstrapNSQClusterWithAuth(t *testing.T, withAuth bool) (string, []*nsqd.N
 		panic(err)
 	}
 	nsqdOpts.DataPath = tmpDir
-	nsqd1 := nsqd.New(nsqdOpts)
-	nsqd1.Main()
+	nsqd1, err := nsqd.New(nsqdOpts)
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		err := nsqd1.Main()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	nsqadminOpts := NewOptions()
 	nsqadminOpts.HTTPAddress = "127.0.0.1:0"
@@ -92,8 +116,16 @@ func bootstrapNSQClusterWithAuth(t *testing.T, withAuth bool) (string, []*nsqd.N
 	if withAuth {
 		nsqadminOpts.AdminUsers = []string{"matt"}
 	}
-	nsqadmin1 := New(nsqadminOpts)
-	nsqadmin1.Main()
+	nsqadmin1, err := New(nsqadminOpts)
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		err := nsqadmin1.Main()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -573,7 +605,7 @@ func TestHTTPconfig(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ = ioutil.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
-	test.Equal(t, LOG_FATAL, nsqadmin1.getOpts().logLevel)
+	test.Equal(t, LOG_FATAL, nsqadmin1.getOpts().LogLevel)
 
 	url = fmt.Sprintf("http://%s/config/log_level", nsqadmin1.RealHTTPAddr())
 	req, err = http.NewRequest("PUT", url, bytes.NewBuffer([]byte(`bad`)))
@@ -591,8 +623,14 @@ func TestHTTPconfigCIDR(t *testing.T) {
 	opts.NSQLookupdHTTPAddresses = []string{"127.0.0.1:4161"}
 	opts.Logger = test.NewTestLogger(t)
 	opts.AllowConfigFromCIDR = "10.0.0.0/8"
-	nsqadmin := New(opts)
-	nsqadmin.Main()
+	nsqadmin, err := New(opts)
+	test.Nil(t, err)
+	go func() {
+		err := nsqadmin.Main()
+		if err != nil {
+			panic(err)
+		}
+	}()
 	defer nsqadmin.Exit()
 
 	time.Sleep(100 * time.Millisecond)
