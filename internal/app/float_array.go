@@ -10,6 +10,8 @@ import (
 
 type FloatArray []float64
 
+func (a *FloatArray) Get() interface{} { return []float64(*a) }
+
 func (a *FloatArray) Set(param string) error {
 	for _, s := range strings.Split(param, ",") {
 		v, err := strconv.ParseFloat(s, 64)

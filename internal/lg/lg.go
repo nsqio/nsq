@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-type LogLevel int
-
 const (
 	DEBUG = LogLevel(1)
 	INFO  = LogLevel(2)
@@ -30,43 +28,49 @@ func (l NilLogger) Output(maxdepth int, s string) error {
 	return nil
 }
 
-func (l LogLevel) String() string {
-	switch l {
-	case 1:
-		return "DEBUG"
-	case 2:
-		return "INFO"
-	case 3:
-		return "WARNING"
-	case 4:
-		return "ERROR"
-	case 5:
-		return "FATAL"
+type LogLevel int
+
+func (l *LogLevel) Get() interface{} { return *l }
+
+func (l *LogLevel) Set(s string) error {
+	lvl, err := ParseLogLevel(s)
+	if err != nil {
+		return err
 	}
-	panic("invalid LogLevel")
+	*l = lvl
+	return nil
 }
 
-func ParseLogLevel(levelstr string, verbose bool) (LogLevel, error) {
-	lvl := INFO
+func (l *LogLevel) String() string {
+	switch *l {
+	case DEBUG:
+		return "DEBUG"
+	case INFO:
+		return "INFO"
+	case WARN:
+		return "WARNING"
+	case ERROR:
+		return "ERROR"
+	case FATAL:
+		return "FATAL"
+	}
+	return "invalid"
+}
 
+func ParseLogLevel(levelstr string) (LogLevel, error) {
 	switch strings.ToLower(levelstr) {
 	case "debug":
-		lvl = DEBUG
+		return DEBUG, nil
 	case "info":
-		lvl = INFO
+		return INFO, nil
 	case "warn":
-		lvl = WARN
+		return WARN, nil
 	case "error":
-		lvl = ERROR
+		return ERROR, nil
 	case "fatal":
-		lvl = FATAL
-	default:
-		return lvl, fmt.Errorf("invalid log-level '%s'", levelstr)
+		return FATAL, nil
 	}
-	if verbose {
-		lvl = DEBUG
-	}
-	return lvl, nil
+	return 0, fmt.Errorf("invalid log level '%s' (debug, info, warn, error, fatal)", levelstr)
 }
 
 func Logf(logger Logger, cfgLevel LogLevel, msgLevel LogLevel, f string, args ...interface{}) {
