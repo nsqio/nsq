@@ -14,12 +14,10 @@ import (
 
 type Options struct {
 	// basic options
-	ID        int64  `flag:"node-id" cfg:"id"`
-	LogLevel  string `flag:"log-level"`
-	LogPrefix string `flag:"log-prefix"`
-	Verbose   bool   `flag:"verbose"` // for backwards compatibility
+	ID        int64       `flag:"node-id" cfg:"id"`
+	LogLevel  lg.LogLevel `flag:"log-level"`
+	LogPrefix string      `flag:"log-prefix"`
 	Logger    Logger
-	logLevel  lg.LogLevel // private, not really an option
 
 	TCPAddress               string        `flag:"tcp-address"`
 	HTTPAddress              string        `flag:"http-address"`
@@ -98,7 +96,7 @@ func NewOptions() *Options {
 	return &Options{
 		ID:        defaultID,
 		LogPrefix: "[nsqd] ",
-		LogLevel:  "info",
+		LogLevel:  lg.INFO,
 
 		TCPAddress:       "0.0.0.0:4150",
 		HTTPAddress:      "0.0.0.0:4151",

@@ -20,7 +20,6 @@ import (
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/dirlock"
 	"github.com/nsqio/nsq/internal/http_api"
-	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/statsd"
 	"github.com/nsqio/nsq/internal/util"
@@ -103,12 +102,6 @@ func New(opts *Options) (*NSQD, error) {
 
 	n.swapOpts(opts)
 	n.errValue.Store(errStore{})
-
-	var err error
-	opts.logLevel, err = lg.ParseLogLevel(opts.LogLevel, opts.Verbose)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse log level (%s) - %s", opts.LogLevel, err)
-	}
 
 	err = n.dl.Lock()
 	if err != nil {

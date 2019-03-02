@@ -64,7 +64,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 	} else {
 		dqLogf := func(level diskqueue.LogLevel, f string, args ...interface{}) {
 			opts := ctx.nsqd.getOpts()
-			lg.Logf(opts.Logger, opts.logLevel, lg.LogLevel(level), f, args...)
+			lg.Logf(opts.Logger, opts.LogLevel, lg.LogLevel(level), f, args...)
 		}
 		t.backend = diskqueue.New(
 			topicName,

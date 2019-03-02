@@ -16,5 +16,5 @@ const (
 
 func (n *NSQD) logf(level lg.LogLevel, f string, args ...interface{}) {
 	opts := n.getOpts()
-	lg.Logf(opts.Logger, opts.logLevel, level, f, args...)
+	lg.Logf(opts.Logger, opts.LogLevel, level, f, args...)
 }
