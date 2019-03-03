@@ -35,8 +35,16 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, *NSQLookupd) {
 	nsqlookupdOpts.HTTPAddress = "127.0.0.1:0"
 	nsqlookupdOpts.BroadcastAddress = "127.0.0.1"
 	nsqlookupdOpts.Logger = lgr
-	nsqlookupd1 := New(nsqlookupdOpts)
-	nsqlookupd1.Main()
+	nsqlookupd1, err := New(nsqlookupdOpts)
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		err := nsqlookupd1.Main()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -51,8 +59,16 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, *NSQLookupd) {
 		panic(err)
 	}
 	nsqdOpts.DataPath = tmpDir
-	nsqd1 := nsqd.New(nsqdOpts)
-	nsqd1.Main()
+	nsqd1, err := nsqd.New(nsqdOpts)
+	if err != nil {
+		panic(err)
+	}
+	go func() {
+		err := nsqd1.Main()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	time.Sleep(100 * time.Millisecond)
 

@@ -4,20 +4,10 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"log"
-	"math/rand"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
-	"time"
 
-	"github.com/BurntSushi/toml"
-	"github.com/judwhite/go-svc/svc"
-	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/app"
-	"github.com/nsqio/nsq/internal/version"
 	"github.com/nsqio/nsq/nsqd"
 )
 
@@ -73,6 +63,36 @@ func (t *tlsMinVersionOption) String() string {
 	return strconv.FormatInt(int64(*t), 10)
 }
 
+type config map[string]interface{}
+
+// Validate settings in the config file, and fatal on errors
+func (cfg config) Validate() {
+	// special validation/translation
+	if v, exists := cfg["tls_required"]; exists {
+		var t tlsRequiredOption
+		err := t.Set(fmt.Sprintf("%v", v))
+		if err == nil {
+			cfg["tls_required"] = t.String()
+		} else {
+			logFatal("failed parsing tls_required %+v", v)
+		}
+	}
+	if v, exists := cfg["tls_min_version"]; exists {
+		var t tlsMinVersionOption
+		err := t.Set(fmt.Sprintf("%v", v))
+		if err == nil {
+			newVal := fmt.Sprintf("%v", t.Get())
+			if newVal != "0" {
+				cfg["tls_min_version"] = newVal
+			} else {
+				delete(cfg, "tls_min_version")
+			}
+		} else {
+			logFatal("failed parsing tls_min_version %+v", v)
+		}
+	}
+}
+
 func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet := flag.NewFlagSet("nsqd", flag.ExitOnError)
 
@@ -80,12 +100,13 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Bool("version", false, "print version string")
 	flagSet.String("config", "", "path to config file")
 
-	flagSet.String("log-level", "info", "set log verbosity: debug, info, warn, error, or fatal")
+	logLevel := opts.LogLevel
+	flagSet.Var(&logLevel, "log-level", "set log verbosity: debug, info, warn, error, or fatal")
 	flagSet.String("log-prefix", "[nsqd] ", "log message prefix")
-	flagSet.Bool("verbose", false, "deprecated in favor of log-level")
+	flagSet.Bool("verbose", false, "[deprecated] has no effect, use --log-level")
 
 	flagSet.Int64("node-id", opts.ID, "unique part for message IDs, (int) in range [0,1024) (default is hash of hostname)")
-	flagSet.Bool("worker-id", false, "do NOT use this, use --node-id")
+	flagSet.Bool("worker-id", false, "[deprecated] use --node-id")
 
 	flagSet.String("https-address", opts.HTTPSAddress, "<addr>:<port> to listen on for HTTPS clients")
 	flagSet.String("http-address", opts.HTTPAddress, "<addr>:<port> to listen on for HTTP clients")
@@ -149,100 +170,4 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Bool("snappy", opts.SnappyEnabled, "enable snappy feature negotiation (client compression)")
 
 	return flagSet
-}
-
-type config map[string]interface{}
-
-// Validate settings in the config file, and fatal on errors
-func (cfg config) Validate() {
-	// special validation/translation
-	if v, exists := cfg["tls_required"]; exists {
-		var t tlsRequiredOption
-		err := t.Set(fmt.Sprintf("%v", v))
-		if err == nil {
-			cfg["tls_required"] = t.String()
-		} else {
-			log.Fatalf("ERROR: failed parsing tls required %v", v)
-		}
-	}
-	if v, exists := cfg["tls_min_version"]; exists {
-		var t tlsMinVersionOption
-		err := t.Set(fmt.Sprintf("%v", v))
-		if err == nil {
-			newVal := fmt.Sprintf("%v", t.Get())
-			if newVal != "0" {
-				cfg["tls_min_version"] = newVal
-			} else {
-				delete(cfg, "tls_min_version")
-			}
-		} else {
-			log.Fatalf("ERROR: failed parsing tls min version %v", v)
-		}
-	}
-}
-
-type program struct {
-	nsqd *nsqd.NSQD
-}
-
-func main() {
-	prg := &program{}
-	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func (p *program) Init(env svc.Environment) error {
-	if env.IsWindowsService() {
-		dir := filepath.Dir(os.Args[0])
-		return os.Chdir(dir)
-	}
-	return nil
-}
-
-func (p *program) Start() error {
-	opts := nsqd.NewOptions()
-
-	flagSet := nsqdFlagSet(opts)
-	flagSet.Parse(os.Args[1:])
-
-	rand.Seed(time.Now().UTC().UnixNano())
-
-	if flagSet.Lookup("version").Value.(flag.Getter).Get().(bool) {
-		fmt.Println(version.String("nsqd"))
-		os.Exit(0)
-	}
-
-	var cfg config
-	configFile := flagSet.Lookup("config").Value.String()
-	if configFile != "" {
-		_, err := toml.DecodeFile(configFile, &cfg)
-		if err != nil {
-			log.Fatalf("ERROR: failed to load config file %s - %s", configFile, err.Error())
-		}
-	}
-	cfg.Validate()
-
-	options.Resolve(opts, flagSet, cfg)
-	nsqd := nsqd.New(opts)
-
-	err := nsqd.LoadMetadata()
-	if err != nil {
-		log.Fatalf("ERROR: %s", err.Error())
-	}
-	err = nsqd.PersistMetadata()
-	if err != nil {
-		log.Fatalf("ERROR: failed to persist metadata - %s", err.Error())
-	}
-	nsqd.Main()
-
-	p.nsqd = nsqd
-	return nil
-}
-
-func (p *program) Stop() error {
-	if p.nsqd != nil {
-		p.nsqd.Exit()
-	}
-	return nil
 }

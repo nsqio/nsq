@@ -7,11 +7,13 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/mreiferson/go-options"
+	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/nsqd"
 )
 
 func TestConfigFlagParsing(t *testing.T) {
 	opts := nsqd.NewOptions()
+	opts.Logger = test.NewTestLogger(t)
 
 	flagSet := nsqdFlagSet(opts)
 	flagSet.Parse([]string{})

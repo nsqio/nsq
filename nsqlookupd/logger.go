@@ -15,5 +15,5 @@ const (
 )
 
 func (n *NSQLookupd) logf(level lg.LogLevel, f string, args ...interface{}) {
-	lg.Logf(n.opts.Logger, n.opts.logLevel, level, f, args...)
+	lg.Logf(n.opts.Logger, n.opts.LogLevel, level, f, args...)
 }

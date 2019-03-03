@@ -58,11 +58,11 @@
   revision = "v1.2.0"
 
 [[projects]]
-  digest = "1:9408fb9c637c103010e5147469c232ce6b68edc840879cc730a2a15918e6cae8"
+  digest = "1:15c0562bca5d78ac087fb39c211071dc124e79fb18f8b7c3f8a0bc7ffcb2a38e"
   name = "github.com/mreiferson/go-options"
   packages = ["."]
   pruneopts = ""
-  revision = "77551d20752b"
+  revision = "0c63f026bcd6"
 
 [[projects]]
   digest = "1:22ffd73c4580854d935821a0fa95ff7324df836efa86d256adeb392450cbde87"

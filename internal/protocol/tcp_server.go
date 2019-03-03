@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"fmt"
 	"net"
 	"runtime"
 	"strings"
@@ -12,7 +13,7 @@ type TCPHandler interface {
 	Handle(net.Conn)
 }
 
-func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) {
+func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) error {
 	logf(lg.INFO, "TCP: listening on %s", listener.Addr())
 
 	for {
@@ -25,7 +26,7 @@ func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) {
 			}
 			// theres no direct way to detect this error because it is not exposed
 			if !strings.Contains(err.Error(), "use of closed network connection") {
-				logf(lg.ERROR, "listener.Accept() - %s", err)
+				return fmt.Errorf("listener.Accept() error - %s", err)
 			}
 			break
 		}
@@ -33,4 +34,6 @@ func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) {
 	}
 
 	logf(lg.INFO, "TCP: closing %s", listener.Addr())
+
+	return nil
 }

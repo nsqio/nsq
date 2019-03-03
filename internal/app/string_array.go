@@ -6,6 +6,8 @@ import (
 
 type StringArray []string
 
+func (a *StringArray) Get() interface{} { return []string(*a) }
+
 func (a *StringArray) Set(s string) error {
 	*a = append(*a, s)
 	return nil
