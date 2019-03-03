@@ -55,7 +55,7 @@
 
 [[constraint]]
   name = "github.com/mreiferson/go-options"
-  revision = "77551d20752b"
+  revision = "0c63f026bcd6"
 
 [[constraint]]
   name = "github.com/nsqio/go-diskqueue"
