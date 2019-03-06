@@ -26,6 +26,7 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 			lp.Close()
 			return
 		}
+
 		resp, err := lp.Command(cmd)
 		if err != nil {
 			n.logf(LOG_ERROR, "LOOKUPD(%s): %s - %s", lp, cmd, err)
@@ -34,18 +35,17 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 			n.logf(LOG_INFO, "LOOKUPD(%s): lookupd returned %s", lp, resp)
 			lp.Close()
 			return
-		} else {
-			err = json.Unmarshal(resp, &lp.Info)
-			if err != nil {
-				n.logf(LOG_ERROR, "LOOKUPD(%s): parsing response - %s", lp, resp)
-				lp.Close()
-				return
-			} else {
-				n.logf(LOG_INFO, "LOOKUPD(%s): peer info %+v", lp, lp.Info)
-				if lp.Info.BroadcastAddress == "" {
-					n.logf(LOG_ERROR, "LOOKUPD(%s): no broadcast address", lp)
-				}
-			}
+		}
+
+		err = json.Unmarshal(resp, &lp.Info)
+		if err != nil {
+			n.logf(LOG_ERROR, "LOOKUPD(%s): parsing response - %s", lp, resp)
+			lp.Close()
+			return
+		}
+		n.logf(LOG_INFO, "LOOKUPD(%s): peer info %+v", lp, lp.Info)
+		if lp.Info.BroadcastAddress == "" {
+			n.logf(LOG_ERROR, "LOOKUPD(%s): no broadcast address", lp)
 		}
 
 		// build all the commands first so we exit the lock(s) as fast as possible

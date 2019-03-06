@@ -805,8 +805,8 @@ func (s *httpServer) isAuthorizedAdminRequest(req *http.Request) bool {
 	if len(adminUsers) == 0 {
 		return true
 	}
-	aclHttpHeader := s.nsqadmin.getOpts().AclHttpHeader
-	user := req.Header.Get(aclHttpHeader)
+	aclHTTPHeader := s.nsqadmin.getOpts().ACLHTTPHeader
+	user := req.Header.Get(aclHTTPHeader)
 	for _, v := range adminUsers {
 		if v == user {
 			return true

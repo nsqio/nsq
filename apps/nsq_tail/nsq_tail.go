@@ -106,7 +106,7 @@ func main() {
 	cfg.MaxInFlight = *maxInFlight
 
 	consumers := []*nsq.Consumer{}
-	for i := 0; i < len(topics); i += 1 {
+	for i := 0; i < len(topics); i++ {
 		log.Printf("Adding consumer for topic: %s\n", topics[i])
 
 		consumer, err := nsq.NewConsumer(topics[i], *channel, cfg)

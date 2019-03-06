@@ -79,7 +79,7 @@ func main() {
 		}
 		log.Printf("Throttling messages rate to max:%d/second", *rate)
 		// every tick increase the number of messages we can send
-		for _ = range time.Tick(interval) {
+		for range time.Tick(interval) {
 			n := atomic.AddInt64(&balance, 1)
 			// if we build up more than 1s of capacity just bound to that
 			if n > int64(*rate) {

@@ -1,4 +1,4 @@
-// short for "log"
+// Package lg provides leveled logging
 package lg
 
 import (
