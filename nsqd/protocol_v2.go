@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/nsqio/nsq/internal/compress"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/version"
 )
@@ -126,7 +127,28 @@ func (p *protocolV2) SendMessage(client *clientV2, msg *Message) error {
 	p.ctx.nsqd.logf(LOG_DEBUG, "PROTOCOL(V2): writing msg(%s) to client(%s) - %s", msg.ID, client, msg.Body)
 	var buf = &bytes.Buffer{}
 
-	_, err := msg.WriteTo(buf)
+	adjustedBody := msg.Body
+	var err error
+	if msg.snappyCompressed {
+		// message is snappy compressed
+		adjustedBody, err = compress.SnappyDecompress(msg.Body)
+		if err != nil {
+			p.ctx.nsqd.logf(LOG_ERROR, "PROTOCOL(V2): decompress msg(%s) with snappy error", msg.ID)
+			return err
+		}
+		msg.snappyCompressed = false
+	} else if msg.deflateCompressed {
+		// message is deflate compressed
+		adjustedBody, err = compress.DeflateDecompress(msg.Body)
+		if err != nil {
+			p.ctx.nsqd.logf(LOG_ERROR, "PROTOCOL(V2): decompress msg(%s) with deflate error", msg.ID)
+			return err
+		}
+		msg.deflateCompressed = false
+	}
+
+	msg.Body = adjustedBody
+	_, err = msg.WriteTo(buf)
 	if err != nil {
 		return err
 	}

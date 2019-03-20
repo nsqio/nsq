@@ -307,17 +307,12 @@ func (t *Topic) messagePump() {
 			goto exit
 		}
 
-		for i, channel := range chans {
-			chanMsg := msg
-			// copy the message because each channel
-			// needs a unique instance but...
-			// fastpath to avoid copy if its the first channel
-			// (the topic already created the first copy)
-			if i > 0 {
-				chanMsg = NewMessage(msg.ID, msg.Body)
-				chanMsg.Timestamp = msg.Timestamp
-				chanMsg.deferred = msg.deferred
-			}
+		for _, channel := range chans {
+			chanMsg := NewMessage(msg.ID, msg.Body)
+			chanMsg.Timestamp = msg.Timestamp
+			chanMsg.deferred = msg.deferred
+			chanMsg.deflateCompressed = msg.deflateCompressed
+			chanMsg.snappyCompressed = msg.snappyCompressed
 			if chanMsg.deferred != 0 {
 				channel.PutMessageDeferred(chanMsg, chanMsg.deferred)
 				continue

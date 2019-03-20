@@ -27,6 +27,9 @@ type Message struct {
 	pri        int64
 	index      int
 	deferred   time.Duration
+
+	snappyCompressed  bool
+	deflateCompressed bool
 }
 
 func NewMessage(id MessageID, body []byte) *Message {

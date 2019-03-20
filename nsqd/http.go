@@ -222,8 +222,27 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		}
 	}
 
+	var isSnappy, isDeflate bool
+	if value, exist := req.Header["Content-Encoding"]; exist {
+		for _, encoding := range value {
+			if encoding == "snappy" {
+				isSnappy = true
+			}
+
+			if encoding == "deflate" {
+				isDeflate = true
+			}
+		}
+	}
+
+	if isSnappy && isDeflate {
+		return nil, http_api.Err{400, "INVALID_CONTENT_ENCODING"}
+	}
+
 	msg := NewMessage(topic.GenerateID(), body)
 	msg.deferred = deferred
+	msg.snappyCompressed = isSnappy
+	msg.deflateCompressed = isDeflate
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
@@ -246,6 +265,23 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	reqParams, topic, err := s.getTopicFromQuery(req)
 	if err != nil {
 		return nil, err
+	}
+
+	var isSnappy, isDeflate bool
+	if value, exist := req.Header["Content-Encoding"]; exist {
+		for _, encoding := range value {
+			if encoding == "snappy" {
+				isSnappy = true
+			}
+
+			if encoding == "deflate" {
+				isDeflate = true
+			}
+		}
+	}
+
+	if isSnappy && isDeflate {
+		return nil, http_api.Err{400, "INVALID_CONTENT_ENCODING"}
 	}
 
 	// text mode is default, but unrecognized binary opt considered true
@@ -300,6 +336,11 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 			msg := NewMessage(topic.GenerateID(), block)
 			msgs = append(msgs, msg)
 		}
+	}
+
+	for _, msg := range msgs {
+		msg.snappyCompressed = isSnappy
+		msg.deflateCompressed = isDeflate
 	}
 
 	err = topic.PutMessages(msgs)

@@ -96,9 +96,10 @@ type clientV2 struct {
 	IdentifyEventChan chan identifyEvent
 	SubEventChan      chan *Channel
 
-	TLS     int32
-	Snappy  int32
-	Deflate int32
+	TLS          int32
+	Snappy       int32
+	Deflate      int32
+	DeflateLevel int32
 
 	// re-usable buffer for reading the 4-byte lengths off the wire
 	lenBuf   [4]byte
@@ -511,6 +512,7 @@ func (c *clientV2) UpgradeDeflate(level int) error {
 	c.Writer = bufio.NewWriterSize(fw, c.OutputBufferSize)
 
 	atomic.StoreInt32(&c.Deflate, 1)
+	atomic.StoreInt32(&c.DeflateLevel, int32(level))
 
 	return nil
 }
