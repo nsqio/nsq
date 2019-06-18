@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/url"
 	"regexp"
 	"time"
@@ -78,7 +79,10 @@ func (a *State) IsExpired() bool {
 
 func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
 	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
-	for _, a := range authd {
+	start := rand.Int()
+	n := len(authd)
+	for i := 0; i < n; i++ {
+		a := authd[(i+start)%n]
 		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, commonName, authSecret, connectTimeout, requestTimeout)
 		if err != nil {
 			log.Printf("Error: failed auth against %s %s", a, err)
