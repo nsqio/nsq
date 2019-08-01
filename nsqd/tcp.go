@@ -31,7 +31,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 
 	var prot protocol.Protocol
 	switch protocolMagic {
-	case "  V2":
+	case "V2":
 		prot = &protocolV2{ctx: p.ctx}
 	default:
 		protocol.SendFramedResponse(clientConn, frameTypeError, []byte("E_BAD_PROTOCOL"))
