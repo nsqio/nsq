@@ -37,8 +37,8 @@ type Options struct {
 
 	QueueScanInterval        time.Duration
 	QueueScanRefreshInterval time.Duration
-	QueueScanSelectionCount  int
-	QueueScanWorkerPoolMax   int
+	QueueScanSelectionCount  int `flag:"queue-scan-selection-count"`
+	QueueScanWorkerPoolMax   int `flag:"queue-scan-worker-pool-max"`
 	QueueScanDirtyPercent    float64
 
 	// msg and command options
