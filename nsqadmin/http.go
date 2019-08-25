@@ -332,6 +332,13 @@ func (s *httpServer) nodesHandler(w http.ResponseWriter, req *http.Request, ps h
 		messages = append(messages, pe.Error())
 	}
 
+	for _, producer := range producers {
+		// Assume it is an ipv6 address if a colon is in it
+		if strings.Contains(producer.BroadcastAddress, ":") {
+			producer.BroadcastAddress = fmt.Sprintf("[%s]", producer.BroadcastAddress)
+		}
+	}
+
 	return struct {
 		Nodes   clusterinfo.Producers `json:"nodes"`
 		Message string                `json:"message"`
@@ -352,6 +359,13 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 		}
 		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
+	}
+
+	for _, producer := range producers {
+		// Assume it is an ipv6 address if a colon is in it
+		if strings.Contains(producer.BroadcastAddress, ":") {
+			producer.BroadcastAddress = fmt.Sprintf("[%s]", producer.BroadcastAddress)
+		}
 	}
 
 	producer := producers.Search(node)
@@ -641,6 +655,14 @@ func (s *httpServer) counterHandler(w http.ResponseWriter, req *http.Request, ps
 		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
+
+	for _, producer := range producers {
+		// Assume it is an ipv6 address if a colon is in it
+		if strings.Contains(producer.BroadcastAddress, ":") {
+			producer.BroadcastAddress = fmt.Sprintf("[%s]", producer.BroadcastAddress)
+		}
+	}
+
 	_, channelStats, err := s.ci.GetNSQDStats(producers, "", "", false)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)

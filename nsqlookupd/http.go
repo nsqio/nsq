@@ -121,6 +121,7 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
 	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
 		s.ctx.nsqlookupd.opts.TombstoneLifetime)
+
 	return map[string]interface{}{
 		"channels":  channels,
 		"producers": producers.PeerInfo(),
