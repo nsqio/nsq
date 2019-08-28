@@ -2,6 +2,49 @@
 
 ## Releases
 
+### 1.2.0 - 2019-08-26
+
+**Upgrading**
+
+ * #1055 - `nsqd`: removed support for old metadata scheme used in v0.3.8 and earlier
+   * you cannot upgrade directly from v0.3.8 to v1.2.0, you must go through v1.0.0-compat or v1.1.0
+ * #1115 - manage dependencies with go modules
+   * `dep` support still present for now, but deprecated
+
+Features:
+
+ * #1136 - `nsqd`: add `--max-channel-consumers` (default unlimited) (thanks @andyxning)
+ * #1133 - `nsqd`: add `--min-output-buffer-timeout` (default 25ms) to limit how low a timeout a consumer can request
+   * and raise default `--max-output-buffer-timeout` to 30 seconds (lower timeout, more cpu usage)
+ * #1127 - `nsqd`: add topic total message bytes to stats (thanks @andyxning)
+ * #1125 - `nsqd`: add flag to adjust default `--output-buffer-timeout` (thanks @andyxning)
+ * #1163 - `nsqd`: add random load balancing for authd requests (thanks @shenhui0509)
+ * #1119 - `nsqd`: include client TLS cert CommonName in authd requests
+ * #1147 - `nsq_to_file`: include topic/channel in most log messages
+ * #1117 - `nsq_to_file`: add `--log-level` and `--log-prefix` flags
+ * #1117/#1120/#1123 - `nsq_to_file`: big refactor, more robust file switching and syncing and error handling
+ * #1118 - `nsqd`: add param to `/stats` endpoint to allow skipping per-client stats (much faster if many clients)
+ * #1118 - `nsqadmin`, `nsq_stat`: use `include_clients` param for `/stats` for a big speedup for big clusters
+ * #1110 - `nsq_to_file`: support for separate working directory with `--work-dir` (thanks @mccutchen)
+ * #856 - `nsqadmin`: add `--base-path` flag (thanks @blinklv)
+ * #1072 - `nsq_to_http`: add `--header` flag (thanks @alwindoss)
+ * #881 - `nsqd`: add producer client tcp connections to stats (thanks @sparklxb)
+ * #1071/#1074 - `nsq_to_file`: new flag `--sync-interval` (default same as previous behavior, 30 seconds) (thanks @alpaker)
+
+Bugs:
+
+ * #1153 - `nsqd`: close connections that don't send "magic" header (thanks @JoseFeng)
+ * #1140 - `nsqd`: exit on all fatal Accept() errors - restart enables better recovery for some conditions (thanks @mdh67899)
+ * #1140 - `nsqd`, `nsqlookupd`, `nsqadmin`: refactor LogLevel, general refactor to better exit on all fatal errors
+ * #1140 - `nsqadmin`: switch to using `judwhite/go-svc` like `nsqd` and `nsqadmin` do
+ * #1134 - `nsqadmin`: fix clients count and channel total message rate (new bugs introduced in this cycle)
+ * #1132 - `nsqd`, `nsqlookupd`, `nsqadmin`: fix http error response unreliable json serialization
+ * #1116 - `nsqlookupd`: fix orphaned ephemeral topics in registration DB
+ * #1109 - `nsqd`: fix topic message mis-counting if there are backend write errors (thanks @SwanSpouse)
+ * #1099 - `nsqlookupd`: optimize `/nodes` endpoint, much better for hundreds of nsqd (thanks @andyxning)
+ * #1085 - switch `GOFLAGS` to `BLDFLAGS` in `Makefile` now that `GOFLAGS` is automatically used by go
+ * #1080 - `nsqadmin`: eslint reported fixes/cleanups
+
 ### 1.1.0 - 2018-08-19
 
 **Upgrading from 1.0.0-compat**: Just a few backwards incompatible changes:

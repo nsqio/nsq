@@ -5,9 +5,7 @@ COPY . /go/src/github.com/nsqio/nsq
 
 WORKDIR /go/src/github.com/nsqio/nsq
 
-RUN wget -O /bin/dep https://github.com/golang/dep/releases/download/v0.4.1/dep-linux-amd64 \
- && chmod +x /bin/dep \
- && /bin/dep ensure \
+RUN export GO111MODULE=on \
  && ./test.sh \
  && CGO_ENABLED=0 make DESTDIR=/opt PREFIX=/nsq BLDFLAGS='-ldflags="-s -w"' install
 
