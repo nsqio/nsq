@@ -24,7 +24,7 @@
             {{#each collection}}
             <tr {{#if out_of_date}}class="warning"{{/if}}>
                 <td>{{hostname}}</td>
-                <td><a class="link" href="{{basePath "/nodes"}}/{{broadcast_address}}:{{http_port}}">{{broadcast_address}}</a></td>
+                <td><a class="link" href="{{basePath "/nodes"}}/{{broadcast_address_http}}">{{broadcast_address}}</a></td>
                 <td>{{tcp_port}}</td>
                 <td>{{http_port}}</td>
                 <td>{{version}}</td>
