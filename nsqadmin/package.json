@@ -15,17 +15,17 @@
     "gulp-sourcemaps": "^2.6.4",
     "gulp-task-listing": "^1.0.0",
     "gulp-uglify": "^3.0.1",
-    "handlebars": "^4.0.11",
+    "handlebars": "^4.2.0",
     "hbsfy": "^2.8.1",
     "vinyl-buffer": "^1.0.0",
     "vinyl-source-stream": "^2.0.0"
   },
   "dependencies": {
-    "backbone": "^1.2.3",
+    "backbone": "^1.4.0",
     "bootbox": "^4.4.0",
-    "bootstrap": "^3.3.6",
-    "jquery": "^3.3.1",
-    "moment": "^2.11.2",
+    "bootstrap": "^3.4.1",
+    "jquery": "^3.4.1",
+    "moment": "^2.24.0",
     "underscore": "^1.8.3"
   },
   "browserify": {
