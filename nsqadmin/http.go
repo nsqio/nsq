@@ -173,6 +173,8 @@ func (s *httpServer) staticAssetHandler(w http.ResponseWriter, req *http.Request
 	ct := mime.TypeByExtension(ext)
 	if ct == "" {
 		switch ext {
+		case ".map":
+			ct = "application/json"
 		case ".svg":
 			ct = "image/svg+xml"
 		case ".woff":
