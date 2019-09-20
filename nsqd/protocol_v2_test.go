@@ -1478,7 +1478,7 @@ func TestClientAuth(t *testing.T) {
 	authSuccess := ""
 	tlsEnabled := false
 	commonName := ""
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
+	runAuthTest(t, authResponse, 200, authSecret, authError, authSuccess, tlsEnabled, commonName, NewOptions())
 
 	// now one that will succeed
 	authResponse = `{"ttl":10, "authorizations":
@@ -1486,16 +1486,25 @@ func TestClientAuth(t *testing.T) {
 	}`
 	authError = ""
 	authSuccess = `{"identity":"","identity_url":"","permission_count":1}`
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
+	runAuthTest(t, authResponse, 200, authSecret, authError, authSuccess, tlsEnabled, commonName, NewOptions())
 
 	// one with TLS enabled
 	tlsEnabled = true
 	commonName = "test.local"
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
+	runAuthTest(t, authResponse, 200, authSecret, authError, authSuccess, tlsEnabled, commonName, NewOptions())
+
+	// one with failClosed set, and auth response failing
+	opts := NewOptions()
+	opts.AuthFailClosed = true
+	opts.AuthFailDefaultTTL = 60
+	opts.AuthFailDefaultIdentity = "CLOSED"
+	opts.AuthFailDefaultIdentityURL = "http://some-identity"
+	authSuccess = `{"identity":"CLOSED","identity_url":"http://some-identity","permission_count":1}`
+	runAuthTest(t, authResponse, 500, authSecret, authError, authSuccess, tlsEnabled, commonName, opts)
 }
 
-func runAuthTest(t *testing.T, authResponse string, authSecret string, authError string,
-	authSuccess string, tlsEnabled bool, commonName string) {
+func runAuthTest(t *testing.T, authResponse string, authResponseCode int, authSecret string, authError string,
+	authSuccess string, tlsEnabled bool, commonName string, opts *Options) {
 	var err error
 	var expectedRemoteIP string
 	expectedTLS := "false"
@@ -1510,6 +1519,7 @@ func runAuthTest(t *testing.T, authResponse string, authSecret string, authError
 		test.Equal(t, expectedTLS, r.Form.Get("tls"))
 		test.Equal(t, commonName, r.Form.Get("common_name"))
 		test.Equal(t, authSecret, r.Form.Get("secret"))
+		w.WriteHeader(authResponseCode)
 		fmt.Fprint(w, authResponse)
 	}))
 	defer authd.Close()
@@ -1517,7 +1527,6 @@ func runAuthTest(t *testing.T, authResponse string, authSecret string, authError
 	addr, err := url.Parse(authd.URL)
 	test.Nil(t, err)
 
-	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.AuthHTTPAddresses = []string{addr.Host}

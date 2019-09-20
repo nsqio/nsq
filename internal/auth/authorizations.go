@@ -26,6 +26,16 @@ type State struct {
 	Expires        time.Time
 }
 
+type AuthConfig struct {
+	ConnectTimeout time.Duration
+	RequestTimeout time.Duration
+
+	FailClosed             bool
+	FailDefaultTTL         int
+	FailDefaultIdentity    string
+	FailDefaultIdentityURL string
+}
+
 func (a *Authorization) HasPermission(permission string) bool {
 	for _, p := range a.Permissions {
 		if permission == p {
@@ -78,19 +88,38 @@ func (a *State) IsExpired() bool {
 }
 
 func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
-	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
+	authConfig *AuthConfig) (*State, error) {
 	start := rand.Int()
 	n := len(authd)
 	for i := 0; i < n; i++ {
 		a := authd[(i+start)%n]
-		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, commonName, authSecret, connectTimeout, requestTimeout)
+		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, commonName, authSecret, authConfig.ConnectTimeout, authConfig.RequestTimeout)
 		if err != nil {
 			log.Printf("Error: failed auth against %s %s", a, err)
 			continue
 		}
 		return authState, nil
 	}
-	return nil, errors.New("Unable to access auth server")
+
+	if authConfig.FailClosed {
+		log.Printf("Unable to access an auth server, failing closed and allowing all authorizations")
+		closedAuthorizations := []Authorization{
+			{
+				Topic:       ".*",
+				Channels:    []string{".*"},
+				Permissions: []string{"publish", "subscribe"},
+			},
+		}
+		return &State{
+			TTL:            authConfig.FailDefaultTTL,
+			Authorizations: closedAuthorizations,
+			Identity:       authConfig.FailDefaultIdentity,
+			IdentityURL:    authConfig.FailDefaultIdentityURL,
+			Expires:        time.Now().Add(time.Duration(authConfig.FailDefaultTTL) * time.Second),
+		}, nil
+	} else {
+		return nil, errors.New("Unable to access auth server")
+	}
 }
 
 func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,

@@ -19,14 +19,18 @@ type Options struct {
 	LogPrefix string      `flag:"log-prefix"`
 	Logger    Logger
 
-	TCPAddress               string        `flag:"tcp-address"`
-	HTTPAddress              string        `flag:"http-address"`
-	HTTPSAddress             string        `flag:"https-address"`
-	BroadcastAddress         string        `flag:"broadcast-address"`
-	NSQLookupdTCPAddresses   []string      `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
-	AuthHTTPAddresses        []string      `flag:"auth-http-address" cfg:"auth_http_addresses"`
-	HTTPClientConnectTimeout time.Duration `flag:"http-client-connect-timeout" cfg:"http_client_connect_timeout"`
-	HTTPClientRequestTimeout time.Duration `flag:"http-client-request-timeout" cfg:"http_client_request_timeout"`
+	TCPAddress                 string        `flag:"tcp-address"`
+	HTTPAddress                string        `flag:"http-address"`
+	HTTPSAddress               string        `flag:"https-address"`
+	BroadcastAddress           string        `flag:"broadcast-address"`
+	NSQLookupdTCPAddresses     []string      `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
+	AuthHTTPAddresses          []string      `flag:"auth-http-address" cfg:"auth_http_addresses"`
+	AuthFailClosed             bool          `flag:"auth-fail-closed" cfg:"auth_fail_closed"`
+	AuthFailDefaultTTL         int           `flag:"auth-fail-default-ttl" cfg:"auth_fail_default_ttl"`
+	AuthFailDefaultIdentity    string        `flag:"auth-fail-default-identity" cfg:"auth_fail_default_identity"`
+	AuthFailDefaultIdentityURL string        `flag:"auth-fail-default-identity-url" cfg:"auth_fail_default_identity-url"`
+	HTTPClientConnectTimeout   time.Duration `flag:"http-client-connect-timeout" cfg:"http_client_connect_timeout"`
+	HTTPClientRequestTimeout   time.Duration `flag:"http-client-request-timeout" cfg:"http_client_request_timeout"`
 
 	// diskqueue options
 	DataPath        string        `flag:"data-path"`
@@ -103,8 +107,12 @@ func NewOptions() *Options {
 		HTTPSAddress:     "0.0.0.0:4152",
 		BroadcastAddress: hostname,
 
-		NSQLookupdTCPAddresses: make([]string, 0),
-		AuthHTTPAddresses:      make([]string, 0),
+		NSQLookupdTCPAddresses:     make([]string, 0),
+		AuthHTTPAddresses:          make([]string, 0),
+		AuthFailClosed:             false,
+		AuthFailDefaultTTL:         360,
+		AuthFailDefaultIdentity:    "",
+		AuthFailDefaultIdentityURL: "",
 
 		HTTPClientConnectTimeout: 2 * time.Second,
 		HTTPClientRequestTimeout: 5 * time.Second,
