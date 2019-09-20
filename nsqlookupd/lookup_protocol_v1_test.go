@@ -40,6 +40,8 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	test.Nil(t, err)
 	prot := &LookupProtocolV1{ctx: &Context{nsqlookupd: nsqlookupd}}
 
+	nsqlookupd.tcpServer = &tcpServer{ctx: prot.ctx}
+
 	errChan := make(chan error)
 	testIOLoop := func() {
 		errChan <- prot.IOLoop(fakeConn)
