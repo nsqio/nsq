@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 GOMAXPROCS=1 go test -timeout 90s $(go list ./... | grep -v /vendor/)
