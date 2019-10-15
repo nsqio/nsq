@@ -61,6 +61,7 @@ type NSQD struct {
 
 	lookupPeers atomic.Value
 
+	tcpServer     *tcpServer
 	tcpListener   net.Listener
 	httpListener  net.Listener
 	httpsListener net.Listener
@@ -154,6 +155,7 @@ func New(opts *Options) (*NSQD, error) {
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
+	n.tcpServer = &tcpServer{}
 	n.tcpListener, err = net.Listen("tcp", opts.TCPAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
@@ -255,14 +257,16 @@ func (n *NSQD) Main() error {
 		})
 	}
 
-	tcpServer := &tcpServer{ctx: ctx}
+	n.tcpServer.ctx = ctx
 	n.waitGroup.Wrap(func() {
-		exitFunc(protocol.TCPServer(n.tcpListener, tcpServer, n.logf))
+		exitFunc(protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf))
 	})
+
 	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
 	n.waitGroup.Wrap(func() {
 		exitFunc(http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf))
 	})
+
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
 		httpsServer := newHTTPServer(ctx, true, true)
 		n.waitGroup.Wrap(func() {
@@ -422,6 +426,9 @@ func (n *NSQD) PersistMetadata() error {
 func (n *NSQD) Exit() {
 	if n.tcpListener != nil {
 		n.tcpListener.Close()
+	}
+	if n.tcpServer != nil {
+		n.tcpServer.CloseAll()
 	}
 
 	if n.httpListener != nil {
