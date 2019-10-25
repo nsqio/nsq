@@ -18,7 +18,7 @@ def ssh_connect_with_retries(host, retries=3, timeout=30):
         try:
             ssh_client = paramiko.client.SSHClient()
             ssh_client.set_missing_host_key_policy(paramiko.client.WarningPolicy())
-            ssh_client.connect(host, username='ubuntu', timeout=timeout)
+            ssh_client.connect(host, username='ubuntu', timeout=timeout, key_filename=(tornado.options.options.ssh_key_name))
             return ssh_client
         except (socket.error, paramiko.ssh_exception.SSHException):
             if i == retries - 1:
@@ -55,6 +55,9 @@ def ssh_cmd(ssh_client, cmd, timeout=2):
         time.sleep(0.1)
 
     if exit_status != 0:
+        logging.warning('Got an error code (%i), cmd was %s', exit_status, cmd)
+        logging.warning('stdout: %s', stdout)
+        logging.warning('stderr: %s', stderr)
         raise Exception('%r' % stderr)
 
     return stdout, stderr
@@ -76,20 +79,17 @@ def _bootstrap(addr):
             'sudo -S tar -C /usr/local -xzf go%s.linux-amd64.tar.gz' % golang_version,
             'sudo -S apt-get update',
             'sudo -S apt-get -y install git mercurial',
+			'sudo -S apt-get -y install golang',
+			'curl https://raw.githubusercontent.com/golang/dep/master/install.sh > installdep.sh',
+			'chmod +x installdep.sh',
+			'sudo GOPATH=/usr/local/go ./installdep.sh',
             'mkdir -p go/src/github.com/nsqio',
             'cd go/src/github.com/nsqio && git clone https://github.com/nsqio/nsq',
             'cd go/src/github.com/nsqio/nsq && git checkout %s' % commit,
-            'sudo -S curl -s -o /usr/local/bin/gpm \
-                https://raw.githubusercontent.com/pote/gpm/v1.2.3/bin/gpm',
-            'sudo -S chmod +x /usr/local/bin/gpm',
-            'cd go/src/github.com/nsqio/nsq && \
-                GOPATH=/home/ubuntu/go PATH=$PATH:/usr/local/go/bin gpm install',
-            'cd go/src/github.com/nsqio/nsq/apps/nsqd && \
-                GOPATH=/home/ubuntu/go /usr/local/go/bin/go build',
-            'cd go/src/github.com/nsqio/nsq/bench/bench_writer && \
-                GOPATH=/home/ubuntu/go /usr/local/go/bin/go build',
-            'cd go/src/github.com/nsqio/nsq/bench/bench_reader && \
-                GOPATH=/home/ubuntu/go /usr/local/go/bin/go build',
+			'cd go/src/github.com/nsqio/nsq && GOPATH=/home/ubuntu/go /usr/local/go/bin/dep ensure',
+			'cd go/src/github.com/nsqio/nsq && make',
+			'cd go/src/github.com/nsqio/nsq/bench/bench_writer && GOPATH=/home/ubuntu/go /usr/local/go/bin/go build',
+            'cd go/src/github.com/nsqio/nsq/bench/bench_reader && GOPATH=/home/ubuntu/go /usr/local/go/bin/go build',
             'sudo -S mkdir -p /mnt/nsq',
             'sudo -S chmod 777 /mnt/nsq']:
         ssh_cmd(ssh_client, cmd, timeout=10)
@@ -147,11 +147,9 @@ def run():
             for cmd in [
                     'sudo -S pkill -f nsqd',
                     'sudo -S rm -f /mnt/nsq/*.dat',
-                    'GOMAXPROCS=32 ./go/src/github.com/nsqio/nsq/apps/nsqd/nsqd \
-                        --data-path=/mnt/nsq --mem-queue-size=10000000 --max-rdy-count=%s' % (
-                        tornado.options.options.rdy
-                        )]:
-                nsqd_chans.append((ssh_client, ssh_cmd_async(ssh_client, cmd)))
+					'echo starting nsq &>> nsq.log',
+                    'GOMAXPROCS=32 screen -mdS "nsq" ./go/src/github.com/nsqio/nsq/build/nsqd --data-path=/mnt/nsq --mem-queue-size=10000000 --max-rdy-count=%s &>> nsq.log' % (tornado.options.options.rdy)]:
+                nsqd_chans.append((ssh_client, ssh_cmd(ssh_client, cmd)))
         except Exception:
             logging.exception('failed')
 
@@ -250,7 +248,8 @@ def run():
                      max_duration / total_ops * 1000 * 1000)
 
     for ssh_client, chan in nsqd_chans:
-        chan.close()
+        if hasattr(chan, 'close'):
+		    chan.close()
 
 
 def _find_hosts():
@@ -301,7 +300,7 @@ if __name__ == '__main__':
                            help='the benchmark mode (pub, pubsub)')
     tornado.options.define('commit', type=str, default='master',
                            help='the git commit')
-    tornado.options.define('golang_version', type=str, default='1.5.1',
+    tornado.options.define('golang_version', type=str, default='1.10.8',
                            help='the go version')
     tornado.options.parse_command_line()
 
@@ -309,11 +308,13 @@ if __name__ == '__main__':
     warnings.simplefilter('ignore')
 
     cmd_name = sys.argv[-1]
-    cmd_map = {
-        'bootstrap': bootstrap,
-        'run': run,
-        'decomm': decomm
-    }
-    cmd = cmd_map.get(cmd_name, bootstrap)
-
+    logging.info('CMD: %s', cmd_name)
+    cmd = bootstrap
+    if (cmd_name == 'bootstrap'):
+        cmd = bootstrap
+    if (cmd_name == 'run'):
+        cmd = run
+    if (cmd_name == 'decomm'):
+        cmd = decomm
+    logging.info('Running %s', cmd)
     sys.exit(cmd())
