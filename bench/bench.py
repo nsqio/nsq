@@ -79,16 +79,16 @@ def _bootstrap(addr):
             'sudo -S tar -C /usr/local -xzf go%s.linux-amd64.tar.gz' % golang_version,
             'sudo -S apt-get update',
             'sudo -S apt-get -y install git mercurial',
-			'sudo -S apt-get -y install golang',
-			'curl https://raw.githubusercontent.com/golang/dep/master/install.sh > installdep.sh',
-			'chmod +x installdep.sh',
-			'sudo GOPATH=/usr/local/go ./installdep.sh',
+            'sudo -S apt-get -y install golang',
+            'curl https://raw.githubusercontent.com/golang/dep/master/install.sh > installdep.sh',
+            'chmod +x installdep.sh',
+            'sudo GOPATH=/usr/local/go ./installdep.sh',
             'mkdir -p go/src/github.com/nsqio',
             'cd go/src/github.com/nsqio && git clone https://github.com/nsqio/nsq',
             'cd go/src/github.com/nsqio/nsq && git checkout %s' % commit,
-			'cd go/src/github.com/nsqio/nsq && GOPATH=/home/ubuntu/go /usr/local/go/bin/dep ensure',
-			'cd go/src/github.com/nsqio/nsq && make',
-			'cd go/src/github.com/nsqio/nsq/bench/bench_writer && GOPATH=/home/ubuntu/go /usr/local/go/bin/go build',
+            'cd go/src/github.com/nsqio/nsq && GOPATH=/home/ubuntu/go /usr/local/go/bin/dep ensure',
+            'cd go/src/github.com/nsqio/nsq && make',
+            'cd go/src/github.com/nsqio/nsq/bench/bench_writer && GOPATH=/home/ubuntu/go /usr/local/go/bin/go build',
             'cd go/src/github.com/nsqio/nsq/bench/bench_reader && GOPATH=/home/ubuntu/go /usr/local/go/bin/go build',
             'sudo -S mkdir -p /mnt/nsq',
             'sudo -S chmod 777 /mnt/nsq']:
@@ -147,8 +147,11 @@ def run():
             for cmd in [
                     'sudo -S pkill -f nsqd',
                     'sudo -S rm -f /mnt/nsq/*.dat',
-					'echo starting nsq &>> nsq.log',
-                    'GOMAXPROCS=32 screen -mdS "nsq" ./go/src/github.com/nsqio/nsq/build/nsqd --data-path=/mnt/nsq --mem-queue-size=10000000 --max-rdy-count=%s &>> nsq.log' % (tornado.options.options.rdy)]:
+                    'echo starting nsq &>> nsq.log',
+                    'GOMAXPROCS=32 screen -mdS "nsq" ./go/src/github.com/nsqio/nsq/build/nsqd \
+                        --data-path=/mnt/nsq \
+                        --mem-queue-size=10000000 \
+                        --max-rdy-count=%s &>> nsq.log' % (tornado.options.options.rdy)]:
                 nsqd_chans.append((ssh_client, ssh_cmd(ssh_client, cmd)))
         except Exception:
             logging.exception('failed')
@@ -249,7 +252,7 @@ def run():
 
     for ssh_client, chan in nsqd_chans:
         if hasattr(chan, 'close'):
-		    chan.close()
+            chan.close()
 
 
 def _find_hosts():
@@ -286,11 +289,11 @@ if __name__ == '__main__':
                            help='AWS account access key')
     tornado.options.define('secret_key', type=str, default='',
                            help='AWS account secret key')
-    tornado.options.define('ami', type=str, default='ami-48fd2120',
+    tornado.options.define('ami', type=str, default='ami-02df9ea15c1778c9c',
                            help='AMI ID')
     tornado.options.define('ssh_key_name', type=str, default='default',
                            help='SSH key name')
-    tornado.options.define('instance_type', type=str, default='c3.2xlarge',
+    tornado.options.define('instance_type', type=str, default='t2.medium',
                            help='EC2 instance type')
     tornado.options.define('msg_size', type=int, default=200,
                            help='size of message')
