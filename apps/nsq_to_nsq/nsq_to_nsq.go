@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"os"
 	"os/signal"
@@ -30,6 +31,7 @@ const (
 )
 
 var (
+	// single value params
 	showVersion = flag.Bool("version", false, "print version string")
 	channel     = flag.String("channel", "nsq_to_nsq", "nsq channel")
 	destTopic   = flag.String("destination-topic", "", "use this destination topic for all consumed topics (default is consumed topic name)")
@@ -38,14 +40,18 @@ var (
 	statusEvery = flag.Int("status-every", 250, "the # of requests between logging status (per destination), 0 disables")
 	mode        = flag.String("mode", "hostpool", "the upstream request mode options: round-robin, hostpool (default), epsilon-greedy")
 
+	requireJSONField     = flag.String("require-json-field", "", "for JSON messages: only pass messages that contain this field")
+	requireJSONValue     = flag.String("require-json-value", "", "for JSON messages: only pass messages in which the required field has this value")
+	partitionJSONField   = flag.String("partition-json-field", "", "for JSON messages: distribute messages with this field into partitioned topics")
+	unpartitionableTopic = flag.String("unpartitionable-topic", "", "topic for messages with partition field that fail partition hashing")
+	partitionCount       = flag.Int("partition-count", 1, "distribute messages across N destination topics with suffix _0 to _N-1")
+
+	// multi value params
 	nsqdTCPAddrs        = app.StringArray{}
 	lookupdHTTPAddrs    = app.StringArray{}
 	destNsqdTCPAddrs    = app.StringArray{}
 	whitelistJSONFields = app.StringArray{}
 	topics              = app.StringArray{}
-
-	requireJSONField = flag.String("require-json-field", "", "for JSON messages: only pass messages that contain this field")
-	requireJSONValue = flag.String("require-json-value", "", "for JSON messages: only pass messages in which the required field has this value")
 )
 
 func init() {
@@ -77,6 +83,12 @@ type PublishHandler struct {
 type TopicHandler struct {
 	publishHandler   *PublishHandler
 	destinationTopic string
+}
+
+func hashString(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
 }
 
 func (ph *PublishHandler) responder() {
@@ -118,6 +130,25 @@ func (ph *PublishHandler) responder() {
 		ph.perAddressStatus[address].Status(startTime)
 		ph.timermetrics.Status(startTime)
 	}
+}
+
+func (ph *PublishHandler) getTopicForPartition(js map[string]interface{}, destinationTopic string) string {
+	finalTopic := destinationTopic
+	if *partitionJSONField != "" {
+		if v, ok := js[*partitionJSONField]; ok {
+			if str, ok := v.(string); ok {
+				hashed := hashString(str)
+				shard := hashed % uint32(*partitionCount)
+				suffix := fmt.Sprintf(".%v", shard)
+				finalTopic = destinationTopic + suffix
+			} else {
+				if *unpartitionableTopic != "" {
+					finalTopic = *unpartitionableTopic
+				}
+			}
+		}
+	}
+	return finalTopic
 }
 
 func (ph *PublishHandler) shouldPassMessage(js map[string]interface{}) (bool, bool) {
@@ -206,7 +237,7 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message, destinationTopic string)
 	var err error
 	msgBody := m.Body
 
-	if *requireJSONField != "" || len(whitelistJSONFields) > 0 {
+	if *requireJSONField != "" || len(whitelistJSONFields) > 0 || *partitionJSONField != "" {
 		var js map[string]interface{}
 		err = json.Unmarshal(msgBody, &js)
 		if err != nil {
@@ -226,6 +257,10 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message, destinationTopic string)
 		if err != nil {
 			log.Printf("ERROR: filterMessage() failed: %s", err)
 			return err
+		}
+
+		if *partitionJSONField != "" {
+			destinationTopic = ph.getTopicForPartition(js, destinationTopic)
 		}
 	}
 
@@ -270,8 +305,8 @@ func main() {
 	cCfg := nsq.NewConfig()
 	pCfg := nsq.NewConfig()
 
-	flag.Var(&nsq.ConfigFlag{cCfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
-	flag.Var(&nsq.ConfigFlag{pCfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
+	flag.Var(&nsq.ConfigFlag{Config: cCfg}, "consumer-opt", "option to passthrough to nsq.Consumer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
+	flag.Var(&nsq.ConfigFlag{Config: pCfg}, "producer-opt", "option to passthrough to nsq.Producer (may be given multiple times, see http://godoc.org/github.com/nsqio/go-nsq#Config)")
 
 	flag.Parse()
 
