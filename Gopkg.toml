@@ -59,7 +59,7 @@
 
 [[constraint]]
   name = "github.com/nsqio/go-diskqueue"
-  revision = "74cfbc9de839"
+  revision = "8c228d7a2450265de03e1d42e21f59e23d6339c6"
 
 [[constraint]]
   name = "github.com/nsqio/go-nsq"

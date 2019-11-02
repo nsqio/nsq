@@ -18,8 +18,8 @@ github.com/julienschmidt/httprouter v1.2.0 h1:TDTW5Yz1mjftljbcKqRcrYhd4XeOoI98t+
 github.com/julienschmidt/httprouter v1.2.0/go.mod h1:SYymIcj16QtmaHHD7aYtjjsJG7VTCxuUUipMqKk8s4w=
 github.com/mreiferson/go-options v0.0.0-20190302015348-0c63f026bcd6 h1:frRvTmIp7QT1RPaphBvr6zvEHfvdOX7jMO7rvicCH9Q=
 github.com/mreiferson/go-options v0.0.0-20190302015348-0c63f026bcd6/go.mod h1:zHtCks/HQvOt8ATyfwVe3JJq2PPuImzXINPRTC03+9w=
-github.com/nsqio/go-diskqueue v0.0.0-20180306152900-74cfbc9de839 h1:nZ0z0haJRzCXAWH9Jl+BUnfD2n2MCSbGRSl8VBX+zR0=
-github.com/nsqio/go-diskqueue v0.0.0-20180306152900-74cfbc9de839/go.mod h1:AYinRDfdKMmVKTPI8wOcLgjcw2pTS3jo8fib1VxOzsE=
+github.com/nsqio/go-diskqueue v0.0.0-20191213054144-8c228d7a2450 h1:5kOO/fS7AISHyIRPXdCbEefNxpc4bvYzRv6xmqPT4eQ=
+github.com/nsqio/go-diskqueue v0.0.0-20191213054144-8c228d7a2450/go.mod h1:AYinRDfdKMmVKTPI8wOcLgjcw2pTS3jo8fib1VxOzsE=
 github.com/nsqio/go-nsq v1.0.7 h1:O0pIZJYTf+x7cZBA0UMY8WxFG79lYTURmWzAAh48ljY=
 github.com/nsqio/go-nsq v1.0.7/go.mod h1:XP5zaUs3pqf+Q71EqUJs3HYfBIqfK6G83WQMdNN+Ito=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

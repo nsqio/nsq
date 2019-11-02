@@ -202,7 +202,7 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	var err error
 	var memoryMsgChan chan *Message
-	var backendMsgChan chan []byte
+	var backendMsgChan <-chan []byte
 	var subChannel *Channel
 	// NOTE: `flusherChan` is used to bound message latency for
 	// the pathological case of a channel on a low volume topic

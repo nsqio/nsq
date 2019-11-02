@@ -65,11 +65,11 @@
   revision = "0c63f026bcd6"
 
 [[projects]]
-  digest = "1:22ffd73c4580854d935821a0fa95ff7324df836efa86d256adeb392450cbde87"
+  digest = "1:f4f17bf49baf6cf0c3ba00ee2893a4c673b81fd227524956bc7c9fd64f58b133"
   name = "github.com/nsqio/go-diskqueue"
   packages = ["."]
   pruneopts = ""
-  revision = "74cfbc9de839"
+  revision = "8c228d7a2450265de03e1d42e21f59e23d6339c6"
 
 [[projects]]
   digest = "1:7a69f6a3a33929f8b66aa39c93868ad1698f06417fe627ae067559beb94504bd"
