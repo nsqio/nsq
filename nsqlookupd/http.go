@@ -308,7 +308,9 @@ func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httpro
 	defer s.ctx.nsqlookupd.DB.RUnlock()
 
 	data := make(map[string][]map[string]interface{})
-	for r, producers := range s.ctx.nsqlookupd.DB.registrationMap {
+	s.ctx.nsqlookupd.DB.registrationMap.Range(func(k, v interface{}) bool {
+		producers := v.(ProducerMap)
+		r := k.(Registration)
 		key := r.Category + ":" + r.Key + ":" + r.SubKey
 		for _, p := range producers {
 			m := map[string]interface{}{
@@ -324,7 +326,8 @@ func (s *httpServer) doDebug(w http.ResponseWriter, req *http.Request, ps httpro
 			}
 			data[key] = append(data[key], m)
 		}
-	}
+		return true
+	})
 
 	return data, nil
 }
