@@ -23,6 +23,7 @@ func TestConfigFlagParsing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
+	defer f.Close()
 	toml.DecodeReader(f, &cfg)
 	cfg.Validate()
 
