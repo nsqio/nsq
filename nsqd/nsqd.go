@@ -108,7 +108,7 @@ func New(opts *Options) (*NSQD, error) {
 
 	err = n.dl.Lock()
 	if err != nil {
-		return nil, fmt.Errorf("--data-path=%s in use (possibly by another instance of nsqd)", dataPath)
+		return nil, fmt.Errorf("failed to lock data-path: %v", err)
 	}
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
