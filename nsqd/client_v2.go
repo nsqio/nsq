@@ -327,8 +327,11 @@ func (c *clientV2) IsReadyForMessages() bool {
 }
 
 func (c *clientV2) SetReadyCount(count int64) {
-	atomic.StoreInt64(&c.ReadyCount, count)
-	c.tryUpdateReadyState()
+	oldCount := atomic.SwapInt64(&c.ReadyCount, count)
+
+	if oldCount != count {
+		c.tryUpdateReadyState()
+	}
 }
 
 func (c *clientV2) tryUpdateReadyState() {
