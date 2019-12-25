@@ -1,8 +1,6 @@
 language: go
 go:
   # test with the two most recent Go versions
-  # and with the minimum supported Go version
-  - 1.9.x
   - 1.12.x
   - 1.13.x
 env:
