@@ -1,8 +1,9 @@
 #!/bin/sh
 set -e
 
-GOMAXPROCS=1 go test -timeout 90s $(go list ./... | grep -v /vendor/)
-GOMAXPROCS=4 go test -timeout 90s -race $(go list ./... | grep -v /vendor/)
+export GO111MODULE=on
+GOMAXPROCS=1 go test -timeout 90s ./...
+GOMAXPROCS=4 go test -timeout 90s -race ./...
 
 # no tests, but a build is something
 for dir in apps/*/ bench/*/; do

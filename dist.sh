@@ -26,11 +26,12 @@ goversion=$(go version | awk '{print $3}')
 echo "... running tests"
 ./test.sh
 
+export GO111MODULE=on
 for os in linux darwin freebsd windows; do
     echo "... building v$version for $os/$arch"
     BUILD=$(mktemp -d ${TMPDIR:-/tmp}/nsq-XXXXX)
     TARGET="nsq-$version.$os-$arch.$goversion"
-    GO111MODULE=on GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
+    GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
         make DESTDIR=$BUILD PREFIX=/$TARGET BLDFLAGS="$GOFLAGS" install
     pushd $BUILD
     sudo chown -R 0:0 $TARGET
