@@ -482,11 +482,16 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	topicName, _ := reqParams.Get("topic")
 	channelName, _ := reqParams.Get("channel")
 	includeClientsParam, _ := reqParams.Get("include_clients")
+	includeMemParam, _ := reqParams.Get("include_mem")
 	jsonFormat := formatString == "json"
 
 	includeClients, ok := boolParams[includeClientsParam]
 	if !ok {
 		includeClients = true
+	}
+	includeMem, ok := boolParams[includeMemParam]
+	if !ok {
+		includeMem = true
 	}
 	if includeClients {
 		producerStats = s.ctx.nsqd.GetProducerStats()
@@ -538,7 +543,11 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		producerStats = filteredProducerStats
 	}
 
-	ms := getMemStats()
+	var ms *memStats
+	if includeMem {
+		m := getMemStats()
+		ms = &m
+	}
 	if !jsonFormat {
 		return s.printStats(stats, producerStats, ms, health, startTime, uptime), nil
 	}
@@ -548,12 +557,12 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		Health    string        `json:"health"`
 		StartTime int64         `json:"start_time"`
 		Topics    []TopicStats  `json:"topics"`
-		Memory    memStats      `json:"memory"`
+		Memory    *memStats     `json:"memory,omitempty"`
 		Producers []ClientStats `json:"producers"`
 	}{version.Binary, health, startTime.Unix(), stats, ms, producerStats}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats, ms memStats, health string, startTime time.Time, uptime time.Duration) []byte {
+func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats, ms *memStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
 
@@ -565,16 +574,18 @@ func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats,
 
 	fmt.Fprintf(w, "\nHealth: %s\n", health)
 
-	fmt.Fprintf(w, "\nMemory:\n")
-	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_objects", ms.HeapObjects)
-	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_idle_bytes", ms.HeapIdleBytes)
-	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_in_use_bytes", ms.HeapInUseBytes)
-	fmt.Fprintf(w, "   %-25s\t%d\n", "heap_released_bytes", ms.HeapReleasedBytes)
-	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_100", ms.GCPauseUsec100)
-	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_99", ms.GCPauseUsec99)
-	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_95", ms.GCPauseUsec95)
-	fmt.Fprintf(w, "   %-25s\t%d\n", "next_gc_bytes", ms.NextGCBytes)
-	fmt.Fprintf(w, "   %-25s\t%d\n", "gc_total_runs", ms.GCTotalRuns)
+	if ms != nil {
+		fmt.Fprintf(w, "\nMemory:\n")
+		fmt.Fprintf(w, "   %-25s\t%d\n", "heap_objects", ms.HeapObjects)
+		fmt.Fprintf(w, "   %-25s\t%d\n", "heap_idle_bytes", ms.HeapIdleBytes)
+		fmt.Fprintf(w, "   %-25s\t%d\n", "heap_in_use_bytes", ms.HeapInUseBytes)
+		fmt.Fprintf(w, "   %-25s\t%d\n", "heap_released_bytes", ms.HeapReleasedBytes)
+		fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_100", ms.GCPauseUsec100)
+		fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_99", ms.GCPauseUsec99)
+		fmt.Fprintf(w, "   %-25s\t%d\n", "gc_pause_usec_95", ms.GCPauseUsec95)
+		fmt.Fprintf(w, "   %-25s\t%d\n", "next_gc_bytes", ms.NextGCBytes)
+		fmt.Fprintf(w, "   %-25s\t%d\n", "gc_total_runs", ms.GCTotalRuns)
+	}
 
 	if len(stats) == 0 {
 		fmt.Fprintf(w, "\nTopics: None\n")
