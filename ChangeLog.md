@@ -352,7 +352,7 @@ those features/fixes.
 **Upgrading from 0.3.1**: Binaries contain no backwards incompatible changes however as of this
 release we've updated our official Docker images.
 
-We now provide a single Docker image [`nsqio/nsq`](https://registry.hub.docker.com/u/nsqio/nsq/)
+We now provide a single Docker image [`nsqio/nsq`](https://registry.hub.docker.com/r/nsqio/nsq/)
 that includes *all* of the NSQ binaries. We did this for several reasons, primarily because the
 tagged versions in the previous incarnation were broken (and did not actually pin to a version!).
 The new image is an order of magnitude smaller, weighing in around 70mb.
