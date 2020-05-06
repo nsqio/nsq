@@ -340,7 +340,7 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 		newTimeout = msg.deliveryTS.Add(c.ctx.nsqd.getOpts().MaxMsgTimeout)
 	}
 
-	msg.pri = newTimeout.UnixNano()
+	msg.pri = newTimeout
 	err = c.pushInFlightMessage(msg)
 	if err != nil {
 		return err
@@ -431,7 +431,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 	now := time.Now()
 	msg.clientID = clientID
 	msg.deliveryTS = now
-	msg.pri = now.Add(timeout).UnixNano()
+	msg.pri = now.Add(timeout)
 	err := c.pushInFlightMessage(msg)
 	if err != nil {
 		return err
@@ -441,7 +441,7 @@ func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout tim
 }
 
 func (c *Channel) StartDeferredTimeout(msg *Message, timeout time.Duration) error {
-	absTs := time.Now().Add(timeout).UnixNano()
+	absTs := time.Now().Add(timeout)
 	item := &pqueue.Item{Value: msg, Priority: absTs}
 	err := c.pushDeferredMessage(item)
 	if err != nil {
@@ -531,7 +531,7 @@ func (c *Channel) addToDeferredPQ(item *pqueue.Item) {
 	c.deferredMutex.Unlock()
 }
 
-func (c *Channel) processDeferredQueue(t int64) bool {
+func (c *Channel) processDeferredQueue(t time.Time) bool {
 	c.exitMutex.RLock()
 	defer c.exitMutex.RUnlock()
 
@@ -562,7 +562,7 @@ exit:
 	return dirty
 }
 
-func (c *Channel) processInFlightQueue(t int64) bool {
+func (c *Channel) processInFlightQueue(t time.Time) bool {
 	c.exitMutex.RLock()
 	defer c.exitMutex.RUnlock()
 

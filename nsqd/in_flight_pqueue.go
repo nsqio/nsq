@@ -1,5 +1,7 @@
 package nsqd
 
+import "time"
+
 type inFlightPqueue []*Message
 
 func newInFlightPqueue(capacity int) inFlightPqueue {
@@ -55,14 +57,14 @@ func (pq *inFlightPqueue) Remove(i int) *Message {
 	return x
 }
 
-func (pq *inFlightPqueue) PeekAndShift(max int64) (*Message, int64) {
+func (pq *inFlightPqueue) PeekAndShift(max time.Time) (*Message, time.Duration) {
 	if len(*pq) == 0 {
 		return nil, 0
 	}
 
 	x := (*pq)[0]
-	if x.pri > max {
-		return nil, x.pri - max
+	if x.pri.After(max) {
+		return nil, x.pri.Sub(max)
 	}
 	pq.Pop()
 
@@ -72,7 +74,7 @@ func (pq *inFlightPqueue) PeekAndShift(max int64) (*Message, int64) {
 func (pq *inFlightPqueue) up(j int) {
 	for {
 		i := (j - 1) / 2 // parent
-		if i == j || (*pq)[j].pri >= (*pq)[i].pri {
+		if i == j || (*pq)[j].pri.After((*pq)[i].pri) {
 			break
 		}
 		pq.Swap(i, j)
@@ -87,10 +89,10 @@ func (pq *inFlightPqueue) down(i, n int) {
 			break
 		}
 		j := j1 // left child
-		if j2 := j1 + 1; j2 < n && (*pq)[j1].pri >= (*pq)[j2].pri {
+		if j2 := j1 + 1; j2 < n && (*pq)[j1].pri.After((*pq)[j2].pri) {
 			j = j2 // = 2*i + 2  // right child
 		}
-		if (*pq)[j].pri >= (*pq)[i].pri {
+		if (*pq)[j].pri.After((*pq)[i].pri) {
 			break
 		}
 		pq.Swap(i, j)

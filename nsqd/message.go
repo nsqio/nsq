@@ -18,13 +18,13 @@ type MessageID [MsgIDLength]byte
 type Message struct {
 	ID        MessageID
 	Body      []byte
-	Timestamp int64
+	Timestamp time.Time
 	Attempts  uint16
 
 	// for in-flight handling
 	deliveryTS time.Time
 	clientID   int64
-	pri        int64
+	pri        time.Time
 	index      int
 	deferred   time.Duration
 }
@@ -33,7 +33,7 @@ func NewMessage(id MessageID, body []byte) *Message {
 	return &Message{
 		ID:        id,
 		Body:      body,
-		Timestamp: time.Now().UnixNano(),
+		Timestamp: time.Now(),
 	}
 }
 
@@ -41,7 +41,7 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 	var buf [10]byte
 	var total int64
 
-	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
+	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp.UnixNano()))
 	binary.BigEndian.PutUint16(buf[8:10], uint16(m.Attempts))
 
 	n, err := w.Write(buf[:])
@@ -82,7 +82,7 @@ func decodeMessage(b []byte) (*Message, error) {
 		return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
 	}
 
-	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
+	msg.Timestamp = time.Unix(0, int64(binary.BigEndian.Uint64(b[:8])))
 	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
 	copy(msg.ID[:], b[10:10+MsgIDLength])
 	msg.Body = b[10+MsgIDLength:]

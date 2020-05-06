@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"testing"
+	"time"
 )
 
 func equal(t *testing.T, act, exp interface{}) {
@@ -24,7 +25,7 @@ func TestPriorityQueue(t *testing.T) {
 	pq := New(c)
 
 	for i := 0; i < c+1; i++ {
-		heap.Push(&pq, &Item{Value: i, Priority: int64(i)})
+		heap.Push(&pq, &Item{Value: i, Priority: time.Unix(int64(i), 0)})
 	}
 	equal(t, pq.Len(), c+1)
 	equal(t, cap(pq), c*2)
@@ -44,7 +45,7 @@ func TestUnsortedInsert(t *testing.T) {
 	for i := 0; i < c; i++ {
 		v := rand.Int()
 		ints = append(ints, v)
-		heap.Push(&pq, &Item{Value: i, Priority: int64(v)})
+		heap.Push(&pq, &Item{Value: i, Priority: time.Unix(int64(v), 0)})
 	}
 	equal(t, pq.Len(), c)
 	equal(t, cap(pq), c)
@@ -52,8 +53,8 @@ func TestUnsortedInsert(t *testing.T) {
 	sort.Ints(ints)
 
 	for i := 0; i < c; i++ {
-		item, _ := pq.PeekAndShift(int64(ints[len(ints)-1]))
-		equal(t, item.Priority, int64(ints[i]))
+		item, _ := pq.PeekAndShift(time.Unix(int64(ints[len(ints)-1]), 0))
+		equal(t, item.Priority, time.Unix(int64(ints[i]), 0))
 	}
 }
 
@@ -63,7 +64,7 @@ func TestRemove(t *testing.T) {
 
 	for i := 0; i < c; i++ {
 		v := rand.Int()
-		heap.Push(&pq, &Item{Value: "test", Priority: int64(v)})
+		heap.Push(&pq, &Item{Value: "test", Priority: time.Unix(int64(v), 0)})
 	}
 
 	for i := 0; i < 10; i++ {
@@ -73,7 +74,7 @@ func TestRemove(t *testing.T) {
 	lastPriority := heap.Pop(&pq).(*Item).Priority
 	for i := 0; i < (c - 10 - 1); i++ {
 		item := heap.Pop(&pq)
-		equal(t, lastPriority < item.(*Item).Priority, true)
+		equal(t, lastPriority.Before(item.(*Item).Priority), true)
 		lastPriority = item.(*Item).Priority
 	}
 }

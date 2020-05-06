@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/nsqio/nsq/internal/test"
 )
@@ -14,7 +15,7 @@ func TestPriorityQueue(t *testing.T) {
 	pq := newInFlightPqueue(c)
 
 	for i := 0; i < c+1; i++ {
-		pq.Push(&Message{clientID: int64(i), pri: int64(i)})
+		pq.Push(&Message{clientID: int64(i), pri: time.Unix(int64(i), 0)})
 	}
 	test.Equal(t, c+1, len(pq))
 	test.Equal(t, c*2, cap(pq))
@@ -34,7 +35,7 @@ func TestUnsortedInsert(t *testing.T) {
 	for i := 0; i < c; i++ {
 		v := rand.Int()
 		ints = append(ints, v)
-		pq.Push(&Message{pri: int64(v)})
+		pq.Push(&Message{pri: time.Unix(int64(v), 0)})
 	}
 	test.Equal(t, c, len(pq))
 	test.Equal(t, c, cap(pq))
@@ -42,8 +43,8 @@ func TestUnsortedInsert(t *testing.T) {
 	sort.Ints(ints)
 
 	for i := 0; i < c; i++ {
-		msg, _ := pq.PeekAndShift(int64(ints[len(ints)-1]))
-		test.Equal(t, int64(ints[i]), msg.pri)
+		msg, _ := pq.PeekAndShift(time.Unix(int64(ints[len(ints)-1]), 0))
+		test.Equal(t, int64(ints[i]), msg.pri.Unix())
 	}
 }
 
@@ -53,8 +54,8 @@ func TestRemove(t *testing.T) {
 
 	msgs := make(map[MessageID]*Message)
 	for i := 0; i < c; i++ {
-		m := &Message{pri: int64(rand.Intn(100000000))}
-		copy(m.ID[:], fmt.Sprintf("%016d", m.pri))
+		m := &Message{pri: time.Unix(int64(rand.Intn(100000000)), 0)}
+		copy(m.ID[:], fmt.Sprintf("%016d", m.pri.Unix()))
 		msgs[m.ID] = m
 		pq.Push(m)
 	}
@@ -75,7 +76,7 @@ func TestRemove(t *testing.T) {
 	lastPriority := pq.Pop().pri
 	for i := 0; i < (c - 10 - 1); i++ {
 		msg := pq.Pop()
-		test.Equal(t, true, lastPriority <= msg.pri)
+		test.Equal(t, true, lastPriority.Before(msg.pri))
 		lastPriority = msg.pri
 	}
 }

@@ -623,7 +623,7 @@ func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, close
 	for {
 		select {
 		case c := <-workCh:
-			now := time.Now().UnixNano()
+			now := time.Now()
 			dirty := false
 			if c.processInFlightQueue(now) {
 				dirty = true

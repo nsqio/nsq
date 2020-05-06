@@ -1468,7 +1468,7 @@ func TestReqTimeoutRange(t *testing.T) {
 	channel.deferredMutex.Unlock()
 
 	test.NotNil(t, pqItem)
-	test.Equal(t, true, pqItem.Priority >= minTs)
+	test.Equal(t, true, pqItem.Priority.UnixNano() >= minTs)
 }
 
 func TestClientAuth(t *testing.T) {

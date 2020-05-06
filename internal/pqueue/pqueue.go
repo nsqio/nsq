@@ -2,11 +2,12 @@ package pqueue
 
 import (
 	"container/heap"
+	"time"
 )
 
 type Item struct {
 	Value    interface{}
-	Priority int64
+	Priority time.Time
 	Index    int
 }
 
@@ -23,7 +24,7 @@ func (pq PriorityQueue) Len() int {
 }
 
 func (pq PriorityQueue) Less(i, j int) bool {
-	return pq[i].Priority < pq[j].Priority
+	return pq[i].Priority.Before(pq[j].Priority)
 }
 
 func (pq PriorityQueue) Swap(i, j int) {
@@ -60,14 +61,14 @@ func (pq *PriorityQueue) Pop() interface{} {
 	return item
 }
 
-func (pq *PriorityQueue) PeekAndShift(max int64) (*Item, int64) {
+func (pq *PriorityQueue) PeekAndShift(max time.Time) (*Item, time.Duration) {
 	if pq.Len() == 0 {
 		return nil, 0
 	}
 
 	item := (*pq)[0]
-	if item.Priority > max {
-		return nil, item.Priority - max
+	if item.Priority.After(max) {
+		return nil, item.Priority.Sub(max)
 	}
 	heap.Remove(pq, 0)
 

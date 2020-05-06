@@ -12,6 +12,7 @@ package nsqd
 import (
 	"encoding/hex"
 	"errors"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -36,55 +37,22 @@ type guid int64
 type guidFactory struct {
 	sync.Mutex
 
-	nodeID        int64
-	sequence      int64
-	lastTimestamp int64
-	lastID        guid
+	nodeID int64
+	randng *rand.Rand
 }
 
 func NewGUIDFactory(nodeID int64) *guidFactory {
 	return &guidFactory{
 		nodeID: nodeID,
+		randng: rand.New(rand.NewSource(time.Now().UnixNano() ^ nodeID)),
 	}
 }
 
 func (f *guidFactory) NewGUID() (guid, error) {
 	f.Lock()
-
-	// divide by 1048576, giving pseudo-milliseconds
-	ts := time.Now().UnixNano() >> 20
-
-	if ts < f.lastTimestamp {
-		f.Unlock()
-		return 0, ErrTimeBackwards
-	}
-
-	if f.lastTimestamp == ts {
-		f.sequence = (f.sequence + 1) & sequenceMask
-		if f.sequence == 0 {
-			f.Unlock()
-			return 0, ErrSequenceExpired
-		}
-	} else {
-		f.sequence = 0
-	}
-
-	f.lastTimestamp = ts
-
-	id := guid(((ts - twepoch) << timestampShift) |
-		(f.nodeID << nodeIDShift) |
-		f.sequence)
-
-	if id <= f.lastID {
-		f.Unlock()
-		return 0, ErrIDBackwards
-	}
-
-	f.lastID = id
-
+	id := f.randng.Int63()
 	f.Unlock()
-
-	return id, nil
+	return guid(id), nil
 }
 
 func (g guid) Hex() MessageID {

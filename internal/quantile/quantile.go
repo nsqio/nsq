@@ -63,7 +63,7 @@ func (q *Quantile) Result() *Result {
 	return &result
 }
 
-func (q *Quantile) Insert(msgStartTime int64) {
+func (q *Quantile) Insert(msgStartTime time.Time) {
 	q.Lock()
 
 	now := time.Now()
@@ -71,7 +71,7 @@ func (q *Quantile) Insert(msgStartTime int64) {
 		q.moveWindow()
 	}
 
-	q.currentStream.Insert(float64(now.UnixNano() - msgStartTime))
+	q.currentStream.Insert(float64(now.Sub(msgStartTime).Nanoseconds()))
 	q.Unlock()
 }
 

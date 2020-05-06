@@ -180,9 +180,11 @@ func (p *protocolV2) Exec(client *clientV2, params [][]byte) ([]byte, error) {
 	case bytes.Equal(params[0], []byte("REQ")):
 		return p.REQ(client, params)
 	case bytes.Equal(params[0], []byte("PUB")):
-		return p.PUB(client, params)
+		a, b := p.PUB(client, params)
+		return a, b
 	case bytes.Equal(params[0], []byte("MPUB")):
-		return p.MPUB(client, params)
+		a, b := p.MPUB(client, params)
+		return a, b
 	case bytes.Equal(params[0], []byte("DPUB")):
 		return p.DPUB(client, params)
 	case bytes.Equal(params[0], []byte("NOP")):
@@ -793,7 +795,6 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "PUB failed to read message body")
 	}
-
 	if err := p.CheckAuth(client, "PUB", topicName, ""); err != nil {
 		return nil, err
 	}
@@ -822,7 +823,6 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_TOPIC",
 			fmt.Sprintf("E_BAD_TOPIC MPUB topic name %q is not valid", topicName))
 	}
-
 	if err := p.CheckAuth(client, "MPUB", topicName, ""); err != nil {
 		return nil, err
 	}
@@ -846,6 +846,7 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 
 	messages, err := readMPUB(client.Reader, client.lenSlice, topic,
 		p.ctx.nsqd.getOpts().MaxMsgSize, p.ctx.nsqd.getOpts().MaxBodySize)
+
 	if err != nil {
 		return nil, err
 	}
@@ -859,7 +860,6 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 
 	client.PublishedMessage(topicName, uint64(len(messages)))
-
 	return okBytes, nil
 }
 
@@ -909,7 +909,6 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "DPUB failed to read message body")
 	}
-
 	if err := p.CheckAuth(client, "DPUB", topicName, ""); err != nil {
 		return nil, err
 	}
@@ -990,7 +989,6 @@ func readMPUB(r io.Reader, tmp []byte, topic *Topic, maxMessageSize int64, maxBo
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_BAD_MESSAGE", "MPUB failed to read message body")
 		}
-
 		messages = append(messages, NewMessage(topic.GenerateID(), msgBody))
 	}
 
