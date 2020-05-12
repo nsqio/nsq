@@ -56,7 +56,6 @@ type Channel struct {
 	paused         int32
 	ephemeral      bool
 	deleteCallback func(*Channel)
-	deleter        sync.Once
 
 	// Stats tracking
 	e2eProcessingLatencyStream *quantile.Quantile
@@ -421,10 +420,6 @@ func (c *Channel) RemoveClient(clientID int64) {
 		return
 	}
 	delete(c.clients, clientID)
-
-	if len(c.clients) == 0 && c.ephemeral == true {
-		go c.deleter.Do(func() { c.deleteCallback(c) })
-	}
 }
 
 func (c *Channel) StartInFlightTimeout(msg *Message, clientID int64, timeout time.Duration) error {

@@ -276,12 +276,47 @@ func (n *NSQD) Main() error {
 
 	n.waitGroup.Wrap(n.queueScanLoop)
 	n.waitGroup.Wrap(n.lookupLoop)
+	n.waitGroup.Wrap(n.ephemeralTopicCleanupLoop)
 	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(n.statsdLoop)
 	}
 
 	err := <-exitCh
 	return err
+}
+
+func (n *NSQD) ephemeralTopicCleanupLoop() {
+	ticker := time.Tick(100 * time.Millisecond)
+	for {
+		select {
+		case <-ticker:
+			checkList := []*Topic{}
+			n.RLock()
+			for _, topic := range n.topicMap {
+				checkList = append(checkList, topic)
+			}
+			n.RUnlock()
+			for _, topic := range checkList {
+				topic.RLock()
+				ephemeral := topic.ephemeral
+				lenClients := len(topic.channelMap)
+				topic.RUnlock()
+
+				if !ephemeral {
+					continue
+				}
+
+				if lenClients == 0 {
+					topic.deleteCallback(topic)
+				}
+			}
+			continue
+		case <-n.exitChan:
+			goto exit
+		}
+	}
+exit:
+	n.logf(LOG_INFO, "TopicCleanup: finalize")
 }
 
 type meta struct {

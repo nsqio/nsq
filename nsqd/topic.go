@@ -34,7 +34,6 @@ type Topic struct {
 
 	ephemeral      bool
 	deleteCallback func(*Topic)
-	deleter        sync.Once
 
 	paused    int32
 	pauseChan chan int
@@ -82,6 +81,7 @@ func NewTopic(topicName string, ctx *context, deleteCallback func(*Topic)) *Topi
 	}
 
 	t.waitGroup.Wrap(t.messagePump)
+	t.waitGroup.Wrap(t.ephemeralChannelCleanupLoop)
 
 	t.ctx.nsqd.Notify(t)
 
@@ -157,7 +157,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	numChannels := len(t.channelMap)
 	t.Unlock()
 
-	t.ctx.nsqd.logf(LOG_INFO, "TOPIC(%s): deleting channel %s", t.name, channel.name)
+	t.ctx.nsqd.logf(LOG_INFO, "TOPIC(%s): deleting channel %s. existing channel count %d", t.name, channel.name, numChannels)
 
 	// delete empties the channel before closing
 	// (so that we dont leave any messages around)
@@ -167,10 +167,6 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	select {
 	case t.channelUpdateChan <- 1:
 	case <-t.exitChan:
-	}
-
-	if numChannels == 0 && t.ephemeral == true {
-		go t.deleter.Do(func() { t.deleteCallback(t) })
 	}
 
 	return nil
@@ -237,6 +233,42 @@ func (t *Topic) put(m *Message) error {
 
 func (t *Topic) Depth() int64 {
 	return int64(len(t.memoryMsgChan)) + t.backend.Depth()
+}
+
+func (t *Topic) ephemeralChannelCleanupLoop() {
+	var deleteCheckTicker <-chan time.Time
+	deleteCheckTicker = time.Tick(100 * time.Millisecond)
+	for {
+		select {
+		case <-t.exitChan:
+			goto exit
+		case <-deleteCheckTicker:
+			checkList := []*Channel{}
+			t.RLock()
+			for _, channel := range t.channelMap {
+				checkList = append(checkList, channel)
+			}
+			t.RUnlock()
+			// check for any channel runout
+			for _, c := range checkList {
+				c.RLock()
+				lenclients := len(c.clients)
+				ephemeral := c.ephemeral
+				c.RUnlock()
+				if !ephemeral {
+					continue
+				}
+
+				if lenclients == 0 {
+					c.deleteCallback(c)
+				}
+
+			}
+			continue
+		}
+
+	}
+exit:
 }
 
 // messagePump selects over the in-memory and backend queue and
