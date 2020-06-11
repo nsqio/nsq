@@ -83,8 +83,11 @@ Help us keep NSQ open and inclusive. Please read and follow our [Code of Conduct
 ## Authors
 
 NSQ was designed and developed by Matt Reiferson ([@imsnakes][snakes_twitter]) and Jehiah Czebotar
-([@jehiah][jehiah_twitter]) but wouldn't have been possible without the support of
-[bitly][bitly] and all our [contributors][contributors].
+([@jehiah][jehiah_twitter]) but wouldn't have been possible without the support of [bitly][bitly],
+maintainers ([Pierce Lopez][pierce_github]), and all our [contributors][contributors].
+
+[Matt Reiferson][matt_github]'s contributions to this project are being made solely in a personal
+capacity and does not convey any rights to any intellectual property of any third parties.
 
 Logo created by Wolasi Konu ([@kisalow][wolasi_twitter]).
 
@@ -98,3 +101,5 @@ Logo created by Wolasi Konu ([@kisalow][wolasi_twitter]).
 [contributors]: https://github.com/nsqio/nsq/graphs/contributors
 [client_libraries]: http://nsq.io/clients/client_libraries.html
 [wolasi_twitter]: https://twitter.com/kisalow
+[matt_github]: https://github.com/mreiferson
+[pierce_github]: https://github.com/ploxiln
