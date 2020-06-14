@@ -44,7 +44,8 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 
 	errChan := make(chan error)
 	testIOLoop := func() {
-		errChan <- prot.IOLoop(fakeConn)
+		client := prot.NewClient(fakeConn)
+		errChan <- prot.IOLoop(client)
 		defer prot.nsqlookupd.Exit()
 	}
 	go testIOLoop()

@@ -36,6 +36,7 @@ func New(opts *Options) (*NSQLookupd, error) {
 
 	l.logf(LOG_INFO, version.String("nsqlookupd"))
 
+	l.tcpServer = &tcpServer{nsqlookupd: l}
 	l.tcpListener, err = net.Listen("tcp", opts.TCPAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
@@ -62,7 +63,6 @@ func (l *NSQLookupd) Main() error {
 		})
 	}
 
-	l.tcpServer = &tcpServer{nsqlookupd: l}
 	l.waitGroup.Wrap(func() {
 		exitFunc(protocol.TCPServer(l.tcpListener, l.tcpServer, l.logf))
 	})
@@ -89,7 +89,7 @@ func (l *NSQLookupd) Exit() {
 	}
 
 	if l.tcpServer != nil {
-		l.tcpServer.CloseAll()
+		l.tcpServer.Close()
 	}
 
 	if l.httpListener != nil {

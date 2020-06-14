@@ -185,14 +185,16 @@ func (n *NSQD) GetStats(topic string, channel string, includeClients bool) []Top
 }
 
 func (n *NSQD) GetProducerStats() []ClientStats {
-	n.clientLock.RLock()
-	var producers []Client
-	for _, c := range n.clients {
+	var producers []*clientV2
+
+	n.tcpServer.conns.Range(func(k, v interface{}) bool {
+		c := v.(*clientV2)
 		if c.IsProducer() {
 			producers = append(producers, c)
 		}
-	}
-	n.clientLock.RUnlock()
+		return true
+	})
+
 	producerStats := make([]ClientStats, 0, len(producers))
 	for _, p := range producers {
 		producerStats = append(producerStats, p.Stats())

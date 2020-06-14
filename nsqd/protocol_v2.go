@@ -33,14 +33,17 @@ type protocolV2 struct {
 	nsqd *NSQD
 }
 
-func (p *protocolV2) IOLoop(conn net.Conn) error {
+func (p *protocolV2) NewClient(conn net.Conn) protocol.Client {
+	clientID := atomic.AddInt64(&p.nsqd.clientIDSequence, 1)
+	return newClientV2(clientID, conn, p.nsqd)
+}
+
+func (p *protocolV2) IOLoop(c protocol.Client) error {
 	var err error
 	var line []byte
 	var zeroTime time.Time
 
-	clientID := atomic.AddInt64(&p.nsqd.clientIDSequence, 1)
-	client := newClientV2(clientID, conn, p.nsqd)
-	p.nsqd.AddClient(client.ID, client)
+	client := c.(*clientV2)
 
 	// synchronize the startup of messagePump in order
 	// to guarantee that it gets a chance to initialize
@@ -112,13 +115,11 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	}
 
 	p.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] exiting ioloop", client)
-	conn.Close()
 	close(client.ExitChan)
 	if client.Channel != nil {
 		client.Channel.RemoveClient(client.ID)
 	}
 
-	p.nsqd.RemoveClient(client.ID)
 	return err
 }
 

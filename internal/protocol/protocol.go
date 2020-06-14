@@ -6,9 +6,14 @@ import (
 	"net"
 )
 
+type Client interface {
+	Close() error
+}
+
 // Protocol describes the basic behavior of any protocol in the system
 type Protocol interface {
-	IOLoop(conn net.Conn) error
+	NewClient(net.Conn) Client
+	IOLoop(Client) error
 }
 
 // SendResponse is a server side utility function to prefix data with a length header
