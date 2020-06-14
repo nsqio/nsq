@@ -3,14 +3,12 @@ package nsqd
 import (
 	"io"
 	"net"
-	"sync"
 
 	"github.com/nsqio/nsq/internal/protocol"
 )
 
 type tcpServer struct {
-	nsqd  *NSQD
-	conns sync.Map
+	nsqd *NSQD
 }
 
 func (p *tcpServer) Handle(clientConn net.Conn) {
@@ -43,19 +41,8 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 		return
 	}
 
-	p.conns.Store(clientConn.RemoteAddr(), clientConn)
-
 	err = prot.IOLoop(clientConn)
 	if err != nil {
 		p.nsqd.logf(LOG_ERROR, "client(%s) - %s", clientConn.RemoteAddr(), err)
 	}
-
-	p.conns.Delete(clientConn.RemoteAddr())
-}
-
-func (p *tcpServer) CloseAll() {
-	p.conns.Range(func(k, v interface{}) bool {
-		v.(net.Conn).Close()
-		return true
-	})
 }
