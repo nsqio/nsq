@@ -5,9 +5,16 @@ administrative tasks.
 
 Read the [docs](http://nsq.io/components/nsqadmin.html)
 
-## Working Locally
 
- 0. install nodejs 8.x (includes npm)
+## Local Development
+
+### Dependencies
+
+ 1. Install [`go-bindata`](https://github.com/shuLhan/go-bindata)
+ 2. Install NodeJS 8.x (includes npm)
+
+### Workflow
+
  1. `$ npm install`
  2. `$ ./gulp --series clean watch` or `$ ./gulp --series clean build`
  3. `$ go-bindata --debug --pkg=nsqadmin --prefix=static/build static/build/...`
