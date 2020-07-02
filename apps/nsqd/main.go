@@ -25,7 +25,7 @@ type program struct {
 
 func main() {
 	prg := &program{}
-	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM); err != nil {
+	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL); err != nil {
 		logFatal("%s", err)
 	}
 }
