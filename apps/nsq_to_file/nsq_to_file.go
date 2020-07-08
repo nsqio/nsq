@@ -3,14 +3,17 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/app"
@@ -68,6 +71,72 @@ func flagSet() *flag.FlagSet {
 	return fs
 }
 
+// FileLoggerStats struct definition
+type FileLoggerStats struct {
+	Rotations         int64  `json:"rotations"`
+	SkippedEmptyFiles int64  `json:"skipped_empty_files"`
+	FilesWritten      int64  `json:"files_written"`
+	Uptime            int64  `json:"uptime"`
+	TopicPattern      string `json:"topic_pattern"`
+	IsGzipped         bool   `json:"is_gzipped"`
+}
+
+var serviceStats *FileLoggerStats
+
+// InitStats function initialises stats for service
+func (f *FileLoggerStats) InitStats() {
+
+	// Update uptime
+	go func() {
+		for {
+			f.Uptime += 5
+			b, err := json.Marshal(f)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println(string(b))
+			time.Sleep(5 * time.Second)
+		}
+	}()
+
+	// Create new router
+	muxRouter := mux.NewRouter()
+	// Handle /stats
+	muxRouter.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+		b, err := json.Marshal(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+		w.Write(b)
+	})
+
+	// Listens in the background
+	go func() {
+		// Log Fatal to crash in case of non available port
+		log.Fatal(http.ListenAndServe(":4949", muxRouter))
+	}()
+
+}
+
+type logger struct{}
+
+func (lo *logger) Output(calldepth int, s string) error {
+
+	b, err := json.Marshal(map[string]interface{}{
+		"service":  "nsq_to_file",
+		"error":    s,
+		"hostname": os.Getenv("HOSTNAME"),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(b)
+
+	return nil
+}
+
 func main() {
 	fs := flagSet()
 	fs.Parse(os.Args[1:])
@@ -78,6 +147,11 @@ func main() {
 
 	opts := NewOptions()
 	options.Resolve(opts, fs, nil)
+
+	serviceStats = new(FileLoggerStats)
+	serviceStats.IsGzipped = opts.GZIP
+	serviceStats.TopicPattern = opts.TopicPattern
+	serviceStats.InitStats()
 
 	logger := log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
 	logLevel, err := lg.ParseLogLevel(opts.LogLevel)

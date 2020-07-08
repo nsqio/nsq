@@ -43,7 +43,7 @@ func (t *TopicDiscoverer) updateTopics(topics []string) {
 		}
 
 		if !t.isTopicAllowed(topic) {
-			t.logf(lg.WARN, "skipping topic %s (doesn't match pattern %s)", topic, t.opts.TopicPattern)
+			t.logf(lg.DEBUG, "skipping topic %s (doesn't match pattern %s)", topic, t.opts.TopicPattern)
 			continue
 		}
 

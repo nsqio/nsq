@@ -15,6 +15,7 @@ import (
 	"github.com/nsqio/nsq/internal/lg"
 )
 
+// FileLogger struct definition
 type FileLogger struct {
 	logf     lg.AppLogFunc
 	opts     *Options
@@ -47,6 +48,9 @@ func NewFileLogger(logf lg.AppLogFunc, opts *Options, topic string, cfg *nsq.Con
 	if err != nil {
 		return nil, err
 	}
+
+	// 3 = Error
+	consumer.SetLogger(&logger{}, 3)
 
 	f := &FileLogger{
 		logf:           logf,
@@ -102,6 +106,7 @@ func (f *FileLogger) router() {
 			closeFile = true
 		case <-ticker.C:
 			if f.needsRotation() {
+				serviceStats.Rotations++
 				if f.opts.SkipEmptyFiles {
 					closeFile = true
 				} else {
@@ -111,6 +116,7 @@ func (f *FileLogger) router() {
 			sync = true
 		case m := <-f.logChan:
 			if f.needsRotation() {
+				serviceStats.Rotations++
 				f.updateFile()
 				sync = true
 			}
@@ -133,7 +139,7 @@ func (f *FileLogger) router() {
 
 		if sync || f.consumer.IsStarved() {
 			if pos > 0 {
-				f.logf(lg.INFO, "[%s/%s] syncing %d records to disk", f.topic, f.opts.Channel, pos)
+				f.logf(lg.DEBUG, "[%s/%s] syncing %d records to disk", f.topic, f.opts.Channel, pos)
 				err := f.Sync()
 				if err != nil {
 					f.logf(lg.FATAL, "[%s/%s] failed syncing messages: %s", f.topic, f.opts.Channel, err)
@@ -149,6 +155,7 @@ func (f *FileLogger) router() {
 			sync = false
 		}
 
+		// If skip emtpy files, file is not created, closing it will result in a fatal already closed
 		if closeFile {
 			f.Close()
 			closeFile = false
@@ -165,6 +172,52 @@ func (f *FileLogger) Close() {
 		return
 	}
 
+	stat, err := f.out.Stat()
+	if err != nil {
+		// DEBUG // fmt.Println("err while fetching file stat, is skip-empty-file given?")
+
+	} else {
+		if stat.Size() == 0 {
+			// DEBUG fmt.Println("size 0 for file, trying to force sync")
+			err = f.out.Sync()
+			if err != nil {
+				f.logf(lg.FATAL, "[%s/%s] failed to fsync output file: %s", f.topic, f.opts.Channel, err)
+				os.Exit(1)
+			}
+			stat, err := f.out.Stat()
+			if err != nil {
+				// DEBUG fmt.Println("err while fetching file stat, is skip-empty-file given?")
+			} else {
+				if stat.Size() > 0 {
+					f.Close()
+				} else {
+					err = f.out.Close()
+					if err != nil {
+						f.logf(lg.FATAL, "[%s/%s] failed to close output file: %s", f.topic, f.opts.Channel, err)
+						os.Exit(1)
+					}
+
+					// DEBUG fmt.Println("File is still 0 size, removing")
+					// DEBUG fmt.Println(f.out.Name())
+
+					// Increase skipped files
+					serviceStats.SkippedEmptyFiles++
+
+					if err := os.Remove(f.out.Name()); err != nil {
+						f.logf(lg.FATAL, "removing empty file")
+					}
+					return
+				}
+			}
+		}
+	}
+
+	err = f.out.Sync()
+	if err != nil {
+		f.logf(lg.FATAL, "[%s/%s] failed to fsync output file: %s", f.topic, f.opts.Channel, err)
+		os.Exit(1)
+	}
+
 	if f.gzipWriter != nil {
 		err := f.gzipWriter.Close()
 		if err != nil {
@@ -172,11 +225,7 @@ func (f *FileLogger) Close() {
 			os.Exit(1)
 		}
 	}
-	err := f.out.Sync()
-	if err != nil {
-		f.logf(lg.FATAL, "[%s/%s] failed to fsync output file: %s", f.topic, f.opts.Channel, err)
-		os.Exit(1)
-	}
+
 	err = f.out.Close()
 	if err != nil {
 		f.logf(lg.FATAL, "[%s/%s] failed to close output file: %s", f.topic, f.opts.Channel, err)
@@ -190,9 +239,10 @@ func (f *FileLogger) Close() {
 		dst := filepath.Join(f.opts.OutputDir, strings.TrimPrefix(src, f.opts.WorkDir))
 
 		// Optimistic rename
-		f.logf(lg.INFO, "[%s/%s] moving finished file %s to %s", f.topic, f.opts.Channel, src, dst)
+		f.logf(lg.DEBUG, "[%s/%s] moving finished file %s to %s", f.topic, f.opts.Channel, src, dst)
 		err := exclusiveRename(src, dst)
 		if err == nil {
+			serviceStats.FilesWritten++
 			return
 		} else if !os.IsExist(err) {
 			f.logf(lg.FATAL, "[%s/%s] unable to move file from %s to %s: %s", f.topic, f.opts.Channel, src, dst, err)
@@ -216,11 +266,12 @@ func (f *FileLogger) Close() {
 				f.logf(lg.FATAL, "[%s/%s] unable to rename file from %s to %s: %s", f.topic, f.opts.Channel, src, dst, err)
 				os.Exit(1)
 			}
-			f.logf(lg.INFO, "[%s/%s] renamed finished file %s to %s to avoid overwrite", f.topic, f.opts.Channel, src, dst)
+			f.logf(lg.DEBUG, "[%s/%s] renamed finished file %s to %s to avoid overwrite", f.topic, f.opts.Channel, src, dst)
 			break
 		}
 	}
 
+	serviceStats.FilesWritten++
 	f.out = nil
 }
 
@@ -261,19 +312,19 @@ func (f *FileLogger) needsRotation() bool {
 
 	filename := f.currentFilename()
 	if filename != f.filename {
-		f.logf(lg.INFO, "[%s/%s] new filename %s, rotating...", f.topic, f.opts.Channel, filename)
+		f.logf(lg.DEBUG, "[%s/%s] new filename %s, rotating...", f.topic, f.opts.Channel, filename)
 		return true // rotate by filename
 	}
 
 	if f.opts.RotateInterval > 0 {
 		if s := time.Since(f.openTime); s > f.opts.RotateInterval {
-			f.logf(lg.INFO, "[%s/%s] %s since last open, rotating...", f.topic, f.opts.Channel, s)
+			f.logf(lg.DEBUG, "[%s/%s] %s since last open, rotating...", f.topic, f.opts.Channel, s)
 			return true // rotate by interval
 		}
 	}
 
 	if f.opts.RotateSize > 0 && f.filesize > f.opts.RotateSize {
-		f.logf(lg.INFO, "[%s/%s] %s currently %d bytes (> %d), rotating...",
+		f.logf(lg.DEBUG, "[%s/%s] %s currently %d bytes (> %d), rotating...",
 			f.topic, f.opts.Channel, f.out.Name(), f.filesize, f.opts.RotateSize)
 		return true // rotate by size
 	}
@@ -341,7 +392,7 @@ func (f *FileLogger) updateFile() {
 			os.Exit(1)
 		}
 
-		f.logf(lg.INFO, "[%s/%s] opening %s", f.topic, f.opts.Channel, absFilename)
+		f.logf(lg.DEBUG, "[%s/%s] opening %s", f.topic, f.opts.Channel, absFilename)
 
 		fi, err = f.out.Stat()
 		if err != nil {
@@ -350,7 +401,7 @@ func (f *FileLogger) updateFile() {
 		f.filesize = fi.Size()
 
 		if f.opts.RotateSize > 0 && f.filesize > f.opts.RotateSize {
-			f.logf(lg.INFO, "[%s/%s] %s currently %d bytes (> %d), rotating...",
+			f.logf(lg.DEBUG, "[%s/%s] %s currently %d bytes (> %d), rotating...",
 				f.topic, f.opts.Channel, f.out.Name(), f.filesize, f.opts.RotateSize)
 			continue // next rev
 		}
