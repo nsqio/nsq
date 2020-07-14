@@ -30,19 +30,19 @@ pipeline {
         stage('add master to repo') {
             when { branch 'master' }
             steps {
+                dir("build") {
+                    sh "aptly repo add testing nsq_0.0.${env.BUILD_NUMBER}_amd64.deb"
+                    sh "aptly snapshot create release-testing-nsq_${env.BUILD_NUMBER} from repo testing"
+                    withCredentials([string(credentialsId: 'jenkins_gpg_passphrase', variable: 'PASSPHRASE')]) {
+                        sh "aptly -passphrase=$PASSPHRASE publish switch buster-testing release-testing-nsq_${env.BUILD_NUMBER}"
+                    }
 
-                sh "aptly repo add testing nsq_0.0.${env.BUILD_NUMBER}_amd64.deb"
-                sh "aptly snapshot create release-testing-nsq_${env.BUILD_NUMBER} from repo testing"
-                withCredentials([string(credentialsId: 'jenkins_gpg_passphrase', variable: 'PASSPHRASE')]) {
-                    sh "aptly -passphrase=$PASSPHRASE publish switch buster-testing release-testing-nsq_${env.BUILD_NUMBER}"
+                    sh "aptly repo add stable nsq_0.0.${env.BUILD_NUMBER}_amd64.deb"
+                    sh "aptly snapshot create release-nsq_${env.BUILD_NUMBER} from repo stable"
+                    withCredentials([string(credentialsId: 'jenkins_gpg_passphrase', variable: 'PASSPHRASE')]) {
+                        sh "aptly -passphrase=$PASSPHRASE publish switch buster release-nsq_${env.BUILD_NUMBER}"
+                    }
                 }
-
-                sh "aptly repo add stable nsq_0.0.${env.BUILD_NUMBER}_amd64.deb"
-                sh "aptly snapshot create release-nsq_${env.BUILD_NUMBER} from repo stable"
-                withCredentials([string(credentialsId: 'jenkins_gpg_passphrase', variable: 'PASSPHRASE')]) {
-                    sh "aptly -passphrase=$PASSPHRASE publish switch buster release-nsq_${env.BUILD_NUMBER}"
-                }
-
                 sh 'syncrepo'
             }
         }
