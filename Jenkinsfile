@@ -11,7 +11,7 @@ pipeline {
         stage('Deploy') {
             when { branch 'master' }
             steps {
-                sh 'go build'
+                sh 'make'
             }
         }
     }
