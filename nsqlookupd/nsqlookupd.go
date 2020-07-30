@@ -42,7 +42,7 @@ func New(opts *Options) (*NSQLookupd, error) {
 	}
 	l.httpListener, err = net.Listen("tcp", opts.HTTPAddress)
 	if err != nil {
-		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
+		return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPAddress, err)
 	}
 
 	return l, nil
