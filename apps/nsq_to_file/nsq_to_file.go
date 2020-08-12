@@ -7,13 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/app"
@@ -99,22 +97,25 @@ func (f *FileLoggerStats) InitStats() {
 		}
 	}()
 
-	// Create new router
-	muxRouter := mux.NewRouter()
-	// Handle /stats
-	muxRouter.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
-		b, err := json.Marshal(f)
-		if err != nil {
-			log.Fatal(err)
-		}
-		w.Write(b)
-	})
+	// // Create new router
+	// muxRouter := mux.NewRouter()
+	// // Handle /stats
+	// muxRouter.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+	// 	b, err := json.Marshal(f)
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	w.Write(b)
+	// })
 
-	// Listens in the background
-	go func() {
-		// Log Fatal to crash in case of non available port
-		log.Fatal(http.ListenAndServe(":4949", muxRouter))
-	}()
+	// // Listens in the background
+	// go func() {
+	// 	// Log Fatal to crash in case of non available port
+	// 	if err := http.ListenAndServe(":4949", muxRouter); err != nil {
+
+	// 	}
+	// 	log.Fatal()
+	// }()
 
 }
 
