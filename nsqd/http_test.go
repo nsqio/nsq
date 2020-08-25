@@ -530,7 +530,7 @@ func TestHTTPV1GetTopicInfo(t *testing.T) {
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
 
 	topicRsp := nsqd.GetSpecialTopicsInfo(topicName)
-	test.Nil(t, topicRsp)
+	test.NotNil(t, topicRsp)
 
 	url = fmt.Sprintf("http://%s/topic/delete?topic=%s", httpAddr, topicName)
 	resp, err = http.Post(url, "application/json", nil)
