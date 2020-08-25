@@ -72,6 +72,8 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 	router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/pause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/unpause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
+	router.Handle("POST", "/topic/info", http_api.Decorate(s.getSpecialTopicInfo, log, http_api.V1))
+	router.Handle("GET", "/topic/info", http_api.Decorate(s.getSpecialTopicInfo, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 
@@ -313,6 +315,25 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	_, _, err := s.getTopicFromQuery(req)
 	return nil, err
+}
+
+func (s *httpServer) getSpecialTopicInfo(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	reqParams, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		s.ctx.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
+		return nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicNames, ok := reqParams["topic"]
+	if !ok {
+		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+	}
+	topicName := topicNames[0]
+
+	if !protocol.IsValidTopicName(topicName) {
+		return nil, http_api.Err{400, "INVALID_TOPIC"}
+	}
+	return s.ctx.nsqd.GetSpecialTopicsInfo(topicName), nil
 }
 
 func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {

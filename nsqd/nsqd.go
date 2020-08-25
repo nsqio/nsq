@@ -525,6 +525,49 @@ func (n *NSQD) GetExistingTopic(topicName string) (*Topic, error) {
 	return topic, nil
 }
 
+func (n *NSQD) GetSpecialTopicsInfo(topicName string) interface{} {
+	n.RLock()
+	t, ok := n.topicMap[topicName]
+	n.RUnlock()
+
+	if !ok {
+		rsp := topicInfoRsp{
+			Code: ErrorCode,
+			Msg:  NoTopicFound,
+			Data: nil,
+		}
+		return rsp
+	}
+	rsp := topicInfoRsp{
+		Code: SuccessCode,
+		Msg:  SuccessMsg,
+	}
+	t.RLock()
+	var topicInfo topicData
+	topicInfo.TopicDepth = t.Depth()
+	topicInfo.MessageCount = atomic.LoadUint64(&t.messageCount)
+	consumeMap := map[string]consumeClient{}
+	for key, channel := range t.channelMap {
+		channel.RLock()
+		client := consumeClient{
+			ClientNumbers: len(channel.clients),
+			Depth:         channel.Depth(),
+			MessageCount:  atomic.LoadUint64(&channel.messageCount),
+		}
+		consumeMap[key] = client
+		channel.RUnlock()
+	}
+	consumeInfo := consumeInfoRsp{
+		AllChannelCount: len(consumeMap),
+		ConsumeInfo:     consumeMap,
+	}
+	topicInfo.ConsumerInfo = consumeInfo
+	rsp.Data = topicInfo
+	t.RUnlock()
+
+	return topicInfo
+}
+
 // DeleteExistingTopic removes a topic only if it exists
 func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	n.RLock()

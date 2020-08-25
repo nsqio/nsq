@@ -501,6 +501,50 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	test.NotNil(t, err)
 }
 
+func TestHTTPV1GetTopicInfo(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_http_topic_info" + strconv.Itoa(int(time.Now().Unix()))
+	channelName := "ch2"
+
+	url := fmt.Sprintf("http://%s/topic/create?topic=%s", httpAddr, topicName)
+	resp, err := http.Post(url, "application/json", nil)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, "", string(body))
+	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
+
+	url = fmt.Sprintf("http://%s/channel/create?topic=%s&channel=%s", httpAddr, topicName, channelName)
+	resp, err = http.Post(url, "application/json", nil)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, "", string(body))
+	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
+
+	topicRsp := nsqd.GetSpecialTopicsInfo(topicName)
+	test.Nil(t, topicRsp)
+
+	url = fmt.Sprintf("http://%s/topic/delete?topic=%s", httpAddr, topicName)
+	resp, err = http.Post(url, "application/json", nil)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, "", string(body))
+	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
+
+	topicRsp = nsqd.GetSpecialTopicsInfo(topicName)
+	test.Nil(t, topicRsp)
+}
+
 func TestHTTPClientStats(t *testing.T) {
 	topicName := "test_http_client_stats" + strconv.Itoa(int(time.Now().Unix()))
 
