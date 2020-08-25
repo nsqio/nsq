@@ -510,8 +510,8 @@ When `nsqd` is configured with an `--auth-http-address` it will require clients 
 command. The `AUTH` command body is opaque to `nsqd`, it simply passes it along to the configured
 auth daemon which responds with well formed JSON, indicating which topics/channels and properties
 on those entities are accessible to that client (rejecting the client if it accesses anything
-prohibited). For more details, see [the spec](http://nsq.io/clients/tcp_protocol_spec.html) or [the
-`nsqd` guide](http://nsq.io/components/nsqd.html#auth).
+prohibited). For more details, see [the spec](https://nsq.io/clients/tcp_protocol_spec.html) or [the
+`nsqd` guide](https://nsq.io/components/nsqd.html#auth).
 
 Additionally, we've improved performance in a few areas. First, we refactored in-flight handling in
 `nsqd` to reduce garbage creation and improve baseline performance 6%. End-to-end processing
@@ -676,7 +676,7 @@ NOTE: we are now publishing additional binaries built against go1.2
 The most prominent addition is the tracking of end-to-end message processing percentiles. This
 measures the amount of time it's taking from `PUB` to `FIN` per topic/channel. The percentiles are
 configurable and, because there is *some* overhead in collecting this data, it can be turned off
-entirely. Please see [the section in the docs](http://nsq.io/components/nsqd.html) for
+entirely. Please see [the section in the docs](https://nsq.io/components/nsqd.html) for
 implementation details.
 
 Additionally, the utility apps received comprehensive support for all configurable reader options

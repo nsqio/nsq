@@ -1,7 +1,7 @@
 {
   "name": "nsqadmin",
   "version": "0.3.0",
-  "description": "operational dashboard for NSQ (http://nsq.io/)",
+  "description": "operational dashboard for NSQ (https://nsq.io/)",
   "repository": {
     "type": "git",
     "url": ""
