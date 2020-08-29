@@ -100,10 +100,6 @@ type clientV2 struct {
 	Snappy  int32
 	Deflate int32
 
-	// re-usable buffer for reading the 4-byte lengths off the wire
-	lenBuf   [4]byte
-	lenSlice []byte
-
 	AuthSecret string
 	AuthState  *auth.State
 }
@@ -146,7 +142,6 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 
 		pubCounts: make(map[string]uint64),
 	}
-	c.lenSlice = c.lenBuf[:]
 	return c
 }
 
