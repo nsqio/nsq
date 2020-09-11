@@ -21,7 +21,7 @@ pipeline {
                 sh """
                     fpm -s dir -t deb -n nsq -v 0.0.${env.BUILD_NUMBER} -C ./ -p nsq_0.0.${env.BUILD_NUMBER}_amd64.deb --description "Forked NSQ" \
                     --after-install ./../deploy/systemd/after-install.sh \
-                    --beforee-install ./../deploy/systemd/before-install.sh \
+                    --before-install ./../deploy/systemd/before-install.sh \
                     ./=/opt/nsq-latest/bin \
                     ./../deploy/systemd/nsqadmin@.service=/etc/systemd/system \
                     ./../deploy/systemd/nsqd@.service=/etc/systemd/system \
