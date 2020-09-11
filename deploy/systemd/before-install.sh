@@ -1,2 +1,2 @@
 #!/bin/bash
-useradd cc -s /bin/bash -p '*'
+id -u cc &>/dev/null || useradd cc -s /bin/bash -p '*'
