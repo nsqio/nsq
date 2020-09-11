@@ -23,9 +23,9 @@ pipeline {
                     --after-install ./../deploy/systemd/after-install.sh \
                     --before-install ./../deploy/systemd/before-install.sh \
                     ./=/opt/nsq-latest/bin \
-                    ./../deploy/systemd/nsqadmin@.service=/etc/systemd/system \
-                    ./../deploy/systemd/nsqd@.service=/etc/systemd/system \
-                    ./../deploy/systemd/nsqlookupd@.service=/etc/systemd/system \
+                    ./../deploy/systemd/nsqadmin@.service=/etc/systemd/system/nsqadmin@.service \
+                    ./../deploy/systemd/nsqd@.service=/etc/systemd/system/nsqd@.service \
+                    ./../deploy/systemd/nsqlookupd@.service=/etc/systemd/system/nsqlookupd@.service \
                     """
                 }
             }
