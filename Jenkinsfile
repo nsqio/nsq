@@ -13,7 +13,7 @@ pipeline {
             }
         }
 
-        stage('build all') {
+        stage('build golang version') {
             steps {
                 sh 'make clean'
                 sh 'make all'
@@ -24,7 +24,15 @@ pipeline {
                     --before-install ./../deploy/systemd/before-install.sh \
                     ./=/opt/nsq-latest/bin \
                     ./../deploy/systemd/nsqadmin.service=/etc/systemd/system/nsqadmin.service \
-                    ./../deploy/systemd/nsqd.service=/etc/systemd/system/nsqd.service \
+                    ./../deploy/systemd/nsqlookupd.service=/etc/systemd/system/nsqlookupd.service \
+                    """
+                }
+                sh """
+                    fpm -s dir -t deb -n nsq -v 0.0.${env.BUILD_NUMBER} -C ./ -p nsq_node_0.0.${env.BUILD_NUMBER}_amd64.deb --description "Forked NSQ" \
+                    --after-install ./../deploy/systemd/after-install.sh \
+                    --before-install ./../deploy/systemd/before-install.sh \
+                    ./=/opt/nsq-latest/bin \
+                    ./../deploy/systemd/nsqadmin.service=/etc/systemd/system/nsqadmin.service \
                     ./../deploy/systemd/nsqlookupd.service=/etc/systemd/system/nsqlookupd.service \
                     """
                 }
