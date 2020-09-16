@@ -487,6 +487,8 @@ func (t *Topic) GenerateID() MessageID {
 retry:
 	id, err := t.idFactory.NewGUID()
 	if err != nil {
+		t.ctx.nsqd.logf(LOG_ERROR,
+			"TOPIC(%s): failed to create guid - %s", t.name, err)
 		time.Sleep(time.Millisecond)
 		goto retry
 	}
