@@ -3,15 +3,14 @@ package nsqd
 import (
 	"bytes"
 	"errors"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
-
 	"github.com/nsqio/go-diskqueue"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/quantile"
 	"github.com/nsqio/nsq/internal/util"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 type Topic struct {
@@ -484,13 +483,19 @@ func (t *Topic) IsPaused() bool {
 }
 
 func (t *Topic) GenerateID() MessageID {
-retry:
-	id, err := t.idFactory.NewGUID()
-	if err != nil {
-		t.ctx.nsqd.logf(LOG_ERROR,
-			"TOPIC(%s): failed to create guid - %s", t.name, err)
+	var i int64 = 0
+	for {
+		id, err := t.idFactory.NewGUID()
+		if err == nil {
+			return id.Hex()
+		}
+		//avoid log output too many times, so print the first error and sampling
+		if i%10000 == 0 {
+			t.ctx.nsqd.logf(LOG_ERROR,
+				"TOPIC(%s): failed to create guid - %s", t.name, err)
+		}
 		time.Sleep(time.Millisecond)
-		goto retry
+		i++
+		continue
 	}
-	return id.Hex()
 }
