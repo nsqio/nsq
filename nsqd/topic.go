@@ -496,6 +496,5 @@ func (t *Topic) GenerateID() MessageID {
 		}
 		time.Sleep(time.Millisecond)
 		i++
-		continue
 	}
 }
