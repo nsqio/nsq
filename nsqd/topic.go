@@ -489,12 +489,13 @@ func (t *Topic) GenerateID() MessageID {
 		if err == nil {
 			return id.Hex()
 		}
-		//avoid log output too many times, so print the first error and sampling
+		//avoid log output too many times, so just print the first error and sampling
 		if i%10000 == 0 {
 			t.ctx.nsqd.logf(LOG_ERROR,
 				"TOPIC(%s): failed to create guid - %s", t.name, err)
 		}
 		time.Sleep(time.Millisecond)
 		i++
+		continue
 	}
 }
