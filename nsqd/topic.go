@@ -484,11 +484,16 @@ func (t *Topic) IsPaused() bool {
 }
 
 func (t *Topic) GenerateID() MessageID {
-retry:
-	id, err := t.idFactory.NewGUID()
-	if err != nil {
+	var i int64 = 0
+	for {
+		id, err := t.idFactory.NewGUID()
+		if err == nil {
+			return id.Hex()
+		}
+		if i%10000 == 0 {
+			t.ctx.nsqd.logf(LOG_ERROR, "TOPIC(%s): failed to create guid - %s", t.name, err)
+		}
 		time.Sleep(time.Millisecond)
-		goto retry
+		i++
 	}
-	return id.Hex()
 }
