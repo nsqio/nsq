@@ -36,9 +36,19 @@ type FileLogger struct {
 	openTime time.Time
 	filesize int64
 	rev      uint
+
+	// Azure Uploader
+	au *AzureUploader
 }
 
 func NewFileLogger(logf lg.AppLogFunc, opts *Options, topic string, cfg *nsq.Config) (*FileLogger, error) {
+
+	// Setup the Azure Uploader
+	accountName, accountKey, containerName := os.Getenv("AZURE_STORAGE_ACCOUNT"), os.Getenv("AZURE_STORAGE_ACCESS_KEY"), os.Getenv("AZURE_CONTAINER_NAME")
+	if len(accountName) == 0 || len(accountKey) == 0 || len(containerName) == 0 {
+		return nil, fmt.Errorf("AZURE_STORAGE_ACCOUNT and/or AZURE_STORAGE_ACCESS_KEY and/or AZURE_CONTAINER_NAME env variables missing")
+	}
+
 	computedFilenameFormat, err := computeFilenameFormat(opts, topic)
 	if err != nil {
 		return nil, err
@@ -63,6 +73,11 @@ func NewFileLogger(logf lg.AppLogFunc, opts *Options, topic string, cfg *nsq.Con
 		hupChan:        make(chan bool),
 	}
 	consumer.AddHandler(f)
+
+	f.au, err = NewAzureUploader(accountName, accountKey, containerName)
+	if err != nil {
+		return nil, err
+	}
 
 	err = consumer.ConnectToNSQDs(opts.NSQDTCPAddrs)
 	if err != nil {
@@ -269,6 +284,11 @@ func (f *FileLogger) Close() {
 			f.logf(lg.DEBUG, "[%s/%s] renamed finished file %s to %s to avoid overwrite", f.topic, f.opts.Channel, src, dst)
 			break
 		}
+
+		// Send dst file to Azure Uploader channel
+		go func() {
+			f.au.events <- dst
+		}()
 	}
 
 	serviceStats.FilesWritten++

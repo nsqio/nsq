@@ -1,6 +1,7 @@
 module github.com/nsqio/nsq
 
 require (
+	github.com/Azure/azure-storage-blob-go v0.10.0
 	github.com/BurntSushi/toml v0.3.1
 	github.com/bitly/go-hostpool v0.1.0
 	github.com/bitly/timer_metrics v1.0.0
