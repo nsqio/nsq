@@ -258,6 +258,12 @@ func (f *FileLogger) Close() {
 		err := exclusiveRename(src, dst)
 		if err == nil {
 			serviceStats.FilesWritten++
+
+			// Send dst file to Azure Uploader channel
+			go func() {
+				f.au.events <- dst
+			}()
+
 			return
 		} else if !os.IsExist(err) {
 			f.logf(lg.FATAL, "[%s/%s] unable to move file from %s to %s: %s", f.topic, f.opts.Channel, src, dst, err)
