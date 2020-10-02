@@ -74,10 +74,13 @@ func NewFileLogger(logf lg.AppLogFunc, opts *Options, topic string, cfg *nsq.Con
 	}
 	consumer.AddHandler(f)
 
-	f.au, err = NewAzureUploader(accountName, accountKey, containerName)
+	f.au, err = NewAzureUploader(accountName, accountKey, containerName, logf)
 	if err != nil {
 		return nil, err
 	}
+
+	// Listen to channel events
+	go f.au.listenToEventsChannel()
 
 	err = consumer.ConnectToNSQDs(opts.NSQDTCPAddrs)
 	if err != nil {
