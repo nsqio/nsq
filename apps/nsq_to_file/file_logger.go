@@ -45,7 +45,7 @@ func NewFileLogger(logf lg.AppLogFunc, opts *Options, topic string, cfg *nsq.Con
 
 	// Setup the Azure Uploader
 	accountName, accountKey, containerName := os.Getenv("AZURE_STORAGE_ACCOUNT"), os.Getenv("AZURE_STORAGE_ACCESS_KEY"), os.Getenv("AZURE_CONTAINER_NAME")
-	if len(accountName) == 0 || len(accountKey) == 0 || len(containerName) == 0 {
+	if accountName == "" || accountKey == "" || containerName == "" {
 		return nil, fmt.Errorf("AZURE_STORAGE_ACCOUNT and/or AZURE_STORAGE_ACCESS_KEY and/or AZURE_CONTAINER_NAME env variables missing")
 	}
 

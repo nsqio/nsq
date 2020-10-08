@@ -74,6 +74,8 @@ func (au *AzureUploader) fileHandler(filePath string) {
 		return
 	}
 
+	defer file.Close()
+
 	stat, err := file.Stat()
 	if err != nil {
 		au.logf(lg.ERROR, "failed to stat file in AzureUploader, listenToEventsChannel: %s", err)
@@ -148,7 +150,11 @@ func (au *AzureUploader) fileHandler(filePath string) {
 		Parallelism: 2})
 	if err != nil {
 		au.logf(lg.ERROR, "failed to upload in AzureUploader, listenToEventsChannel: %s", err)
+		return
 	}
+
+	// If everything is successful remove file
+	os.Remove(filePath)
 }
 
 func (au *AzureUploader) listenToEventsChannel() {
