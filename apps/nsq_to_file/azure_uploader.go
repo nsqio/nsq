@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 	"time"
+	"io/ioutil"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/nsqio/nsq/internal/lg"
@@ -47,6 +48,24 @@ func NewAzureUploader(accountName, accountKey, containerName string, logf lg.App
 	return au, nil
 }
 
+func (au *AzureUploader) scanWorkdir(dir string) {
+
+	for {
+
+		files, err := ioutil.ReadDir(dir)
+		if err != nil {
+			fmt.Printf("error while reading dir, %s\n", err)
+			return
+		}
+
+		for _, file := range files {
+			au.fileHandler(dir + "/" + file.Name())
+		}
+	}
+
+	time.Sleep(5 * time.Minute)
+}
+
 func (au *AzureUploader) fileHandler(filePath string) {
 
 	file, err := os.Open(filePath)
@@ -79,7 +98,7 @@ func (au *AzureUploader) fileHandler(filePath string) {
 
 	fileName := path.Base(filePath)
 	dashSplitted := strings.Split(fileName, "-")
-	exchangeName := strings.ToLower(dashSplitted[1])
+	exchangeName := strings.ToLower(strings.Split(dashSplitted[1], ".")[0])
 
 	// Begin blob path string construction
 	blobPath := exchangeName
@@ -137,8 +156,6 @@ func (au *AzureUploader) listenToEventsChannel() {
 	for {
 		select {
 		case filePath := <-au.events:
-
-			fmt.Println("RECEIVED FILE")
 
 			au.fileHandler(filePath)
 
