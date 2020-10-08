@@ -82,6 +82,9 @@ func NewFileLogger(logf lg.AppLogFunc, opts *Options, topic string, cfg *nsq.Con
 	// Listen to channel events
 	go f.au.listenToEventsChannel()
 
+	// Scan directory
+	go f.au.scanWorkdir(f.opts.OutputDir)
+
 	err = consumer.ConnectToNSQDs(opts.NSQDTCPAddrs)
 	if err != nil {
 		return nil, err
