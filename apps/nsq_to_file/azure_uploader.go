@@ -98,7 +98,9 @@ func (au *AzureUploader) fileHandler(filePath string) {
 
 	fileName := path.Base(filePath)
 	dashSplitted := strings.Split(fileName, "-")
+
 	exchangeName := strings.ToLower(strings.Split(dashSplitted[1], ".")[0])
+
 
 	// Begin blob path string construction
 	blobPath := exchangeName
