@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"path"
 	"strings"
 	"time"
-	"io/ioutil"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/nsqio/nsq/internal/lg"
@@ -60,10 +60,11 @@ func (au *AzureUploader) scanWorkdir(dir string) {
 
 		for _, file := range files {
 			au.fileHandler(dir + "/" + file.Name())
+			time.Sleep(100 * time.Millisecond)
 		}
-	}
 
-	time.Sleep(5 * time.Minute)
+		time.Sleep(5 * time.Minute)
+	}
 }
 
 func (au *AzureUploader) fileHandler(filePath string) {
@@ -102,7 +103,6 @@ func (au *AzureUploader) fileHandler(filePath string) {
 	dashSplitted := strings.Split(fileName, "-")
 
 	exchangeName := strings.ToLower(strings.Split(dashSplitted[1], ".")[0])
-
 
 	// Begin blob path string construction
 	blobPath := exchangeName
