@@ -27,17 +27,14 @@ func Union(s []string, a []string) []string {
 }
 
 func Uniq(s []string) (r []string) {
+outerLoop:
 	for _, entry := range s {
-		found := false
 		for _, existing := range r {
 			if existing == entry {
-				found = true
-				break
+				continue outerLoop
 			}
 		}
-		if !found {
-			r = append(r, entry)
-		}
+		r = append(r, entry)
 	}
 	return
 }
