@@ -16,7 +16,7 @@
     <script type="text/javascript">
         var USER_AGENT = 'nsqadmin/v{{.Version}}';
         var VERSION = {{.Version}};
-        var GRAPHITE_URL = {{if .ProxyGraphite}}{{else}}{{.GraphiteURL}}{{end}};
+        var GRAPHITE_URL = {{if .ProxyGraphite}}''{{else}}{{.GraphiteURL}}{{end}};
         var GRAPH_ENABLED = {{if .GraphEnabled}}true{{else}}false{{end}};
         var STATSD_COUNTER_FORMAT = {{.StatsdCounterFormat}};
         var STATSD_GAUGE_FORMAT = {{.StatsdGaugeFormat}};
