@@ -20,9 +20,9 @@ import (
 const maxTimeout = time.Hour
 
 const (
-	frameTypeResponse int32 = 0
-	frameTypeError    int32 = 1
-	frameTypeMessage  int32 = 2
+	frameTypeResponse int32 = iota
+	frameTypeError
+	frameTypeMessage
 )
 
 var separatorBytes = []byte(" ")
