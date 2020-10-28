@@ -18,5 +18,6 @@ func bufferPoolGet() *bytes.Buffer {
 }
 
 func bufferPoolPut(b *bytes.Buffer) {
+	b.Reset()
 	bp.Put(b)
 }
