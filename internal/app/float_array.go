@@ -17,7 +17,6 @@ func (a *FloatArray) Set(param string) error {
 		v, err := strconv.ParseFloat(s, 64)
 		if err != nil {
 			log.Fatalf("Could not parse: %s", s)
-			return nil
 		}
 		*a = append(*a, v)
 	}
@@ -30,9 +29,12 @@ func (a FloatArray) Less(i, j int) bool { return a[i] > a[j] }
 func (a FloatArray) Len() int           { return len(a) }
 
 func (a *FloatArray) String() string {
-	var s []string
-	for _, v := range *a {
-		s = append(s, fmt.Sprintf("%f", v))
+	if len(*a) == 0 {
+		return ""
+	}
+	s := make([]string, len(*a))
+	for i, v := range *a {
+		s[i] = fmt.Sprintf("%f", v)
 	}
 	return strings.Join(s, ",")
 }
