@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
 
-export GO111MODULE=on
 GOMAXPROCS=1 go test -timeout 90s ./...
 GOMAXPROCS=4 go test -timeout 90s -race ./...
 
@@ -15,3 +14,9 @@ for dir in apps/*/ bench/*/; do
         echo "(skipped $dir)"
     fi
 done
+
+FMTDIFF="$(find apps internal nsqd nsqlookupd -name '*.go' -exec gofmt -d '{}' ';')"
+if [ -n "$FMTDIFF" ]; then
+    printf '%s\n' "$FMTDIFF"
+    exit 1
+fi
