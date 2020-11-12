@@ -31,8 +31,7 @@ nsqd: fixed bug in protocol_v2
 
 * if you're fixing a bug or adding functionality it probably makes sense to write a test
 * make sure to run `fmt.sh` and `test.sh` in the root of the repo to ensure that your code is
-  properly formatted and that tests pass (NOTE: we integrate Travis with GitHub for continuous
-  integration)
+  properly formatted and that tests pass (we use GitHub Actions for continuous integration)
 
 ## Submitting Changes
 

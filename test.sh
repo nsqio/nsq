@@ -2,7 +2,12 @@
 set -e
 
 GOMAXPROCS=1 go test -timeout 90s ./...
-GOMAXPROCS=4 go test -timeout 90s -race ./...
+
+if [ amd64 == "$GOARCH" ] || [ arm64 == "$GOARCH" ]; then
+    # go test: -race is only supported on linux/amd64, linux/ppc64le,
+    # linux/arm64, freebsd/amd64, netbsd/amd64, darwin/amd64 and windows/amd64
+    GOMAXPROCS=4 go test -timeout 90s -race ./...
+fi
 
 # no tests, but a build is something
 for dir in apps/*/ bench/*/; do

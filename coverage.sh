@@ -41,7 +41,7 @@ push_to_coveralls() {
     echo "Pushing coverage statistics to coveralls.io"
     # ignore failure to push - it happens
     $GOPATH/bin/goveralls -coverprofile="$profile" \
-                          -service=travis-ci       \
+                          -service=github          \
                           -ignore="nsqadmin/bindata.go" || true
 }
 

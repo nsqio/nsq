@@ -25,6 +25,7 @@ jobs:
       GOPATH: "${{github.workspace}}/go"
       GOARCH: "${{matrix.goarch}}"
       SRCDIR: "go/src/github.com/nsqio/nsq"
+      GO111MODULE: "on"  # only needed up to go-1.12
 
     steps:
       - uses: actions/checkout@v2
@@ -40,3 +41,26 @@ jobs:
         run: |
           cd $SRCDIR
           ./test.sh
+
+  send-coverage:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    container: "golang:1.15-buster"
+    env:
+      GOPATH: "${{github.workspace}}/go"
+      SRCDIR: "go/src/github.com/nsqio/nsq"
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: ${{env.SRCDIR}}
+
+      - name: Install goveralls
+        run: GO111MODULE=off go get github.com/mattn/goveralls
+
+      - name: Send coverage
+        env:
+          COVERALLS_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        run: |
+          cd $SRCDIR
+          ./coverage.sh --coveralls
