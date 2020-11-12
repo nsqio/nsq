@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"bytes"
 	"container/heap"
 	"errors"
 	"math"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nsqio/go-diskqueue"
+
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/pqueue"
 	"github.com/nsqio/nsq/internal/quantile"
@@ -211,8 +211,6 @@ finish:
 // flush persists all the messages in internal memory buffers to the backend
 // it does not drain inflight/deferred because it is only called in Close()
 func (c *Channel) flush() error {
-	var msgBuf bytes.Buffer
-
 	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
 		c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
 			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
@@ -221,7 +219,7 @@ func (c *Channel) flush() error {
 	for {
 		select {
 		case msg := <-c.memoryMsgChan:
-			err := writeMessageToBackend(&msgBuf, msg, c.backend)
+			err := writeMessageToBackend(msg, c.backend)
 			if err != nil {
 				c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 			}
@@ -233,7 +231,7 @@ func (c *Channel) flush() error {
 finish:
 	c.inFlightMutex.Lock()
 	for _, msg := range c.inFlightMessages {
-		err := writeMessageToBackend(&msgBuf, msg, c.backend)
+		err := writeMessageToBackend(msg, c.backend)
 		if err != nil {
 			c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 		}
@@ -243,7 +241,7 @@ finish:
 	c.deferredMutex.Lock()
 	for _, item := range c.deferredMessages {
 		msg := item.Value.(*Message)
-		err := writeMessageToBackend(&msgBuf, msg, c.backend)
+		err := writeMessageToBackend(msg, c.backend)
 		if err != nil {
 			c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 		}
@@ -307,9 +305,7 @@ func (c *Channel) put(m *Message) error {
 	select {
 	case c.memoryMsgChan <- m:
 	default:
-		b := bufferPoolGet()
-		err := writeMessageToBackend(b, m, c.backend)
-		bufferPoolPut(b)
+		err := writeMessageToBackend(m, c.backend)
 		c.ctx.nsqd.SetHealth(err)
 		if err != nil {
 			c.ctx.nsqd.logf(LOG_ERROR, "CHANNEL(%s): failed to write message to backend - %s",

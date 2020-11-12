@@ -1,7 +1,6 @@
 package nsqd
 
 import (
-	"bytes"
 	"errors"
 	"strings"
 	"sync"
@@ -221,9 +220,7 @@ func (t *Topic) put(m *Message) error {
 	select {
 	case t.memoryMsgChan <- m:
 	default:
-		b := bufferPoolGet()
-		err := writeMessageToBackend(b, m, t.backend)
-		bufferPoolPut(b)
+		err := writeMessageToBackend(m, t.backend)
 		t.ctx.nsqd.SetHealth(err)
 		if err != nil {
 			t.ctx.nsqd.logf(LOG_ERROR,
@@ -409,8 +406,6 @@ finish:
 }
 
 func (t *Topic) flush() error {
-	var msgBuf bytes.Buffer
-
 	if len(t.memoryMsgChan) > 0 {
 		t.ctx.nsqd.logf(LOG_INFO,
 			"TOPIC(%s): flushing %d memory messages to backend",
@@ -420,7 +415,7 @@ func (t *Topic) flush() error {
 	for {
 		select {
 		case msg := <-t.memoryMsgChan:
-			err := writeMessageToBackend(&msgBuf, msg, t.backend)
+			err := writeMessageToBackend(msg, t.backend)
 			if err != nil {
 				t.ctx.nsqd.logf(LOG_ERROR,
 					"ERROR: failed to write message to backend - %s", err)

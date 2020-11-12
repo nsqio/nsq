@@ -124,7 +124,9 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 
 func (p *protocolV2) SendMessage(client *clientV2, msg *Message) error {
 	p.ctx.nsqd.logf(LOG_DEBUG, "PROTOCOL(V2): writing msg(%s) to client(%s) - %s", msg.ID, client, msg.Body)
-	var buf = &bytes.Buffer{}
+
+	buf := bufferPoolGet()
+	defer bufferPoolPut(buf)
 
 	_, err := msg.WriteTo(buf)
 	if err != nil {
