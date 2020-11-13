@@ -25,6 +25,7 @@ pipeline {
                         ./=/opt/nsq-latest/bin \
                         ./../deploy/systemd/nsqadmin.service=/etc/systemd/system/nsqadmin.service \
                         ./../deploy/systemd/nsqlookupd.service=/etc/systemd/system/nsqlookupd.service \
+                       ./../deploy/systemd/nsqd.service=/etc/systemd/system/nsqd.service
                         """
                     
                     sh """
@@ -34,6 +35,7 @@ pipeline {
                         ./=/opt/nsq-latest/bin \
                         ./../deploy/systemd/nsqadmin.service=/etc/systemd/system/nsqadmin.service \
                         ./../deploy/systemd/nsqlookupd.service=/etc/systemd/system/nsqlookupd.service \
+                        ./../deploy/systemd/nsqd.service=/etc/systemd/system/nsqd.service
                         """
                 }
             }
