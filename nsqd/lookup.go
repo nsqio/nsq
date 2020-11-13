@@ -16,8 +16,8 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 	return func(lp *lookupPeer) {
 		ci := make(map[string]interface{})
 		ci["version"] = version.Binary
-		ci["tcp_port"] = n.RealTCPAddr().Port
-		ci["http_port"] = n.RealHTTPAddr().Port
+		ci["tcp_port"] = n.getOpts().BroadcastTCPPort
+		ci["http_port"] = n.getOpts().BroadcastHTTPPort
 		ci["hostname"] = hostname
 		ci["broadcast_address"] = n.getOpts().BroadcastAddress
 
