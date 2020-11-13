@@ -11,3 +11,6 @@ systemctl daemon-reload
 systemctl restart nsqd
 systemctl restart nsqadmin
 systemctl restart nsqlookupd
+systemctl enable nsqd
+systemctl enable nsadmin
+systemctl enable nsqlookupd
