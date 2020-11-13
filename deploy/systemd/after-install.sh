@@ -6,5 +6,8 @@ mkdir -p /home/cc/
 chown -R cc:cc /home/cc
 mkdir -p /opt/nsq_to_file_storage
 mkdir -p /opt/tmp_nsq_to_file
-chown -R cc:cc /opt/nsq-1.2.0.linux-amd64.go1.12.9
+chown -R cc:cc /opt/
 systemctl daemon-reload
+systemctl restart nsqd
+systemctl restart nsqadmin
+systemctl restart nsqlookupd
