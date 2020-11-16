@@ -65,7 +65,7 @@ pipeline {
                     */
 
                     sh "aptly repo add stable nsq_0.0.${env.BUILD_NUMBER}_amd64.deb"
-                    sh "aptly repo add stable nsq_staging_0.0.${env.BUILD_NUMBER}_amd64.deb"
+                    sh "aptly repo add stable nsq-staging_0.0.${env.BUILD_NUMBER}_amd64.deb"
                     sh "aptly snapshot create release-nsq_${env.BUILD_NUMBER} from repo stable"
                     withCredentials([string(credentialsId: 'jenkins_gpg_passphrase', variable: 'PASSPHRASE')]) {
                         sh "aptly -passphrase=$PASSPHRASE publish switch buster release-nsq_${env.BUILD_NUMBER}"
