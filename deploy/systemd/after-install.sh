@@ -7,10 +7,10 @@ chown -R cc:cc /home/cc
 mkdir -p /opt/nsq_to_file_storage
 mkdir -p /opt/tmp_nsq_to_file
 chown -R cc:cc /opt/
-systemctl daemon-reload
-systemctl restart nsqd
-systemctl restart nsqadmin
-systemctl restart nsqlookupd
-systemctl enable nsqd
-systemctl enable nsadmin
-systemctl enable nsqlookupd
+# systemctl daemon-reload
+# systemctl restart nsqd
+# systemctl restart nsqadmin
+# systemctl restart nsqlookupd
+# systemctl enable nsqd
+# systemctl enable nsadmin
+# systemctl enable nsqlookupd
