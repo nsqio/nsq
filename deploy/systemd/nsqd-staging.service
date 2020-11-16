@@ -6,7 +6,7 @@ After=network.target
 [Service]
 User=cc
 Group=cc
-ExecStart=/opt/nsq-latest/bin/nsqd --max-msg-size=100000000 --mem-queue-size 20000 --lookupd-tcp-address=localhost:4160 --lookupd-tcp-address=10.137.0.4:4160 --lookupd-tcp-address=10.137.0.5:4160
+ExecStart=/opt/nsq-latest/bin/nsqd --max-msg-size=100000000 --mem-queue-size 20000 --lookupd-tcp-address=localhost:4160 --broadcast-address=127.0.0.1
 Restart=on-failure
 WorkingDirectory=/opt/nsq-latest/bin
 StandardOutput=null
