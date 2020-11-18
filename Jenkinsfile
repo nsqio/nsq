@@ -18,6 +18,12 @@ pipeline {
                 sh 'make clean'
                 sh 'make all'
                 dir("build") {
+
+                    // Copy prod systemd service file to build dir
+                    sh """
+                        cp ../deploy/systemd/prod/* ./
+                    """
+
                     sh """
                         fpm -s dir -t deb -n nsq -v 0.0.${env.BUILD_NUMBER} -C ./ -p nsq_0.0.${env.BUILD_NUMBER}_amd64.deb --description "Forked NSQ" \
                         --after-install ./../deploy/systemd/after-install.sh \
@@ -28,6 +34,11 @@ pipeline {
                        ./../deploy/systemd/nsqd.service=/etc/systemd/system/nsqd.service
                     """
 
+
+                    // Copy staging systemd service file to build dir
+                    sh """
+                        cp ./../deploy/systemd/staging/* ./
+                    """
                     sh """
                         fpm -s dir -t deb -n nsq-staging -v 0.0.${env.BUILD_NUMBER} -C ./ -p nsq-staging_0.0.${env.BUILD_NUMBER}_amd64.deb --description "Forked NSQ" \
                         --after-install ./../deploy/systemd/after-install.sh \
