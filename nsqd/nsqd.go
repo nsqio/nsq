@@ -119,20 +119,6 @@ func New(opts *Options) (*NSQD, error) {
 		return nil, errors.New("--node-id must be [0,1024)")
 	}
 
-	if opts.StatsdPrefix != "" {
-		var port string
-		_, port, err = net.SplitHostPort(opts.HTTPAddress)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
-		}
-		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
-		prefixWithHost := strings.Replace(opts.StatsdPrefix, "%s", statsdHostKey, -1)
-		if prefixWithHost[len(prefixWithHost)-1] != '.' {
-			prefixWithHost += "."
-		}
-		opts.StatsdPrefix = prefixWithHost
-	}
-
 	if opts.TLSClientAuthPolicy != "" && opts.TLSRequired == TLSNotRequired {
 		opts.TLSRequired = TLSRequired
 	}
@@ -169,6 +155,24 @@ func New(opts *Options) (*NSQD, error) {
 		if err != nil {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPSAddress, err)
 		}
+	}
+
+	if opts.BroadcastHTTPPort == 0 {
+		opts.BroadcastHTTPPort = n.RealHTTPAddr().Port
+	}
+
+	if opts.BroadcastTCPPort == 0 {
+		opts.BroadcastTCPPort = n.RealTCPAddr().Port
+	}
+
+	if opts.StatsdPrefix != "" {
+		var port string = fmt.Sprint(opts.BroadcastHTTPPort)
+		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
+		prefixWithHost := strings.Replace(opts.StatsdPrefix, "%s", statsdHostKey, -1)
+		if prefixWithHost[len(prefixWithHost)-1] != '.' {
+			prefixWithHost += "."
+		}
+		opts.StatsdPrefix = prefixWithHost
 	}
 
 	return n, nil
