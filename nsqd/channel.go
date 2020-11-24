@@ -54,6 +54,7 @@ type Channel struct {
 	// state tracking
 	clients        map[int64]Consumer
 	paused         int32
+	isDraining     int32
 	ephemeral      bool
 	deleteCallback func(*Channel)
 	deleter        sync.Once
@@ -122,6 +123,20 @@ func NewChannel(topicName string, channelName string, nsqd *NSQD,
 	return c
 }
 
+// InFlightCount returns the number of messages that have been sent to a client, but not yet FIN or REQUEUE'd
+func (c *Channel) InFlightCount() int64 {
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+	return int64(len(c.inFlightMessages))
+}
+
+// DeferredCount returns the number of messages that are queued in-memory for future delivery to a client
+func (c *Channel) DeferredCount() int64 {
+	c.deferredMutex.Lock()
+	defer c.deferredMutex.Unlock()
+	return int64(len(c.deferredMessages))
+}
+
 func (c *Channel) initPQ() {
 	pqSize := int(math.Max(1, float64(c.nsqd.getOpts().MemQueueSize)/10))
 
@@ -134,6 +149,23 @@ func (c *Channel) initPQ() {
 	c.deferredMessages = make(map[MessageID]*pqueue.Item)
 	c.deferredPQ = pqueue.New(pqSize)
 	c.deferredMutex.Unlock()
+}
+
+// StartDraining starts draining a channel
+//
+// if there are no outstanding messages the channel is deleted immediately
+// if there are messages outstanding it's deleted by FinishMessage
+func (c *Channel) StartDraining() {
+	if !atomic.CompareAndSwapInt32(&c.isDraining, 0, 1) {
+		return
+	}
+	depth, inFlight, deferred := c.Depth(), c.InFlightCount(), c.DeferredCount()
+	c.nsqd.logf(LOG_INFO, "CHANNEL(%s): draining. depth:%d inFlight:%d deferred:%d", c.name, depth, inFlight, deferred)
+	// if we are empty delete
+	if depth+inFlight+deferred == 0 {
+		go c.deleter.Do(func() { c.deleteCallback(c) })
+	}
+	// else cleanup happens on last FinishMessage
 }
 
 // Exiting returns a boolean indicating if this channel is closed/exiting
@@ -187,6 +219,9 @@ func (c *Channel) exit(deleted bool) error {
 	return c.backend.Close()
 }
 
+// Empty drains the channel of messages.
+//
+// If the channel is draining this will delete the channel
 func (c *Channel) Empty() error {
 	c.Lock()
 	defer c.Unlock()
@@ -196,16 +231,27 @@ func (c *Channel) Empty() error {
 		client.Empty()
 	}
 
+MemoryDrain:
 	for {
 		select {
 		case <-c.memoryMsgChan:
 		default:
-			goto finish
+			break MemoryDrain
 		}
 	}
 
-finish:
-	return c.backend.Empty()
+	err := c.backend.Empty()
+
+	// `backend.Empty` always results in an internal empty state (even if on-disk state might differ)
+	// so we want to logically continue to finish draining if applicable.
+	if atomic.LoadInt32(&c.isDraining) == 1 {
+		go c.deleter.Do(func() { c.deleteCallback(c) })
+	}
+
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // flush persists all the messages in internal memory buffers to the backend
@@ -346,6 +392,8 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 }
 
 // FinishMessage successfully discards an in-flight message
+//
+// if this channel is draining and this is the last message this will initiate a channel deletion
 func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 	msg, err := c.popInFlightMessage(clientID, id)
 	if err != nil {
@@ -354,6 +402,15 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 	c.removeFromInFlightPQ(msg)
 	if c.e2eProcessingLatencyStream != nil {
 		c.e2eProcessingLatencyStream.Insert(msg.Timestamp)
+	}
+
+	if atomic.LoadInt32(&c.isDraining) == 1 {
+		// if last msg, delete
+		depth, inFlight, deferred := c.Depth(), c.InFlightCount(), c.DeferredCount()
+		if depth+inFlight+deferred == 0 {
+			c.nsqd.logf(LOG_INFO, "CHANNEL(%s): draining complete", c.name)
+			go c.deleter.Do(func() { c.deleteCallback(c) })
+		}
 	}
 	return nil
 }

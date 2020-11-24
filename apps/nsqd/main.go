@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -65,6 +66,10 @@ func (p *program) Start() error {
 	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
+
+	if err := opts.Validate(); err != nil {
+		log.Fatal(err)
+	}
 
 	nsqd, err := nsqd.New(opts)
 	if err != nil {

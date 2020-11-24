@@ -48,10 +48,12 @@ type NSQD struct {
 
 	opts atomic.Value
 
-	dl        *dirlock.DirLock
-	isLoading int32
-	errValue  atomic.Value
-	startTime time.Time
+	dl         *dirlock.DirLock
+	isLoading  int32
+	isDraining int32
+	isExiting  int32
+	errValue   atomic.Value
+	startTime  time.Time
 
 	topicMap map[string]*Topic
 
@@ -327,7 +329,11 @@ func (n *NSQD) LoadMetadata() error {
 			n.logf(LOG_WARN, "skipping creation of invalid topic %s", t.Name)
 			continue
 		}
-		topic := n.GetTopic(t.Name)
+		topic := n.GetOrCreateTopic(t.Name)
+		if topic == nil {
+			n.logf(LOG_WARN, "skipping creation of topic, nsqd draining %s", t.Name)
+			continue
+		}
 		if t.Paused {
 			topic.Pause()
 		}
@@ -336,8 +342,8 @@ func (n *NSQD) LoadMetadata() error {
 				n.logf(LOG_WARN, "skipping creation of invalid channel %s", c.Name)
 				continue
 			}
-			channel := topic.GetChannel(c.Name)
-			if c.Paused {
+			channel := topic.GetOrCreateChannel(c.Name)
+			if c.Paused && channel != nil {
 				channel.Pause()
 			}
 		}
@@ -402,13 +408,21 @@ func (n *NSQD) PersistMetadata() error {
 	return nil
 }
 
-// TermSignal handles a SIGTERM calling Exit
+// TermSignal handles a SIGTERM calling either StartDraining or Exit depending on settings.
 // This is a noop after first call
 func (n *NSQD) TermSignal() {
-	n.Exit()
+	if n.getOpts().SigtermMode == "drain" {
+		n.StartDraining()
+	} else {
+		n.Exit()
+	}
 }
 
 func (n *NSQD) Exit() {
+	if !atomic.CompareAndSwapInt32(&n.isExiting, 0, 1) {
+		// avoid double call
+		return
+	}
 	if n.tcpListener != nil {
 		n.tcpListener.Close()
 	}
@@ -444,9 +458,10 @@ func (n *NSQD) Exit() {
 	n.ctxCancel()
 }
 
-// GetTopic performs a thread safe operation
-// to return a pointer to a Topic object (potentially new)
-func (n *NSQD) GetTopic(topicName string) *Topic {
+// GetOrCreateTopic performs a thread safe operation to get an existing topic or create a new one
+//
+// The creation might fail if nsqd is draining
+func (n *NSQD) GetOrCreateTopic(topicName string) *Topic {
 	// most likely, we already have this topic, so try read lock first.
 	n.RLock()
 	t, ok := n.topicMap[topicName]
@@ -462,8 +477,24 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 		n.Unlock()
 		return t
 	}
+	if atomic.LoadInt32(&n.isDraining) == 1 {
+		// don't create new topics when nsqd is draining
+		return nil
+	}
+
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.name)
+
+		// if nsqd is draining, check if this is removing the last topic
+		// and exit nsqd if it is
+		if atomic.LoadInt32(&t.isDraining) == 1 {
+			n.RLock()
+			topicCount := len(n.topicMap)
+			n.RUnlock()
+			if topicCount == 0 {
+				n.Exit()
+			}
+		}
 	}
 	t = NewTopic(topicName, n, deleteCallback)
 	n.topicMap[topicName] = t
@@ -490,7 +521,7 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 			if strings.HasSuffix(channelName, "#ephemeral") {
 				continue // do not create ephemeral channel with no consumer client
 			}
-			t.GetChannel(channelName)
+			t.GetOrCreateChannel(channelName)
 		}
 	} else if len(n.getOpts().NSQLookupdTCPAddresses) > 0 {
 		n.logf(LOG_ERROR, "no available nsqlookupd to query for channels to pre-create for topic %s", t.name)
@@ -535,6 +566,33 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	n.Unlock()
 
 	return nil
+}
+
+// StartDraining starts the process of draining all topics. If there are none
+// Exit will be called immediately.
+func (n *NSQD) StartDraining() {
+	if atomic.LoadInt32(&n.isLoading) == 1 {
+		return
+	}
+	if atomic.LoadInt32(&n.isExiting) == 1 {
+		return
+	}
+	if !atomic.CompareAndSwapInt32(&n.isDraining, 0, 1) {
+		return
+	}
+
+	n.logf(LOG_INFO, "NSQ: draining")
+
+	n.RLock()
+	for _, t := range n.topicMap {
+		t.StartDraining()
+	}
+	numberTopics := len(n.topicMap)
+	n.RUnlock()
+	if numberTopics == 0 {
+		n.Exit()
+	}
+	return
 }
 
 func (n *NSQD) Notify(v interface{}) {

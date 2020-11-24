@@ -67,6 +67,7 @@ func newHTTPServer(nsqd *NSQD, tlsEnabled bool, tlsRequired bool) *httpServer {
 	router.Handle("POST", "/topic/empty", http_api.Decorate(s.doEmptyTopic, log, http_api.V1))
 	router.Handle("POST", "/topic/pause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
 	router.Handle("POST", "/topic/unpause", http_api.Decorate(s.doPauseTopic, log, http_api.V1))
+	router.Handle("POST", "/topic/drain", http_api.Decorate(s.doDrainTopic, log, http_api.V1))
 	router.Handle("POST", "/channel/create", http_api.Decorate(s.doCreateChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/delete", http_api.Decorate(s.doDeleteChannel, log, http_api.V1))
 	router.Handle("POST", "/channel/empty", http_api.Decorate(s.doEmptyChannel, log, http_api.V1))
@@ -74,6 +75,8 @@ func newHTTPServer(nsqd *NSQD, tlsEnabled bool, tlsRequired bool) *httpServer {
 	router.Handle("POST", "/channel/unpause", http_api.Decorate(s.doPauseChannel, log, http_api.V1))
 	router.Handle("GET", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
 	router.Handle("PUT", "/config/:opt", http_api.Decorate(s.doConfig, log, http_api.V1))
+	router.Handle("PUT", "/state/drain", http_api.Decorate(s.startDraining, log, http_api.V1))
+	router.Handle("PUT", "/state/shutdown", http_api.Decorate(s.shutdown, log, http_api.V1))
 
 	// debug
 	router.HandlerFunc("GET", "/debug/pprof/", pprof.Index)
@@ -142,7 +145,27 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 	}, nil
 }
 
-func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.ReqParams, *Topic, string, error) {
+func (s *httpServer) getExistingTopicFromQuery(req *http.Request) (*http_api.ReqParams, *Topic, error) {
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		s.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
+		return nil, nil, http_api.Err{400, "INVALID_REQUEST"}
+	}
+
+	topicName, err := http_api.GetTopicArg(reqParams)
+	if err != nil {
+		return nil, nil, http_api.Err{400, err.Error()}
+	}
+
+	topic, err := s.nsqd.GetExistingTopic(topicName)
+	if err != nil {
+		return nil, nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
+	}
+
+	return reqParams, topic, err
+}
+
+func (s *httpServer) getExistingTopicChannelFromQuery(req *http.Request) (*http_api.ReqParams, *Topic, string, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
@@ -178,8 +201,12 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	if !protocol.IsValidTopicName(topicName) {
 		return nil, nil, http_api.Err{400, "INVALID_TOPIC"}
 	}
+	topic := s.nsqd.GetOrCreateTopic(topicName)
+	if topic == nil {
+		return nil, nil, http_api.Err{503, "EXITING"}
+	}
 
-	return reqParams, s.nsqd.GetTopic(topicName), nil
+	return reqParams, topic, nil
 }
 
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -316,26 +343,10 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 }
 
 func (s *httpServer) doEmptyTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	_, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
-		s.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
+		return nil, err
 	}
-
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
-	}
-
-	if !protocol.IsValidTopicName(topicName) {
-		return nil, http_api.Err{400, "INVALID_TOPIC"}
-	}
-
-	topic, err := s.nsqd.GetExistingTopic(topicName)
-	if err != nil {
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
-	}
-
 	err = topic.Empty()
 	if err != nil {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
@@ -350,10 +361,9 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 		s.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
 	}
-
-	topicName, err := reqParams.Get("topic")
+	topicName, err := http_api.GetTopicArg(reqParams)
 	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
+		return nil, http_api.Err{400, err.Error()}
 	}
 
 	err = s.nsqd.DeleteExistingTopic(topicName)
@@ -365,20 +375,9 @@ func (s *httpServer) doDeleteTopic(w http.ResponseWriter, req *http.Request, ps 
 }
 
 func (s *httpServer) doPauseTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	reqParams, err := http_api.NewReqParams(req)
+	_, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
-		s.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
-		return nil, http_api.Err{400, "INVALID_REQUEST"}
-	}
-
-	topicName, err := reqParams.Get("topic")
-	if err != nil {
-		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
-	}
-
-	topic, err := s.nsqd.GetExistingTopic(topicName)
-	if err != nil {
-		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
+		return nil, err
 	}
 
 	if strings.Contains(req.URL.Path, "unpause") {
@@ -399,17 +398,33 @@ func (s *httpServer) doPauseTopic(w http.ResponseWriter, req *http.Request, ps h
 	return nil, nil
 }
 
-func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
+// doDrainTopic initiates draining of a single topic.
+//
+// This is a noop if the topic is already draining or exiting
+func (s *httpServer) doDrainTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	_, topic, err := s.getExistingTopicFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
-	topic.GetChannel(channelName)
+
+	topic.StartDraining()
+	return nil, nil
+}
+
+func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
+	if err != nil {
+		return nil, err
+	}
+	ch := topic.GetOrCreateChannel(channelName)
+	if ch == nil {
+		return nil, http_api.Err{503, "EXITING"}
+	}
 	return nil, nil
 }
 
 func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +443,7 @@ func (s *httpServer) doEmptyChannel(w http.ResponseWriter, req *http.Request, ps
 }
 
 func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
@@ -442,7 +457,7 @@ func (s *httpServer) doDeleteChannel(w http.ResponseWriter, req *http.Request, p
 }
 
 func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	_, topic, channelName, err := s.getExistingTopicFromQuery(req)
+	_, topic, channelName, err := s.getExistingTopicChannelFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
@@ -660,4 +675,23 @@ func getOptByCfgName(opts interface{}, name string) (interface{}, bool) {
 		return val.FieldByName(field.Name).Interface(), true
 	}
 	return nil, false
+}
+
+func (s *httpServer) startDraining(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	go func() {
+		// in some cases StartDraining results in an exit immediately
+		// allow this API call to respond before exiting
+		time.Sleep(time.Millisecond)
+		s.nsqd.StartDraining()
+	}()
+	return nil, nil
+}
+
+func (s *httpServer) shutdown(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	go func() {
+		// allow this API call to respond before exiting
+		time.Sleep(time.Millisecond)
+		s.nsqd.Exit()
+	}()
+	return nil, nil
 }

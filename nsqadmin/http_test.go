@@ -159,7 +159,7 @@ func TestHTTPTopicsGET(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_topics_get" + strconv.Itoa(int(time.Now().Unix()))
-	nsqds[0].GetTopic(topicName)
+	nsqds[0].GetOrCreateTopic(topicName)
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -187,7 +187,7 @@ func TestHTTPTopicGET(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_topic_get" + strconv.Itoa(int(time.Now().Unix()))
-	nsqds[0].GetTopic(topicName)
+	nsqds[0].GetOrCreateTopic(topicName)
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -253,8 +253,8 @@ func TestHTTPChannelGET(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_channel_get" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetTopic(topicName)
-	topic.GetChannel("ch")
+	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic.GetOrCreateChannel("ch")
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -292,8 +292,8 @@ func TestHTTPNodesSingleGET(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_nodes_single_get" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetTopic(topicName)
-	topic.GetChannel("ch")
+	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic.GetOrCreateChannel("ch")
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -376,7 +376,7 @@ func TestHTTPTombstoneTopicNodePOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_tombstone_topic_node_post" + strconv.Itoa(int(time.Now().Unix()))
-	nsqds[0].GetTopic(topicName)
+	nsqds[0].GetOrCreateTopic(topicName)
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -399,7 +399,7 @@ func TestHTTPDeleteTopicPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_delete_topic_post" + strconv.Itoa(int(time.Now().Unix()))
-	nsqds[0].GetTopic(topicName)
+	nsqds[0].GetOrCreateTopic(topicName)
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -419,8 +419,8 @@ func TestHTTPDeleteChannelPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_delete_channel_post" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetTopic(topicName)
-	topic.GetChannel("ch")
+	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic.GetOrCreateChannel("ch")
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -440,7 +440,7 @@ func TestHTTPPauseTopicPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_pause_topic_post" + strconv.Itoa(int(time.Now().Unix()))
-	nsqds[0].GetTopic(topicName)
+	nsqds[0].GetOrCreateTopic(topicName)
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -474,8 +474,8 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_pause_channel_post" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetTopic(topicName)
-	topic.GetChannel("ch")
+	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic.GetOrCreateChannel("ch")
 	time.Sleep(100 * time.Millisecond)
 
 	client := http.Client{}
@@ -509,7 +509,7 @@ func TestHTTPEmptyTopicPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_empty_topic_post" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetTopic(topicName)
+	topic := nsqds[0].GetOrCreateTopic(topicName)
 	topic.PutMessage(nsqd.NewMessage(nsqd.MessageID{}, []byte("1234")))
 	test.Equal(t, int64(1), topic.Depth())
 	time.Sleep(100 * time.Millisecond)
@@ -537,8 +537,8 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_empty_channel_post" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetTopic(topicName)
-	channel := topic.GetChannel("ch")
+	topic := nsqds[0].GetOrCreateTopic(topicName)
+	channel := topic.GetOrCreateChannel("ch")
 	channel.PutMessage(nsqd.NewMessage(nsqd.MessageID{}, []byte("1234")))
 
 	time.Sleep(100 * time.Millisecond)

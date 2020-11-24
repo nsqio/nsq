@@ -65,7 +65,7 @@ func TestStartup(t *testing.T) {
 	err := nsqd.PersistMetadata()
 	test.Nil(t, err)
 	atomic.StoreInt32(&nsqd.isLoading, 1)
-	nsqd.GetTopic(topicName) // will not persist if `flagLoading`
+	nsqd.GetOrCreateTopic(topicName) // will not persist if `flagLoading`
 	m, err := getMetadata(nsqd)
 	test.Nil(t, err)
 	test.Equal(t, 0, len(m.Topics))
@@ -73,14 +73,14 @@ func TestStartup(t *testing.T) {
 	atomic.StoreInt32(&nsqd.isLoading, 0)
 
 	body := make([]byte, 256)
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetOrCreateTopic(topicName)
 	for i := 0; i < iterations; i++ {
 		msg := NewMessage(topic.GenerateID(), body)
 		topic.PutMessage(msg)
 	}
 
 	t.Logf("pulling from channel")
-	channel1 := topic.GetChannel("ch1")
+	channel1 := topic.GetOrCreateChannel("ch1")
 
 	t.Logf("read %d msgs", iterations/2)
 	for i := 0; i < iterations/2; i++ {
@@ -124,12 +124,12 @@ func TestStartup(t *testing.T) {
 		doneExitChan <- 1
 	}()
 
-	topic = nsqd.GetTopic(topicName)
+	topic = nsqd.GetOrCreateTopic(topicName)
 	// should be empty; channel should have drained everything
 	count := topic.Depth()
 	test.Equal(t, int64(0), count)
 
-	channel1 = topic.GetChannel("ch1")
+	channel1 = topic.GetOrCreateChannel("ch1")
 
 	for {
 		if channel1.Depth() == int64(iterations/2) {
@@ -176,8 +176,8 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 	}()
 
 	body := []byte("an_ephemeral_message")
-	topic := nsqd.GetTopic(topicName)
-	ephemeralChannel := topic.GetChannel("ch1#ephemeral")
+	topic := nsqd.GetOrCreateTopic(topicName)
+	ephemeralChannel := topic.GetOrCreateChannel("ch1#ephemeral")
 	client := newClientV2(0, nil, nsqd)
 	err := ephemeralChannel.AddClient(client.ID, client)
 	test.Equal(t, err, nil)
@@ -215,8 +215,8 @@ func TestPauseMetadata(t *testing.T) {
 	// avoid concurrency issue of async PersistMetadata() calls
 	atomic.StoreInt32(&nsqd.isLoading, 1)
 	topicName := "pause_metadata" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
-	channel := topic.GetChannel("ch")
+	topic := nsqd.GetOrCreateTopic(topicName)
+	channel := topic.GetOrCreateChannel("ch")
 	atomic.StoreInt32(&nsqd.isLoading, 0)
 	nsqd.PersistMetadata()
 

@@ -113,6 +113,7 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	logLevel := opts.LogLevel
 	flagSet.Var(&logLevel, "log-level", "set log verbosity: debug, info, warn, error, or fatal")
 	flagSet.String("log-prefix", "[nsqd] ", "log message prefix")
+	flagSet.String("sigterm-mode", "shutdown", "action to take on a SIGTERM (shutdown, drain)")
 	flagSet.Bool("verbose", false, "[deprecated] has no effect, use --log-level")
 
 	flagSet.Int64("node-id", opts.ID, "unique part for message IDs, (int) in range [0,1024) (default is hash of hostname)")

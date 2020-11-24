@@ -22,12 +22,12 @@ func TestStats(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_stats" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic := nsqd.GetOrCreateTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), []byte("test body"))
 	topic.PutMessage(msg)
 
 	accompanyTopicName := "accompany_test_stats" + strconv.Itoa(int(time.Now().Unix()))
-	accompanyTopic := nsqd.GetTopic(accompanyTopicName)
+	accompanyTopic := nsqd.GetOrCreateTopic(accompanyTopicName)
 	msg = NewMessage(accompanyTopic.GenerateID(), []byte("accompany test body"))
 	accompanyTopic.PutMessage(msg)
 
@@ -126,8 +126,8 @@ func TestStatsChannelLocking(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
-	channel := topic.GetChannel("channel")
+	topic := nsqd.GetOrCreateTopic(topicName)
+	channel := topic.GetOrCreateChannel("channel")
 
 	var wg sync.WaitGroup
 
