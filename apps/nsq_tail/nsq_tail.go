@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
@@ -22,6 +25,7 @@ var (
 	maxInFlight   = flag.Int("max-in-flight", 200, "max number of messages to allow in flight")
 	totalMessages = flag.Int("n", 0, "total messages to show (will wait if starved)")
 	printTopic    = flag.Bool("print-topic", false, "print topic name where message was received")
+	gunzip        = flag.Bool("gunzip", false, "attempt to gunzip messages")
 
 	nsqdTCPAddrs     = app.StringArray{}
 	lookupdHTTPAddrs = app.StringArray{}
@@ -40,6 +44,19 @@ type TailHandler struct {
 	messagesShown int
 }
 
+func gunzipMsgBody(body []byte) (gunzipped []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Probably a message that wasn't gzipped.
+			err = r.(error)
+		}
+	}()
+	gr, err := gzip.NewReader(bytes.NewBuffer(body))
+	defer gr.Close()
+	gunzipped, err = ioutil.ReadAll(gr)
+	return gunzipped, err
+}
+
 func (th *TailHandler) HandleMessage(m *nsq.Message) error {
 	th.messagesShown++
 
@@ -51,6 +68,13 @@ func (th *TailHandler) HandleMessage(m *nsq.Message) error {
 		_, err = os.Stdout.WriteString(" | ")
 		if err != nil {
 			log.Fatalf("ERROR: failed to write to os.Stdout - %s", err)
+		}
+	}
+
+	if *gunzip {
+		gunzipped, err := gunzipMsgBody(m.Body)
+		if err == nil {
+			m.Body = gunzipped
 		}
 	}
 
