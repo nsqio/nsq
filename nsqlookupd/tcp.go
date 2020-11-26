@@ -9,12 +9,12 @@ import (
 )
 
 type tcpServer struct {
-	ctx   *Context
-	conns sync.Map
+	nsqlookupd *NSQLookupd
+	conns      sync.Map
 }
 
 func (p *tcpServer) Handle(clientConn net.Conn) {
-	p.ctx.nsqlookupd.logf(LOG_INFO, "TCP: new client(%s)", clientConn.RemoteAddr())
+	p.nsqlookupd.logf(LOG_INFO, "TCP: new client(%s)", clientConn.RemoteAddr())
 
 	// The client should initialize itself by sending a 4 byte sequence indicating
 	// the version of the protocol that it intends to communicate, this will allow us
@@ -22,23 +22,23 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	buf := make([]byte, 4)
 	_, err := io.ReadFull(clientConn, buf)
 	if err != nil {
-		p.ctx.nsqlookupd.logf(LOG_ERROR, "failed to read protocol version - %s", err)
+		p.nsqlookupd.logf(LOG_ERROR, "failed to read protocol version - %s", err)
 		clientConn.Close()
 		return
 	}
 	protocolMagic := string(buf)
 
-	p.ctx.nsqlookupd.logf(LOG_INFO, "CLIENT(%s): desired protocol magic '%s'",
+	p.nsqlookupd.logf(LOG_INFO, "CLIENT(%s): desired protocol magic '%s'",
 		clientConn.RemoteAddr(), protocolMagic)
 
 	var prot protocol.Protocol
 	switch protocolMagic {
 	case "  V1":
-		prot = &LookupProtocolV1{ctx: p.ctx}
+		prot = &LookupProtocolV1{nsqlookupd: p.nsqlookupd}
 	default:
 		protocol.SendResponse(clientConn, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()
-		p.ctx.nsqlookupd.logf(LOG_ERROR, "client(%s) bad protocol magic '%s'",
+		p.nsqlookupd.logf(LOG_ERROR, "client(%s) bad protocol magic '%s'",
 			clientConn.RemoteAddr(), protocolMagic)
 		return
 	}
@@ -47,7 +47,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 
 	err = prot.IOLoop(clientConn)
 	if err != nil {
-		p.ctx.nsqlookupd.logf(LOG_ERROR, "client(%s) - %s", clientConn.RemoteAddr(), err)
+		p.nsqlookupd.logf(LOG_ERROR, "client(%s) - %s", clientConn.RemoteAddr(), err)
 	}
 
 	p.conns.Delete(clientConn.RemoteAddr())
