@@ -248,8 +248,6 @@ func (n *NSQD) RemoveClient(clientID int64) {
 }
 
 func (n *NSQD) Main() error {
-	ctx := &context{n}
-
 	exitCh := make(chan error)
 	var once sync.Once
 	exitFunc := func(err error) {
@@ -261,18 +259,18 @@ func (n *NSQD) Main() error {
 		})
 	}
 
-	n.tcpServer.ctx = ctx
+	n.tcpServer.nsqd = n
 	n.waitGroup.Wrap(func() {
 		exitFunc(protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf))
 	})
 
-	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
+	httpServer := newHTTPServer(n, false, n.getOpts().TLSRequired == TLSRequired)
 	n.waitGroup.Wrap(func() {
 		exitFunc(http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf))
 	})
 
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
-		httpsServer := newHTTPServer(ctx, true, true)
+		httpsServer := newHTTPServer(n, true, true)
 		n.waitGroup.Wrap(func() {
 			exitFunc(http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf))
 		})
@@ -482,7 +480,7 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.name)
 	}
-	t = NewTopic(topicName, &context{n}, deleteCallback)
+	t = NewTopic(topicName, n, deleteCallback)
 	n.topicMap[topicName] = t
 
 	n.Unlock()
