@@ -39,7 +39,7 @@ func basicAuthUser(req *http.Request) string {
 }
 
 func (s *httpServer) notifyAdminAction(action, topic, channel, node string, req *http.Request) {
-	if s.ctx.nsqadmin.getOpts().NotificationHTTPEndpoint == "" {
+	if s.nsqadmin.getOpts().NotificationHTTPEndpoint == "" {
 		return
 	}
 	via, _ := os.Hostname()
@@ -67,5 +67,5 @@ func (s *httpServer) notifyAdminAction(action, topic, channel, node string, req 
 		Via:       via,
 	}
 	// Perform all work in a new goroutine so this never blocks
-	go func() { s.ctx.nsqadmin.notifications <- a }()
+	go func() { s.nsqadmin.notifications <- a }()
 }

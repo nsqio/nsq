@@ -179,7 +179,7 @@ func (n *NSQAdmin) Main() error {
 		})
 	}
 
-	httpServer := NewHTTPServer(&Context{n})
+	httpServer := NewHTTPServer(n)
 	n.waitGroup.Wrap(func() {
 		exitFunc(http_api.Serve(n.httpListener, http_api.CompressHandler(httpServer), "HTTP", n.logf))
 	})
