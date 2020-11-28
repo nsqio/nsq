@@ -43,7 +43,7 @@ type Channel struct {
 
 	topicName string
 	name      string
-	ctx       *context
+	nsqd      *NSQD
 
 	backend BackendQueue
 
@@ -71,7 +71,7 @@ type Channel struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, ctx *context,
+func NewChannel(topicName string, channelName string, nsqd *NSQD,
 	deleteCallback func(*Channel)) *Channel {
 
 	c := &Channel{
@@ -80,16 +80,16 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		memoryMsgChan:  nil,
 		clients:        make(map[int64]Consumer),
 		deleteCallback: deleteCallback,
-		ctx:            ctx,
+		nsqd:           nsqd,
 	}
 	// create mem-queue only if size > 0 (do not use unbuffered chan)
-	if ctx.nsqd.getOpts().MemQueueSize > 0 {
-		c.memoryMsgChan = make(chan *Message, ctx.nsqd.getOpts().MemQueueSize)
+	if nsqd.getOpts().MemQueueSize > 0 {
+		c.memoryMsgChan = make(chan *Message, nsqd.getOpts().MemQueueSize)
 	}
-	if len(ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles) > 0 {
+	if len(nsqd.getOpts().E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
-			ctx.nsqd.getOpts().E2EProcessingLatencyWindowTime,
-			ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles,
+			nsqd.getOpts().E2EProcessingLatencyWindowTime,
+			nsqd.getOpts().E2EProcessingLatencyPercentiles,
 		)
 	}
 
@@ -100,30 +100,30 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		c.backend = newDummyBackendQueue()
 	} else {
 		dqLogf := func(level diskqueue.LogLevel, f string, args ...interface{}) {
-			opts := ctx.nsqd.getOpts()
+			opts := nsqd.getOpts()
 			lg.Logf(opts.Logger, opts.LogLevel, lg.LogLevel(level), f, args...)
 		}
 		// backend names, for uniqueness, automatically include the topic...
 		backendName := getBackendName(topicName, channelName)
 		c.backend = diskqueue.New(
 			backendName,
-			ctx.nsqd.getOpts().DataPath,
-			ctx.nsqd.getOpts().MaxBytesPerFile,
+			nsqd.getOpts().DataPath,
+			nsqd.getOpts().MaxBytesPerFile,
 			int32(minValidMsgLength),
-			int32(ctx.nsqd.getOpts().MaxMsgSize)+minValidMsgLength,
-			ctx.nsqd.getOpts().SyncEvery,
-			ctx.nsqd.getOpts().SyncTimeout,
+			int32(nsqd.getOpts().MaxMsgSize)+minValidMsgLength,
+			nsqd.getOpts().SyncEvery,
+			nsqd.getOpts().SyncTimeout,
 			dqLogf,
 		)
 	}
 
-	c.ctx.nsqd.Notify(c)
+	c.nsqd.Notify(c)
 
 	return c
 }
 
 func (c *Channel) initPQ() {
-	pqSize := int(math.Max(1, float64(c.ctx.nsqd.getOpts().MemQueueSize)/10))
+	pqSize := int(math.Max(1, float64(c.nsqd.getOpts().MemQueueSize)/10))
 
 	c.inFlightMutex.Lock()
 	c.inFlightMessages = make(map[MessageID]*Message)
@@ -160,13 +160,13 @@ func (c *Channel) exit(deleted bool) error {
 	}
 
 	if deleted {
-		c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): deleting", c.name)
+		c.nsqd.logf(LOG_INFO, "CHANNEL(%s): deleting", c.name)
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
-		c.ctx.nsqd.Notify(c)
+		c.nsqd.Notify(c)
 	} else {
-		c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): closing", c.name)
+		c.nsqd.logf(LOG_INFO, "CHANNEL(%s): closing", c.name)
 	}
 
 	// this forceably closes client connections
@@ -212,7 +212,7 @@ finish:
 // it does not drain inflight/deferred because it is only called in Close()
 func (c *Channel) flush() error {
 	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
-		c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
+		c.nsqd.logf(LOG_INFO, "CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
 			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
 	}
 
@@ -221,7 +221,7 @@ func (c *Channel) flush() error {
 		case msg := <-c.memoryMsgChan:
 			err := writeMessageToBackend(msg, c.backend)
 			if err != nil {
-				c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
+				c.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 			}
 		default:
 			goto finish
@@ -233,7 +233,7 @@ finish:
 	for _, msg := range c.inFlightMessages {
 		err := writeMessageToBackend(msg, c.backend)
 		if err != nil {
-			c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
+			c.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 		}
 	}
 	c.inFlightMutex.Unlock()
@@ -243,7 +243,7 @@ finish:
 		msg := item.Value.(*Message)
 		err := writeMessageToBackend(msg, c.backend)
 		if err != nil {
-			c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
+			c.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 		}
 	}
 	c.deferredMutex.Unlock()
@@ -306,9 +306,9 @@ func (c *Channel) put(m *Message) error {
 	case c.memoryMsgChan <- m:
 	default:
 		err := writeMessageToBackend(m, c.backend)
-		c.ctx.nsqd.SetHealth(err)
+		c.nsqd.SetHealth(err)
 		if err != nil {
-			c.ctx.nsqd.logf(LOG_ERROR, "CHANNEL(%s): failed to write message to backend - %s",
+			c.nsqd.logf(LOG_ERROR, "CHANNEL(%s): failed to write message to backend - %s",
 				c.name, err)
 			return err
 		}
@@ -331,9 +331,9 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 
 	newTimeout := time.Now().Add(clientMsgTimeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
-		c.ctx.nsqd.getOpts().MaxMsgTimeout {
+		c.nsqd.getOpts().MaxMsgTimeout {
 		// we would have gone over, set to the max
-		newTimeout = msg.deliveryTS.Add(c.ctx.nsqd.getOpts().MaxMsgTimeout)
+		newTimeout = msg.deliveryTS.Add(c.nsqd.getOpts().MaxMsgTimeout)
 	}
 
 	msg.pri = newTimeout.UnixNano()
@@ -398,7 +398,7 @@ func (c *Channel) AddClient(clientID int64, client Consumer) error {
 		return nil
 	}
 
-	maxChannelConsumers := c.ctx.nsqd.getOpts().MaxChannelConsumers
+	maxChannelConsumers := c.nsqd.getOpts().MaxChannelConsumers
 	if maxChannelConsumers != 0 && len(c.clients) >= maxChannelConsumers {
 		return errors.New("E_TOO_MANY_CHANNEL_CONSUMERS")
 	}

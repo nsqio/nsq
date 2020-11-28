@@ -30,7 +30,7 @@ var heartbeatBytes = []byte("_heartbeat_")
 var okBytes = []byte("OK")
 
 type protocolV2 struct {
-	ctx *context
+	nsqd *NSQD
 }
 
 func (p *protocolV2) IOLoop(conn net.Conn) error {
@@ -38,9 +38,9 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 	var line []byte
 	var zeroTime time.Time
 
-	clientID := atomic.AddInt64(&p.ctx.nsqd.clientIDSequence, 1)
-	client := newClientV2(clientID, conn, p.ctx)
-	p.ctx.nsqd.AddClient(client.ID, client)
+	clientID := atomic.AddInt64(&p.nsqd.clientIDSequence, 1)
+	client := newClientV2(clientID, conn, p.nsqd)
+	p.nsqd.AddClient(client.ID, client)
 
 	// synchronize the startup of messagePump in order
 	// to guarantee that it gets a chance to initialize
@@ -78,7 +78,7 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 		params := bytes.Split(line, separatorBytes)
 
-		p.ctx.nsqd.logf(LOG_DEBUG, "PROTOCOL(V2): [%s] %s", client, params)
+		p.nsqd.logf(LOG_DEBUG, "PROTOCOL(V2): [%s] %s", client, params)
 
 		var response []byte
 		response, err = p.Exec(client, params)
@@ -87,11 +87,11 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 			if parentErr := err.(protocol.ChildErr).Parent(); parentErr != nil {
 				ctx = " - " + parentErr.Error()
 			}
-			p.ctx.nsqd.logf(LOG_ERROR, "[%s] - %s%s", client, err, ctx)
+			p.nsqd.logf(LOG_ERROR, "[%s] - %s%s", client, err, ctx)
 
 			sendErr := p.Send(client, frameTypeError, []byte(err.Error()))
 			if sendErr != nil {
-				p.ctx.nsqd.logf(LOG_ERROR, "[%s] - %s%s", client, sendErr, ctx)
+				p.nsqd.logf(LOG_ERROR, "[%s] - %s%s", client, sendErr, ctx)
 				break
 			}
 
@@ -111,19 +111,19 @@ func (p *protocolV2) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] exiting ioloop", client)
+	p.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] exiting ioloop", client)
 	conn.Close()
 	close(client.ExitChan)
 	if client.Channel != nil {
 		client.Channel.RemoveClient(client.ID)
 	}
 
-	p.ctx.nsqd.RemoveClient(client.ID)
+	p.nsqd.RemoveClient(client.ID)
 	return err
 }
 
 func (p *protocolV2) SendMessage(client *clientV2, msg *Message) error {
-	p.ctx.nsqd.logf(LOG_DEBUG, "PROTOCOL(V2): writing msg(%s) to client(%s) - %s", msg.ID, client, msg.Body)
+	p.nsqd.logf(LOG_DEBUG, "PROTOCOL(V2): writing msg(%s) to client(%s) - %s", msg.ID, client, msg.Body)
 
 	buf := bufferPoolGet()
 	defer bufferPoolPut(buf)
@@ -308,7 +308,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 
 			msg, err := decodeMessage(b)
 			if err != nil {
-				p.ctx.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
+				p.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
 				continue
 			}
 			msg.Attempts++
@@ -339,11 +339,11 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 	}
 
 exit:
-	p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] exiting messagePump", client)
+	p.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] exiting messagePump", client)
 	heartbeatTicker.Stop()
 	outputBufferTicker.Stop()
 	if err != nil {
-		p.ctx.nsqd.logf(LOG_ERROR, "PROTOCOL(V2): [%s] messagePump error - %s", client, err)
+		p.nsqd.logf(LOG_ERROR, "PROTOCOL(V2): [%s] messagePump error - %s", client, err)
 	}
 }
 
@@ -359,9 +359,9 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to read body size")
 	}
 
-	if int64(bodyLen) > p.ctx.nsqd.getOpts().MaxBodySize {
+	if int64(bodyLen) > p.nsqd.getOpts().MaxBodySize {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
-			fmt.Sprintf("IDENTIFY body too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxBodySize))
+			fmt.Sprintf("IDENTIFY body too big %d > %d", bodyLen, p.nsqd.getOpts().MaxBodySize))
 	}
 
 	if bodyLen <= 0 {
@@ -382,7 +382,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "IDENTIFY failed to decode JSON body")
 	}
 
-	p.ctx.nsqd.logf(LOG_DEBUG, "PROTOCOL(V2): [%s] %+v", client, identifyData)
+	p.nsqd.logf(LOG_DEBUG, "PROTOCOL(V2): [%s] %+v", client, identifyData)
 
 	err = client.Identify(identifyData)
 	if err != nil {
@@ -394,16 +394,16 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 		return okBytes, nil
 	}
 
-	tlsv1 := p.ctx.nsqd.tlsConfig != nil && identifyData.TLSv1
-	deflate := p.ctx.nsqd.getOpts().DeflateEnabled && identifyData.Deflate
+	tlsv1 := p.nsqd.tlsConfig != nil && identifyData.TLSv1
+	deflate := p.nsqd.getOpts().DeflateEnabled && identifyData.Deflate
 	deflateLevel := 6
 	if deflate && identifyData.DeflateLevel > 0 {
 		deflateLevel = identifyData.DeflateLevel
 	}
-	if max := p.ctx.nsqd.getOpts().MaxDeflateLevel; max < deflateLevel {
+	if max := p.nsqd.getOpts().MaxDeflateLevel; max < deflateLevel {
 		deflateLevel = max
 	}
-	snappy := p.ctx.nsqd.getOpts().SnappyEnabled && identifyData.Snappy
+	snappy := p.nsqd.getOpts().SnappyEnabled && identifyData.Snappy
 
 	if deflate && snappy {
 		return nil, protocol.NewFatalClientErr(nil, "E_IDENTIFY_FAILED", "cannot enable both deflate and snappy compression")
@@ -424,17 +424,17 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 		OutputBufferSize    int    `json:"output_buffer_size"`
 		OutputBufferTimeout int64  `json:"output_buffer_timeout"`
 	}{
-		MaxRdyCount:         p.ctx.nsqd.getOpts().MaxRdyCount,
+		MaxRdyCount:         p.nsqd.getOpts().MaxRdyCount,
 		Version:             version.Binary,
-		MaxMsgTimeout:       int64(p.ctx.nsqd.getOpts().MaxMsgTimeout / time.Millisecond),
+		MaxMsgTimeout:       int64(p.nsqd.getOpts().MaxMsgTimeout / time.Millisecond),
 		MsgTimeout:          int64(client.MsgTimeout / time.Millisecond),
 		TLSv1:               tlsv1,
 		Deflate:             deflate,
 		DeflateLevel:        deflateLevel,
-		MaxDeflateLevel:     p.ctx.nsqd.getOpts().MaxDeflateLevel,
+		MaxDeflateLevel:     p.nsqd.getOpts().MaxDeflateLevel,
 		Snappy:              snappy,
 		SampleRate:          client.SampleRate,
-		AuthRequired:        p.ctx.nsqd.IsAuthEnabled(),
+		AuthRequired:        p.nsqd.IsAuthEnabled(),
 		OutputBufferSize:    client.OutputBufferSize,
 		OutputBufferTimeout: int64(client.OutputBufferTimeout / time.Millisecond),
 	})
@@ -448,7 +448,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if tlsv1 {
-		p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] upgrading connection to TLS", client)
+		p.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] upgrading connection to TLS", client)
 		err = client.UpgradeTLS()
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -461,7 +461,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if snappy {
-		p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] upgrading connection to snappy", client)
+		p.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] upgrading connection to snappy", client)
 		err = client.UpgradeSnappy()
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -474,7 +474,7 @@ func (p *protocolV2) IDENTIFY(client *clientV2, params [][]byte) ([]byte, error)
 	}
 
 	if deflate {
-		p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] upgrading connection to deflate (level %d)", client, deflateLevel)
+		p.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] upgrading connection to deflate (level %d)", client, deflateLevel)
 		err = client.UpgradeDeflate(deflateLevel)
 		if err != nil {
 			return nil, protocol.NewFatalClientErr(err, "E_IDENTIFY_FAILED", "IDENTIFY failed "+err.Error())
@@ -503,9 +503,9 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "AUTH failed to read body size")
 	}
 
-	if int64(bodyLen) > p.ctx.nsqd.getOpts().MaxBodySize {
+	if int64(bodyLen) > p.nsqd.getOpts().MaxBodySize {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
-			fmt.Sprintf("AUTH body too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxBodySize))
+			fmt.Sprintf("AUTH body too big %d > %d", bodyLen, p.nsqd.getOpts().MaxBodySize))
 	}
 
 	if bodyLen <= 0 {
@@ -523,13 +523,13 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "AUTH already set")
 	}
 
-	if !client.ctx.nsqd.IsAuthEnabled() {
+	if !client.nsqd.IsAuthEnabled() {
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_DISABLED", "AUTH disabled")
 	}
 
 	if err := client.Auth(string(body)); err != nil {
 		// we don't want to leak errors contacting the auth server to untrusted clients
-		p.ctx.nsqd.logf(LOG_WARN, "PROTOCOL(V2): [%s] AUTH failed %s", client, err)
+		p.nsqd.logf(LOG_WARN, "PROTOCOL(V2): [%s] AUTH failed %s", client, err)
 		return nil, protocol.NewFatalClientErr(err, "E_AUTH_FAILED", "AUTH failed")
 	}
 
@@ -562,7 +562,7 @@ func (p *protocolV2) AUTH(client *clientV2, params [][]byte) ([]byte, error) {
 func (p *protocolV2) CheckAuth(client *clientV2, cmd, topicName, channelName string) error {
 	// if auth is enabled, the client must have authorized already
 	// compare topic/channel against cached authorization data (refetching if expired)
-	if client.ctx.nsqd.IsAuthEnabled() {
+	if client.nsqd.IsAuthEnabled() {
 		if !client.HasAuthorizations() {
 			return protocol.NewFatalClientErr(nil, "E_AUTH_FIRST",
 				fmt.Sprintf("AUTH required before %s", cmd))
@@ -570,7 +570,7 @@ func (p *protocolV2) CheckAuth(client *clientV2, cmd, topicName, channelName str
 		ok, err := client.IsAuthorized(topicName, channelName)
 		if err != nil {
 			// we don't want to leak errors contacting the auth server to untrusted clients
-			p.ctx.nsqd.logf(LOG_WARN, "PROTOCOL(V2): [%s] AUTH failed %s", client, err)
+			p.nsqd.logf(LOG_WARN, "PROTOCOL(V2): [%s] AUTH failed %s", client, err)
 			return protocol.NewFatalClientErr(nil, "E_AUTH_FAILED", "AUTH failed")
 		}
 		if !ok {
@@ -615,12 +615,12 @@ func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 	// Avoid adding a client to an ephemeral channel / topic which has started exiting.
 	var channel *Channel
 	for {
-		topic := p.ctx.nsqd.GetTopic(topicName)
+		topic := p.nsqd.GetTopic(topicName)
 		channel = topic.GetChannel(channelName)
 		if err := channel.AddClient(client.ID, client); err != nil {
 			return nil, protocol.NewFatalClientErr(nil, "E_TOO_MANY_CHANNEL_CONSUMERS",
 				fmt.Sprintf("channel consumers for %s:%s exceeds limit of %d",
-					topicName, channelName, p.ctx.nsqd.getOpts().MaxChannelConsumers))
+					topicName, channelName, p.nsqd.getOpts().MaxChannelConsumers))
 		}
 
 		if (channel.ephemeral && channel.Exiting()) || (topic.ephemeral && topic.Exiting()) {
@@ -643,7 +643,7 @@ func (p *protocolV2) RDY(client *clientV2, params [][]byte) ([]byte, error) {
 
 	if state == stateClosing {
 		// just ignore ready changes on a closing channel
-		p.ctx.nsqd.logf(LOG_INFO,
+		p.nsqd.logf(LOG_INFO,
 			"PROTOCOL(V2): [%s] ignoring RDY after CLS in state ClientStateV2Closing",
 			client)
 		return nil, nil
@@ -663,11 +663,11 @@ func (p *protocolV2) RDY(client *clientV2, params [][]byte) ([]byte, error) {
 		count = int64(b10)
 	}
 
-	if count < 0 || count > p.ctx.nsqd.getOpts().MaxRdyCount {
+	if count < 0 || count > p.nsqd.getOpts().MaxRdyCount {
 		// this needs to be a fatal error otherwise clients would have
 		// inconsistent state
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID",
-			fmt.Sprintf("RDY count %d out of range 0-%d", count, p.ctx.nsqd.getOpts().MaxRdyCount))
+			fmt.Sprintf("RDY count %d out of range 0-%d", count, p.nsqd.getOpts().MaxRdyCount))
 	}
 
 	client.SetReadyCount(count)
@@ -723,7 +723,7 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 
-	maxReqTimeout := p.ctx.nsqd.getOpts().MaxReqTimeout
+	maxReqTimeout := p.nsqd.getOpts().MaxReqTimeout
 	clampedTimeout := timeoutDuration
 
 	if timeoutDuration < 0 {
@@ -732,7 +732,7 @@ func (p *protocolV2) REQ(client *clientV2, params [][]byte) ([]byte, error) {
 		clampedTimeout = maxReqTimeout
 	}
 	if clampedTimeout != timeoutDuration {
-		p.ctx.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] REQ timeout %d out of range 0-%d. Setting to %d",
+		p.nsqd.logf(LOG_INFO, "PROTOCOL(V2): [%s] REQ timeout %d out of range 0-%d. Setting to %d",
 			client, timeoutDuration, maxReqTimeout, clampedTimeout)
 		timeoutDuration = clampedTimeout
 	}
@@ -785,9 +785,9 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("PUB invalid message body size %d", bodyLen))
 	}
 
-	if int64(bodyLen) > p.ctx.nsqd.getOpts().MaxMsgSize {
+	if int64(bodyLen) > p.nsqd.getOpts().MaxMsgSize {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxMsgSize))
+			fmt.Sprintf("PUB message too big %d > %d", bodyLen, p.nsqd.getOpts().MaxMsgSize))
 	}
 
 	messageBody := make([]byte, bodyLen)
@@ -800,7 +800,7 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.ctx.nsqd.GetTopic(topicName)
+	topic := p.nsqd.GetTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), messageBody)
 	err = topic.PutMessage(msg)
 	if err != nil {
@@ -829,7 +829,7 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.ctx.nsqd.GetTopic(topicName)
+	topic := p.nsqd.GetTopic(topicName)
 
 	bodyLen, err := readLen(client.Reader, client.lenSlice)
 	if err != nil {
@@ -841,13 +841,13 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("MPUB invalid body size %d", bodyLen))
 	}
 
-	if int64(bodyLen) > p.ctx.nsqd.getOpts().MaxBodySize {
+	if int64(bodyLen) > p.nsqd.getOpts().MaxBodySize {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_BODY",
-			fmt.Sprintf("MPUB body too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxBodySize))
+			fmt.Sprintf("MPUB body too big %d > %d", bodyLen, p.nsqd.getOpts().MaxBodySize))
 	}
 
 	messages, err := readMPUB(client.Reader, client.lenSlice, topic,
-		p.ctx.nsqd.getOpts().MaxMsgSize, p.ctx.nsqd.getOpts().MaxBodySize)
+		p.nsqd.getOpts().MaxMsgSize, p.nsqd.getOpts().MaxBodySize)
 	if err != nil {
 		return nil, err
 	}
@@ -885,10 +885,10 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	}
 	timeoutDuration := time.Duration(timeoutMs) * time.Millisecond
 
-	if timeoutDuration < 0 || timeoutDuration > p.ctx.nsqd.getOpts().MaxReqTimeout {
+	if timeoutDuration < 0 || timeoutDuration > p.nsqd.getOpts().MaxReqTimeout {
 		return nil, protocol.NewFatalClientErr(nil, "E_INVALID",
 			fmt.Sprintf("DPUB timeout %d out of range 0-%d",
-				timeoutMs, p.ctx.nsqd.getOpts().MaxReqTimeout/time.Millisecond))
+				timeoutMs, p.nsqd.getOpts().MaxReqTimeout/time.Millisecond))
 	}
 
 	bodyLen, err := readLen(client.Reader, client.lenSlice)
@@ -901,9 +901,9 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 			fmt.Sprintf("DPUB invalid message body size %d", bodyLen))
 	}
 
-	if int64(bodyLen) > p.ctx.nsqd.getOpts().MaxMsgSize {
+	if int64(bodyLen) > p.nsqd.getOpts().MaxMsgSize {
 		return nil, protocol.NewFatalClientErr(nil, "E_BAD_MESSAGE",
-			fmt.Sprintf("DPUB message too big %d > %d", bodyLen, p.ctx.nsqd.getOpts().MaxMsgSize))
+			fmt.Sprintf("DPUB message too big %d > %d", bodyLen, p.nsqd.getOpts().MaxMsgSize))
 	}
 
 	messageBody := make([]byte, bodyLen)
@@ -916,7 +916,7 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.ctx.nsqd.GetTopic(topicName)
+	topic := p.nsqd.GetTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), messageBody)
 	msg.deferred = timeoutDuration
 	err = topic.PutMessage(msg)
@@ -1016,7 +1016,7 @@ func readLen(r io.Reader, tmp []byte) (int32, error) {
 }
 
 func enforceTLSPolicy(client *clientV2, p *protocolV2, command []byte) error {
-	if p.ctx.nsqd.getOpts().TLSRequired != TLSNotRequired && atomic.LoadInt32(&client.TLS) != 1 {
+	if p.nsqd.getOpts().TLSRequired != TLSNotRequired && atomic.LoadInt32(&client.TLS) != 1 {
 		return protocol.NewFatalClientErr(nil, "E_INVALID",
 			fmt.Sprintf("cannot %s in current state (TLS required)", command))
 	}

@@ -150,7 +150,7 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
-	client := newClientV2(0, conn, &context{nsqd})
+	client := newClientV2(0, conn, nsqd)
 	client.SetReadyCount(25)
 	err := channel.AddClient(client.ID, client)
 	test.Equal(t, err, nil)
@@ -189,12 +189,12 @@ func TestMaxChannelConsumers(t *testing.T) {
 	topic := nsqd.GetTopic(topicName)
 	channel := topic.GetChannel("channel")
 
-	client1 := newClientV2(1, conn, &context{nsqd})
+	client1 := newClientV2(1, conn, nsqd)
 	client1.SetReadyCount(25)
 	err := channel.AddClient(client1.ID, client1)
 	test.Equal(t, err, nil)
 
-	client2 := newClientV2(2, conn, &context{nsqd})
+	client2 := newClientV2(2, conn, nsqd)
 	client2.SetReadyCount(25)
 	err = channel.AddClient(client2.ID, client2)
 	test.NotEqual(t, err, nil)
