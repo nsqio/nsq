@@ -78,7 +78,7 @@ func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 	}
 	producers := r.registrationMap[k]
 	_, found := producers[p.peerInfo.id]
-	if found == false {
+	if !found {
 		producers[p.peerInfo.id] = p
 	}
 	return !found
@@ -149,7 +149,7 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 		}
 		for _, producer := range producers {
 			_, found := results[producer.peerInfo.id]
-			if found == false {
+			if !found {
 				results[producer.peerInfo.id] = struct{}{}
 				retProducers = append(retProducers, producer)
 			}
