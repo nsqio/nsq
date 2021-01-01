@@ -239,11 +239,12 @@ func BenchmarkTopicPut(b *testing.B) {
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
+	gf := &test.GUIDFactory{}
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetOrCreateTopic(topicName)
-		msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := NewMessage(guid(gf.NextMessageID()).Hex(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 }
@@ -260,11 +261,12 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 	channel := nsqd.GetOrCreateTopic(topicName).GetOrCreateChannel(channelName)
+	gf := &test.GUIDFactory{}
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
 		topic := nsqd.GetOrCreateTopic(topicName)
-		msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := NewMessage(guid(gf.NextMessageID()).Hex(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 
@@ -290,6 +292,7 @@ func BenchmarkTopicMessagePump(b *testing.B) {
 	topic := nsqd.GetOrCreateTopic(topicName)
 	ch := topic.GetOrCreateChannel("ch")
 	ctx, cancel := context.WithCancel(context.Background())
+	gf := &test.GUIDFactory{}
 
 	var wg sync.WaitGroup
 	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
@@ -308,7 +311,7 @@ func BenchmarkTopicMessagePump(b *testing.B) {
 
 	b.StartTimer()
 	for i := 0; i <= b.N; i++ {
-		msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		msg := NewMessage(guid(gf.NextMessageID()).Hex(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
 	cancel()
