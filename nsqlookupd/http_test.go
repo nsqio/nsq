@@ -20,7 +20,13 @@ type InfoDoc struct {
 }
 
 type ChannelsDoc struct {
-	Channels []interface{} `json:"channels"`
+	Channels     []interface{}          `json:"channels"`
+	ChannelsMeta map[string]interface{} `json:"channels_meta"`
+}
+
+type TopicMetaDoc struct {
+	Topics     []interface{}          `json:"topics"`
+	TopicsMeta map[string]interface{} `json:"topics_meta"`
 }
 
 type ErrMessage struct {
@@ -77,12 +83,18 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, *NSQLookupd) {
 
 func makeTopic(nsqlookupd *NSQLookupd, topicName string) {
 	key := Registration{"topic", topicName, ""}
-	nsqlookupd.DB.AddRegistration(key)
+	now := time.Now()
+	pi1 := &PeerInfo{now.UnixNano(), "1", "remote_addr:1", "host", "b_addr", 1, 2, "v1"}
+	p1 := &Producer{pi1, false, now, true}
+	nsqlookupd.DB.AddProducer(key, p1)
 }
 
 func makeChannel(nsqlookupd *NSQLookupd, topicName string, channelName string) {
 	key := Registration{"channel", topicName, channelName}
-	nsqlookupd.DB.AddRegistration(key)
+	now := time.Now()
+	pi1 := &PeerInfo{now.UnixNano(), "1", "remote_addr:1", "host", "b_addr", 1, 2, "v1"}
+	p1 := &Producer{pi1, false, now, true}
+	nsqlookupd.DB.AddProducer(key, p1)
 	makeTopic(nsqlookupd, topicName)
 }
 
@@ -276,6 +288,7 @@ func TestGetChannels(t *testing.T) {
 	err = json.Unmarshal(body, &ch)
 	test.Nil(t, err)
 	test.Equal(t, 0, len(ch.Channels))
+	test.Equal(t, 0, len(ch.ChannelsMeta))
 
 	topicName = "sampletopicB" + strconv.Itoa(int(time.Now().Unix()))
 	channelName := "foobar" + strconv.Itoa(int(time.Now().Unix()))
@@ -296,6 +309,36 @@ func TestGetChannels(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 1, len(ch.Channels))
 	test.Equal(t, channelName, ch.Channels[0])
+	test.Equal(t, 1, len(ch.ChannelsMeta))
+	test.NotNil(t, ch.ChannelsMeta[channelName])
+}
+
+func TestTopicMeta(t *testing.T) {
+	dataPath, nsqds, nsqlookupd1 := bootstrapNSQCluster(t)
+	defer os.RemoveAll(dataPath)
+	defer nsqds[0].Exit()
+	defer nsqlookupd1.Exit()
+
+	client := http.Client{}
+
+	tm := TopicMetaDoc{}
+	topicName := "sampletopicA" + strconv.Itoa(int(time.Now().Unix()))
+	makeTopic(nsqlookupd1, topicName)
+
+	url := fmt.Sprintf("http://%s/topics?topic=%s", nsqlookupd1.RealHTTPAddr(), topicName)
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
+	resp, err := client.Do(req)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	t.Logf("%s", body)
+	err = json.Unmarshal(body, &tm)
+	test.Nil(t, err)
+	test.NotNil(t, tm.TopicsMeta)
 }
 
 func TestCreateChannel(t *testing.T) {

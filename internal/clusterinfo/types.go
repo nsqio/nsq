@@ -304,3 +304,21 @@ type ProducersByHost struct {
 func (c ProducersByHost) Less(i, j int) bool {
 	return c.Producers[i].Hostname < c.Producers[j].Hostname
 }
+
+type ChannelState struct {
+	Name   string
+	Paused bool
+}
+
+type ChannelMeta struct {
+	Paused bool `json:"paused"`
+}
+
+type TopicMeta struct {
+	Paused bool `json:"paused"`
+}
+
+type TopicChannelsMeta struct {
+	Channels     []string                `json:"channels"`
+	ChannelsMeta map[string]*ChannelMeta `json:"channels_meta"`
+}

@@ -90,6 +90,8 @@ func (p *LookupProtocolV1) Exec(client *ClientV1, reader *bufio.Reader, params [
 		return p.REGISTER(client, reader, params[1:])
 	case "UNREGISTER":
 		return p.UNREGISTER(client, reader, params[1:])
+	case "SYNCSTATE":
+		return p.SYNCSTATE(client, reader, params[1:])
 	}
 	return nil, protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("invalid command %s", params[0]))
 }
@@ -186,6 +188,52 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 		if left == 0 && strings.HasSuffix(topic, "#ephemeral") {
 			p.nsqlookupd.DB.RemoveRegistration(key)
 		}
+	}
+
+	return []byte("OK"), nil
+}
+
+func (p *LookupProtocolV1) SYNCSTATE(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
+	if client.peerInfo == nil {
+		return nil, protocol.NewFatalClientErr(nil, "E_INVALID", "client must IDENTIFY")
+	}
+
+	topic, channel, err := getTopicChan("SYNCSTATE", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var bodyLen int32
+	err = binary.Read(reader, binary.BigEndian, &bodyLen)
+	if err != nil {
+		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "SYNCSTATE failed to read body size")
+	}
+
+	body := make([]byte, bodyLen)
+	_, err = io.ReadFull(reader, body)
+	if err != nil {
+		return nil, protocol.NewFatalClientErr(err, "E_BAD_BODY", "SYNCSTATE failed to read body")
+	}
+
+	type bodyType struct {
+		Paused bool `json:"paused"`
+	}
+	var state bodyType
+	err = json.Unmarshal(body, &state)
+	if err != nil {
+		return nil, protocol.NewFatalClientErr(err, "E_INVALID", fmt.Sprintf("state body should be json"))
+	}
+
+	if channel != "" {
+		key := Registration{"channel", topic, channel}
+		p.nsqlookupd.DB.UpdateProducer(key, client.peerInfo.id, state.Paused)
+		p.nsqlookupd.logf(LOG_INFO, "DB: client(%s) SYNCSTATE category:%s key:%s subkey:%s paused: %t",
+			client, "channel", topic, channel, state.Paused)
+	} else {
+		key := Registration{"topic", topic, ""}
+		p.nsqlookupd.DB.UpdateProducer(key, client.peerInfo.id, state.Paused)
+		p.nsqlookupd.logf(LOG_INFO, "DB: client(%s) SYNCSTATE category:%s key:%s subkey:%s paused: %t",
+			client, "topic", topic, "", state.Paused)
 	}
 
 	return []byte("OK"), nil

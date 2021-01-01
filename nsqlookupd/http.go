@@ -78,13 +78,56 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 }
 
 func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	topics := s.nsqlookupd.DB.FindRegistrations("topic", "*", "").Keys()
+	type topicMeta struct {
+		Paused bool `json:"paused"`
+	}
+
+	var topics []string
+	topicsMetaMap := make(map[string]*topicMeta)
+
+	reqParams, err := http_api.NewReqParams(req)
+	if err != nil {
+		return nil, http_api.Err{400, err.Error()}
+	}
+
+	topicName, _ := reqParams.Get("topic")
+	if topicName != "" {
+		topics = append(topics, topicName)
+		var tm topicMeta
+		producers := s.nsqlookupd.DB.FindProducers("topic", topicName, "")
+		producers = producers.FilterByActive(s.nsqlookupd.opts.InactiveProducerTimeout,
+			s.nsqlookupd.opts.TombstoneLifetime)
+		if producers.IsPaused() {
+			tm.Paused = true
+		}
+		topicsMetaMap[topicName] = &tm
+	} else {
+		topics = s.nsqlookupd.DB.FindRegistrations("topic", "*", "").Keys()
+		for _, topicName := range topics {
+			if _, ok := topicsMetaMap[topicName]; !ok {
+				topicsMetaMap[topicName] = &topicMeta{Paused: false}
+			}
+			producers := s.nsqlookupd.DB.FindProducers("topic", topicName, "")
+			producers = producers.FilterByActive(s.nsqlookupd.opts.InactiveProducerTimeout,
+				s.nsqlookupd.opts.TombstoneLifetime)
+			if producers.IsPaused() {
+				topicsMetaMap[topicName].Paused = true
+			}
+		}
+	}
+
 	return map[string]interface{}{
-		"topics": topics,
+		"topics":      topics,
+		"topics_meta": topicsMetaMap,
 	}, nil
 }
 
 func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+
+	type channelMeta struct {
+		Paused bool `json:"paused"`
+	}
+
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		return nil, http_api.Err{400, "INVALID_REQUEST"}
@@ -95,9 +138,24 @@ func (s *httpServer) doChannels(w http.ResponseWriter, req *http.Request, ps htt
 		return nil, http_api.Err{400, "MISSING_ARG_TOPIC"}
 	}
 
+	var producers Producers
+	channelsMetaMap := make(map[string]*channelMeta)
 	channels := s.nsqlookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
+	for _, channelName := range channels {
+		if _, ok := channelsMetaMap[channelName]; !ok {
+			channelsMetaMap[channelName] = &channelMeta{false}
+		}
+		producers = s.nsqlookupd.DB.FindProducers("channel", topicName, channelName)
+		producers = producers.FilterByActive(s.nsqlookupd.opts.InactiveProducerTimeout,
+			s.nsqlookupd.opts.TombstoneLifetime)
+		if producers.IsPaused() {
+			channelsMetaMap[channelName].Paused = true
+		}
+	}
+
 	return map[string]interface{}{
-		"channels": channels,
+		"channels":      channels,
+		"channels_meta": channelsMetaMap,
 	}, nil
 }
 

@@ -9,7 +9,8 @@ import (
 
 type RegistrationDB struct {
 	sync.RWMutex
-	registrationMap map[Registration]ProducerMap
+	registrationMap        map[Registration]ProducerMap
+	highSpeedRegistrations map[Registration]Registrations
 }
 
 type Registration struct {
@@ -34,6 +35,7 @@ type Producer struct {
 	peerInfo     *PeerInfo
 	tombstoned   bool
 	tombstonedAt time.Time
+	paused       bool
 }
 
 type Producers []*Producer
@@ -54,7 +56,58 @@ func (p *Producer) IsTombstoned(lifetime time.Duration) bool {
 
 func NewRegistrationDB() *RegistrationDB {
 	return &RegistrationDB{
-		registrationMap: make(map[Registration]ProducerMap),
+		registrationMap:        make(map[Registration]ProducerMap),
+		highSpeedRegistrations: make(map[Registration]Registrations),
+	}
+}
+
+// update high speed registrations map
+// should call this func when registrationMap add Registration
+func (r *RegistrationDB) addHighSpeedRegistration(k Registration) {
+	key := Registration{k.Category, "*", ""}
+	if _, ok := r.highSpeedRegistrations[key]; !ok {
+		r.highSpeedRegistrations[key] = Registrations{}
+	}
+	if k.IsMatch(key.Category, key.Key, key.SubKey) {
+		r.highSpeedRegistrations[key] = append(r.highSpeedRegistrations[key], k)
+	}
+	if k.SubKey != "" {
+		subKey := Registration{k.Category, k.Key, "*"}
+		if _, ok := r.highSpeedRegistrations[subKey]; !ok {
+			r.highSpeedRegistrations[subKey] = Registrations{}
+		}
+		if k.IsMatch(subKey.Category, subKey.Key, subKey.SubKey) {
+			r.highSpeedRegistrations[subKey] = append(r.highSpeedRegistrations[subKey], k)
+		}
+	}
+}
+
+// update high speed registrations map
+// should call this func when registrationMap remove Registration
+func (r *RegistrationDB) removeHighSpeedRegistration(k Registration) {
+	key := Registration{k.Category, "*", ""}
+	if registrations, ok := r.highSpeedRegistrations[key]; ok {
+		for i, registration := range registrations {
+			if registration == k {
+				r.highSpeedRegistrations[key] = append(
+					r.highSpeedRegistrations[key][:i], r.highSpeedRegistrations[key][i+1:]...,
+				)
+				break
+			}
+		}
+	}
+	if k.SubKey != "" {
+		subKey := Registration{k.Category, k.Key, "*"}
+		if registrations, ok := r.highSpeedRegistrations[subKey]; ok {
+			for i, registration := range registrations {
+				if registration == k {
+					r.highSpeedRegistrations[subKey] = append(
+						r.highSpeedRegistrations[subKey][:i], r.highSpeedRegistrations[subKey][i+1:]...,
+					)
+					break
+				}
+			}
+		}
 	}
 }
 
@@ -65,6 +118,7 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 	_, ok := r.registrationMap[k]
 	if !ok {
 		r.registrationMap[k] = make(map[string]*Producer)
+		r.addHighSpeedRegistration(k)
 	}
 }
 
@@ -75,6 +129,7 @@ func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 	_, ok := r.registrationMap[k]
 	if !ok {
 		r.registrationMap[k] = make(map[string]*Producer)
+		r.addHighSpeedRegistration(k)
 	}
 	producers := r.registrationMap[k]
 	_, found := producers[p.peerInfo.id]
@@ -82,6 +137,22 @@ func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 		producers[p.peerInfo.id] = p
 	}
 	return !found
+}
+
+// update producer info from a registration
+func (r *RegistrationDB) UpdateProducer(k Registration, id string, paused bool) bool {
+	r.Lock()
+	defer r.Unlock()
+	producers, ok := r.registrationMap[k]
+	if !ok {
+		return false
+	}
+	updated := false
+	if p, exists := producers[id]; exists && p.paused != paused {
+		p.paused = paused
+		updated = true
+	}
+	return updated
 }
 
 // remove a producer from a registration
@@ -107,6 +178,7 @@ func (r *RegistrationDB) RemoveRegistration(k Registration) {
 	r.Lock()
 	defer r.Unlock()
 	delete(r.registrationMap, k)
+	r.removeHighSpeedRegistration(k)
 }
 
 func (r *RegistrationDB) needFilter(key string, subkey string) bool {
@@ -122,6 +194,10 @@ func (r *RegistrationDB) FindRegistrations(category string, key string, subkey s
 			return Registrations{k}
 		}
 		return Registrations{}
+	}
+	quickKey := Registration{category, key, subkey}
+	if quickResults, ok := r.highSpeedRegistrations[quickKey]; ok {
+		return quickResults
 	}
 	results := Registrations{}
 	for k := range r.registrationMap {
@@ -228,6 +304,21 @@ func (pp Producers) PeerInfo() []*PeerInfo {
 		results = append(results, p.peerInfo)
 	}
 	return results
+}
+
+func (pp Producers) IsPaused() bool {
+	pausedCount := 0
+	total := 0
+	for _, p := range pp {
+		if p.paused == true {
+			pausedCount++
+		}
+		total++
+	}
+	if total == 0 {
+		return false
+	}
+	return pausedCount*2 >= total
 }
 
 func ProducerMap2Slice(pm ProducerMap) Producers {
