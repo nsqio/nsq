@@ -85,6 +85,11 @@ type ClientV2Stats struct {
 func (s ClientV2Stats) String() string {
 	connectTime := time.Unix(s.ConnectTime, 0)
 	duration := time.Since(connectTime).Truncate(time.Second)
+
+	_, port, _ := net.SplitHostPort(s.RemoteAddress)
+	id := fmt.Sprintf("%s:%s %s", s.Hostname, port, s.UserAgent)
+
+	// producer
 	if len(s.PubCounts) > 0 {
 		var total uint64
 		var topicOut []string
@@ -94,15 +99,17 @@ func (s ClientV2Stats) String() string {
 		}
 		return fmt.Sprintf("[%s %-21s] msgs: %-8d topics: %s connected: %s",
 			s.Version,
-			s.ClientID,
+			id,
 			total,
 			strings.Join(topicOut, ","),
 			duration,
 		)
 	}
+
+	// consumer
 	return fmt.Sprintf("[%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s",
 		s.Version,
-		s.ClientID,
+		id,
 		s.State,
 		s.InFlightCount,
 		s.ReadyCount,
