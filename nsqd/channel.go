@@ -21,7 +21,7 @@ type Consumer interface {
 	Pause()
 	Close() error
 	TimedOutMessage()
-	Stats() ClientStats
+	Stats(string) ClientStats
 	Empty()
 }
 

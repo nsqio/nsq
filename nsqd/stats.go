@@ -8,6 +8,15 @@ import (
 	"github.com/nsqio/nsq/internal/quantile"
 )
 
+type Stats struct {
+	Topics    []TopicStats
+	Producers []ClientStats
+}
+
+type ClientStats interface {
+	String() string
+}
+
 type TopicStats struct {
 	TopicName    string         `json:"topic_name"`
 	Channels     []ChannelStats `json:"channels"`
@@ -75,40 +84,6 @@ func NewChannelStats(c *Channel, clients []ClientStats, clientCount int) Channel
 	}
 }
 
-type PubCount struct {
-	Topic string `json:"topic"`
-	Count uint64 `json:"count"`
-}
-
-type ClientStats struct {
-	ClientID        string `json:"client_id"`
-	Hostname        string `json:"hostname"`
-	Version         string `json:"version"`
-	RemoteAddress   string `json:"remote_address"`
-	State           int32  `json:"state"`
-	ReadyCount      int64  `json:"ready_count"`
-	InFlightCount   int64  `json:"in_flight_count"`
-	MessageCount    uint64 `json:"message_count"`
-	FinishCount     uint64 `json:"finish_count"`
-	RequeueCount    uint64 `json:"requeue_count"`
-	ConnectTime     int64  `json:"connect_ts"`
-	SampleRate      int32  `json:"sample_rate"`
-	Deflate         bool   `json:"deflate"`
-	Snappy          bool   `json:"snappy"`
-	UserAgent       string `json:"user_agent"`
-	Authed          bool   `json:"authed,omitempty"`
-	AuthIdentity    string `json:"auth_identity,omitempty"`
-	AuthIdentityURL string `json:"auth_identity_url,omitempty"`
-
-	PubCounts []PubCount `json:"pub_counts,omitempty"`
-
-	TLS                           bool   `json:"tls"`
-	CipherSuite                   string `json:"tls_cipher_suite"`
-	TLSVersion                    string `json:"tls_version"`
-	TLSNegotiatedProtocol         string `json:"tls_negotiated_protocol"`
-	TLSNegotiatedProtocolIsMutual bool   `json:"tls_negotiated_protocol_is_mutual"`
-}
-
 type Topics []*Topic
 
 func (t Topics) Len() int      { return len(t) }
@@ -131,7 +106,9 @@ type ChannelsByName struct {
 
 func (c ChannelsByName) Less(i, j int) bool { return c.Channels[i].name < c.Channels[j].name }
 
-func (n *NSQD) GetStats(topic string, channel string, includeClients bool) []TopicStats {
+func (n *NSQD) GetStats(topic string, channel string, includeClients bool) Stats {
+	var stats Stats
+
 	n.RLock()
 	var realTopics []*Topic
 	if topic == "" {
@@ -143,11 +120,13 @@ func (n *NSQD) GetStats(topic string, channel string, includeClients bool) []Top
 		realTopics = []*Topic{val}
 	} else {
 		n.RUnlock()
-		return []TopicStats{}
+		return stats
 	}
 	n.RUnlock()
 	sort.Sort(TopicsByName{realTopics})
+
 	topics := make([]TopicStats, 0, len(realTopics))
+
 	for _, t := range realTopics {
 		t.RLock()
 		var realChannels []*Channel
@@ -172,7 +151,7 @@ func (n *NSQD) GetStats(topic string, channel string, includeClients bool) []Top
 			if includeClients {
 				clients = make([]ClientStats, 0, len(c.clients))
 				for _, client := range c.clients {
-					clients = append(clients, client.Stats())
+					clients = append(clients, client.Stats(topic))
 				}
 			}
 			clientCount = len(c.clients)
@@ -181,25 +160,21 @@ func (n *NSQD) GetStats(topic string, channel string, includeClients bool) []Top
 		}
 		topics = append(topics, NewTopicStats(t, channels))
 	}
-	return topics
-}
+	stats.Topics = topics
 
-func (n *NSQD) GetProducerStats() []ClientStats {
-	var producers []*clientV2
-
-	n.tcpServer.conns.Range(func(k, v interface{}) bool {
-		c := v.(*clientV2)
-		if c.IsProducer() {
-			producers = append(producers, c)
-		}
-		return true
-	})
-
-	producerStats := make([]ClientStats, 0, len(producers))
-	for _, p := range producers {
-		producerStats = append(producerStats, p.Stats())
+	if includeClients {
+		var producerStats []ClientStats
+		n.tcpServer.conns.Range(func(k, v interface{}) bool {
+			c := v.(Client)
+			if c.Type() == typeProducer {
+				producerStats = append(producerStats, c.Stats(topic))
+			}
+			return true
+		})
+		stats.Producers = producerStats
 	}
-	return producerStats
+
+	return stats
 }
 
 type memStats struct {

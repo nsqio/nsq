@@ -8,6 +8,16 @@ import (
 	"github.com/nsqio/nsq/internal/protocol"
 )
 
+const (
+	typeConsumer = iota
+	typeProducer
+)
+
+type Client interface {
+	Type() int
+	Stats(string) ClientStats
+}
+
 type tcpServer struct {
 	nsqd  *NSQD
 	conns sync.Map
