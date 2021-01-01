@@ -228,9 +228,13 @@ func (s *httpServer) topicsHandler(w http.ResponseWriter, req *http.Request, ps 
 			producers, _ := s.ci.GetLookupdTopicProducers(
 				topicName, s.nsqadmin.getOpts().NSQLookupdHTTPAddresses)
 			if len(producers) == 0 {
-				topicChannels, _ := s.ci.GetLookupdTopicChannels(
+				var channels []string
+				channelStates, _ := s.ci.GetLookupdTopicChannels(
 					topicName, s.nsqadmin.getOpts().NSQLookupdHTTPAddresses)
-				topicChannelMap[topicName] = topicChannels
+				for _, channelState := range channelStates {
+					channels = append(channels, channelState.Name)
+				}
+				topicChannelMap[topicName] = channels
 			}
 		}
 	respond:

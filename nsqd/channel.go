@@ -117,7 +117,7 @@ func NewChannel(topicName string, channelName string, nsqd *NSQD,
 		)
 	}
 
-	c.nsqd.Notify(c)
+	c.nsqd.Notify(notifyContext{NotifyTypeRegistration, c})
 
 	return c
 }
@@ -164,7 +164,7 @@ func (c *Channel) exit(deleted bool) error {
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
-		c.nsqd.Notify(c)
+		c.nsqd.Notify(notifyContext{NotifyTypeUnRegistration, c})
 	} else {
 		c.nsqd.logf(LOG_INFO, "CHANNEL(%s): closing", c.name)
 	}
@@ -256,11 +256,15 @@ func (c *Channel) Depth() int64 {
 }
 
 func (c *Channel) Pause() error {
-	return c.doPause(true)
+	err := c.doPause(true)
+	c.nsqd.Notify(notifyContext{NotifyTypeStateUpdate, c})
+	return err
 }
 
 func (c *Channel) UnPause() error {
-	return c.doPause(false)
+	err := c.doPause(false)
+	c.nsqd.Notify(notifyContext{NotifyTypeStateUpdate, c})
+	return err
 }
 
 func (c *Channel) doPause(pause bool) error {

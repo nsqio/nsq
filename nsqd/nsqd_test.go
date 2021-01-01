@@ -330,6 +330,15 @@ func TestCluster(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
+	topic := nsqd.GetTopic("cluster_test_get_topic_by_nsqd")
+	test.NotNil(t, topic)
+	// allow some time for nsqd to push info to nsqlookupd
+	time.Sleep(350 * time.Millisecond)
+	err := nsqd.DeleteExistingTopic("cluster_test_get_topic_by_nsqd")
+	test.Nil(t, err)
+	// allow some time for nsqd to push info to nsqlookupd
+	time.Sleep(350 * time.Millisecond)
+
 	topicName := "cluster_test" + strconv.Itoa(int(time.Now().Unix()))
 
 	hostname, err := os.Hostname()

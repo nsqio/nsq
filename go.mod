@@ -17,3 +17,5 @@ require (
 )
 
 go 1.13
+
+replace github.com/nsqio/go-nsq v1.0.8 => github.com/thekingofworld/go-nsq v1.0.9-0.20200815080834-015554cb0b90

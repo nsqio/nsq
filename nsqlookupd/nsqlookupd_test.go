@@ -93,6 +93,25 @@ func TestBasicLookupd(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, []byte("OK"), v)
 
+	cmd, err := nsq.SyncState(topicName, "channel1", map[string]interface{}{"paused": true})
+	test.Nil(t, err)
+	cmd.WriteTo(conn)
+	v, err = nsq.ReadResponse(conn)
+	test.Nil(t, err)
+	test.Equal(t, []byte("OK"), v)
+
+	cmd, err = nsq.SyncState(topicName, "", map[string]interface{}{"paused": true})
+	test.Nil(t, err)
+	cmd.WriteTo(conn)
+	v, err = nsq.ReadResponse(conn)
+	test.Nil(t, err)
+	test.Equal(t, []byte("OK"), v)
+
+	nsq.Ping().WriteTo(conn)
+	v, err = nsq.ReadResponse(conn)
+	test.Nil(t, err)
+	test.Equal(t, []byte("OK"), v)
+
 	pr := ProducersDoc{}
 	endpoint := fmt.Sprintf("http://%s/nodes", httpAddr)
 	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &pr)
@@ -106,6 +125,7 @@ func TestBasicLookupd(t *testing.T) {
 
 	producers := nsqlookupd.DB.FindProducers("topic", topicName, "")
 	test.Equal(t, 1, len(producers))
+	test.Equal(t, true, producers.IsPaused())
 	producer := producers[0]
 
 	test.Equal(t, HostAddr, producer.peerInfo.BroadcastAddress)

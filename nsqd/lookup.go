@@ -3,6 +3,7 @@ package nsqd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"strconv"
@@ -11,6 +12,17 @@ import (
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/version"
 )
+
+const (
+	NotifyTypeRegistration = iota
+	NotifyTypeUnRegistration
+	NotifyTypeStateUpdate
+)
+
+type notifyContext struct {
+	notifyType int
+	v          interface{}
+}
 
 func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 	return func(lp *lookupPeer) {
@@ -53,11 +65,26 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 		n.RLock()
 		for _, topic := range n.topicMap {
 			topic.RLock()
-			if len(topic.channelMap) == 0 {
-				commands = append(commands, nsq.Register(topic.name, ""))
-			} else {
-				for _, channel := range topic.channelMap {
-					commands = append(commands, nsq.Register(channel.topicName, channel.name))
+			commands = append(commands, nsq.Register(topic.name, ""))
+			topicPaused := topic.IsPaused()
+			if topicPaused { //sync state when topic paused
+				command, err := nsq.SyncState(topic.name, "", map[string]interface{}{"paused": topicPaused})
+				if err != nil {
+					n.logf(LOG_ERROR, "LOOKUPD(%s): SyncState - %s", lp, err)
+				} else {
+					commands = append(commands, command)
+				}
+			}
+			for _, channel := range topic.channelMap {
+				commands = append(commands, nsq.Register(channel.topicName, channel.name))
+				channelPaused := channel.IsPaused()
+				if channelPaused { //sync state when channel paused
+					command, err := nsq.SyncState(channel.topicName, channel.name, map[string]interface{}{"paused": channelPaused})
+					if err != nil {
+						n.logf(LOG_ERROR, "LOOKUPD(%s): SyncState - %s", lp, err)
+						continue
+					}
+					commands = append(commands, command)
 				}
 			}
 			topic.RUnlock()
@@ -118,29 +145,61 @@ func (n *NSQD) lookupLoop() {
 			}
 		case val := <-n.notifyChan:
 			var cmd *nsq.Command
+			var err error
 			var branch string
-
-			switch val.(type) {
-			case *Channel:
-				// notify all nsqlookupds that a new channel exists, or that it's removed
-				branch = "channel"
-				channel := val.(*Channel)
-				if channel.Exiting() == true {
-					cmd = nsq.UnRegister(channel.topicName, channel.name)
-				} else {
+			notifyCtx, ok := val.(notifyContext)
+			if !ok {
+				panic("non-notifyContext sent to notifyChan - should never happen")
+			}
+			switch notifyCtx.notifyType {
+			case NotifyTypeRegistration:
+				switch notifyCtx.v.(type) {
+				case *Channel:
+					// notify all nsqlookupds that a new channel exists
+					branch = "channel"
+					channel := notifyCtx.v.(*Channel)
 					cmd = nsq.Register(channel.topicName, channel.name)
-				}
-			case *Topic:
-				// notify all nsqlookupds that a new topic exists, or that it's removed
-				branch = "topic"
-				topic := val.(*Topic)
-				if topic.Exiting() == true {
-					cmd = nsq.UnRegister(topic.name, "")
-				} else {
+				case *Topic:
+					// notify all nsqlookupds that a new topic exists
+					branch = "topic"
+					topic := notifyCtx.v.(*Topic)
 					cmd = nsq.Register(topic.name, "")
 				}
+			case NotifyTypeUnRegistration:
+				switch notifyCtx.v.(type) {
+				case *Channel:
+					// notify all nsqlookupds that a new channel removed
+					branch = "channel"
+					channel := notifyCtx.v.(*Channel)
+					cmd = nsq.UnRegister(channel.topicName, channel.name)
+				case *Topic:
+					// notify all nsqlookupds that a new topic removed
+					branch = "topic"
+					topic := notifyCtx.v.(*Topic)
+					cmd = nsq.UnRegister(topic.name, "")
+				}
+			case NotifyTypeStateUpdate:
+				switch notifyCtx.v.(type) {
+				case *Channel:
+					// notify all nsqlookupds that channel state changed
+					branch = "channel"
+					channel := notifyCtx.v.(*Channel)
+					cmd, err = nsq.SyncState(channel.topicName, channel.name, map[string]interface{}{"paused": channel.IsPaused()})
+					if err != nil {
+						n.logf(LOG_ERROR, "NSQD: build cmd err: %s", err)
+					}
+				case *Topic:
+					// notify all nsqlookupds that topic state changed
+					branch = "topic"
+					topic := notifyCtx.v.(*Topic)
+					cmd, err = nsq.SyncState(topic.name, "", map[string]interface{}{"paused": topic.IsPaused()})
+					if err != nil {
+						n.logf(LOG_ERROR, "NSQD: build cmd err: %s", err)
+					}
+				}
+			default:
+				panic(fmt.Sprintf("unknown notifyType in notifyContext: %d, should never happen", notifyCtx.notifyType))
 			}
-
 			for _, lookupPeer := range lookupPeers {
 				n.logf(LOG_INFO, "LOOKUPD(%s): %s %s", lookupPeer, branch, cmd)
 				_, err := lookupPeer.Command(cmd)

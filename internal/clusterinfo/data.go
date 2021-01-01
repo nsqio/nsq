@@ -119,14 +119,14 @@ func (c *ClusterInfo) GetLookupdTopics(lookupdHTTPAddrs []string) ([]string, err
 
 // GetLookupdTopicChannels returns a []string containing a union of all the channels
 // from all the given lookupd for the given topic
-func (c *ClusterInfo) GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]string, error) {
-	var channels []string
+func (c *ClusterInfo) GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []string) ([]ChannelState, error) {
 	var lock sync.Mutex
 	var wg sync.WaitGroup
 	var errs []error
 
-	type respType struct {
-		Channels []string `json:"channels"`
+	topicChannelsMeta := &TopicChannelsMeta{
+		Channels:     []string{},
+		ChannelsMeta: map[string]*ChannelMeta{},
 	}
 
 	for _, addr := range lookupdHTTPAddrs {
@@ -135,6 +135,74 @@ func (c *ClusterInfo) GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []s
 			defer wg.Done()
 
 			endpoint := fmt.Sprintf("http://%s/channels?topic=%s", addr, url.QueryEscape(topic))
+			c.logf("CI: querying nsqlookupd %s", endpoint)
+
+			var resp TopicChannelsMeta
+			err := c.client.GETV1(endpoint, &resp)
+			if err != nil {
+				lock.Lock()
+				errs = append(errs, err)
+				lock.Unlock()
+				return
+			}
+
+			lock.Lock()
+			defer lock.Unlock()
+			topicChannelsMeta.Channels = append(topicChannelsMeta.Channels, resp.Channels...)
+			for channelName, channelMeta := range resp.ChannelsMeta {
+				if curMeta, ok := topicChannelsMeta.ChannelsMeta[channelName]; ok {
+					if curMeta != nil && curMeta.Paused == true {
+						continue //one of the lookupd has returned paused,so just continue
+					}
+				}
+				topicChannelsMeta.ChannelsMeta[channelName] = channelMeta
+			}
+		}(addr)
+	}
+	wg.Wait()
+
+	if len(errs) == len(lookupdHTTPAddrs) {
+		return nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
+	}
+
+	topicChannelsMeta.Channels = stringy.Uniq(topicChannelsMeta.Channels)
+	sort.Strings(topicChannelsMeta.Channels)
+
+	var channelStates []ChannelState
+	for _, channelName := range topicChannelsMeta.Channels {
+		channelState := ChannelState{
+			Name:   channelName,
+			Paused: false,
+		}
+		if meta, ok := topicChannelsMeta.ChannelsMeta[channelName]; ok && meta != nil {
+			channelState.Paused = meta.Paused
+		}
+		channelStates = append(channelStates, channelState)
+	}
+
+	if len(errs) > 0 {
+		return channelStates, ErrList(errs)
+	}
+	return channelStates, nil
+}
+
+// GetLookupdTopic return a topicMeta info from all the given lookupd for the given topic
+func (c *ClusterInfo) GetLookupdTopic(topic string, lookupdHTTPAddrs []string) (TopicMeta, error) {
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+	var errs []error
+
+	topicMeta := TopicMeta{}
+	type respType struct {
+		Topics     []string              `json:"topics"`
+		TopicsMeta map[string]*TopicMeta `json:"topics_meta"`
+	}
+	for _, addr := range lookupdHTTPAddrs {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+
+			endpoint := fmt.Sprintf("http://%s/topics?topic=%s", addr, url.QueryEscape(topic))
 			c.logf("CI: querying nsqlookupd %s", endpoint)
 
 			var resp respType
@@ -148,22 +216,22 @@ func (c *ClusterInfo) GetLookupdTopicChannels(topic string, lookupdHTTPAddrs []s
 
 			lock.Lock()
 			defer lock.Unlock()
-			channels = append(channels, resp.Channels...)
+			if metaData, ok := resp.TopicsMeta[topic]; ok {
+				//if one of the lookupd return paused, that should be paused
+				if metaData != nil && metaData.Paused == true && topicMeta.Paused == false {
+					topicMeta.Paused = true
+				}
+			}
 		}(addr)
 	}
 	wg.Wait()
-
 	if len(errs) == len(lookupdHTTPAddrs) {
-		return nil, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
+		return topicMeta, fmt.Errorf("Failed to query any nsqlookupd: %s", ErrList(errs))
 	}
-
-	channels = stringy.Uniq(channels)
-	sort.Strings(channels)
-
 	if len(errs) > 0 {
-		return channels, ErrList(errs)
+		return topicMeta, ErrList(errs)
 	}
-	return channels, nil
+	return topicMeta, nil
 }
 
 // GetLookupdProducers returns Producers of all the nsqd connected to the given lookupds

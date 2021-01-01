@@ -497,15 +497,28 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	// this makes sure that any message received is buffered to the right channels
 	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
 	if len(lookupdHTTPAddrs) > 0 {
-		channelNames, err := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
+		topicMeta, err := n.ci.GetLookupdTopic(t.name, lookupdHTTPAddrs)
 		if err != nil {
-			n.logf(LOG_WARN, "failed to query nsqlookupd for channels to pre-create for topic %s - %s", t.name, err)
+			n.logf(LOG_WARN, "failed to query nsqlookupd for metadata to pre-create for topic %s - %s", t.name, err)
 		}
-		for _, channelName := range channelNames {
-			if strings.HasSuffix(channelName, "#ephemeral") {
+		if topicMeta.Paused {
+			err = t.Pause()
+			if err != nil {
+				n.logf(LOG_WARN, "failed to pre-pause topic %s - %s", t.name, err)
+			}
+		}
+		channelStates, err := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
+		for _, channelState := range channelStates {
+			if strings.HasSuffix(channelState.Name, "#ephemeral") {
 				continue // do not create ephemeral channel with no consumer client
 			}
-			t.GetChannel(channelName)
+			c := t.GetChannel(channelState.Name)
+			if channelState.Paused {
+				err = c.Pause()
+				if err != nil {
+					n.logf(LOG_WARN, "failed to pre-pause channel %s for topic %s - %s", c.name, t.name, err)
+				}
+			}
 		}
 	} else if len(n.getOpts().NSQLookupdTCPAddresses) > 0 {
 		n.logf(LOG_ERROR, "no available nsqlookupd to query for channels to pre-create for topic %s", t.name)

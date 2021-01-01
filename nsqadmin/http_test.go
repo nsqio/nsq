@@ -23,6 +23,10 @@ type TopicsDoc struct {
 	Topics []interface{} `json:"topics"`
 }
 
+type TopicsInactiveDoc struct {
+	Topics map[string][]string `json:"topics"`
+}
+
 type TopicStatsDoc struct {
 	*clusterinfo.TopicStats
 	Message string `json:"message"`
@@ -177,6 +181,20 @@ func TestHTTPTopicsGET(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 1, len(tr.Topics))
 	test.Equal(t, topicName, tr.Topics[0])
+
+	url = fmt.Sprintf("http://%s/api/topics?inactive=true", nsqadmin1.RealHTTPAddr())
+	req, _ = http.NewRequest("GET", url, nil)
+	resp, err = client.Do(req)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
+	body, _ = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	t.Logf("%s", body)
+	ti := TopicsInactiveDoc{}
+	err = json.Unmarshal(body, &ti)
+	test.Nil(t, err)
+	test.Equal(t, 0, len(ti.Topics))
 }
 
 func TestHTTPTopicGET(t *testing.T) {

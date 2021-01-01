@@ -82,7 +82,7 @@ func NewTopic(topicName string, nsqd *NSQD, deleteCallback func(*Topic)) *Topic 
 
 	t.waitGroup.Wrap(t.messagePump)
 
-	t.nsqd.Notify(t)
+	t.nsqd.Notify(notifyContext{NotifyTypeRegistration, t})
 
 	return t
 }
@@ -355,7 +355,7 @@ func (t *Topic) exit(deleted bool) error {
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
-		t.nsqd.Notify(t)
+		t.nsqd.Notify(notifyContext{NotifyTypeUnRegistration, t})
 	} else {
 		t.nsqd.logf(LOG_INFO, "TOPIC(%s): closing", t.name)
 	}
@@ -452,11 +452,15 @@ func (t *Topic) AggregateChannelE2eProcessingLatency() *quantile.Quantile {
 }
 
 func (t *Topic) Pause() error {
-	return t.doPause(true)
+	err := t.doPause(true)
+	t.nsqd.Notify(notifyContext{NotifyTypeStateUpdate, t})
+	return err
 }
 
 func (t *Topic) UnPause() error {
-	return t.doPause(false)
+	err := t.doPause(false)
+	t.nsqd.Notify(notifyContext{NotifyTypeStateUpdate, t})
+	return err
 }
 
 func (t *Topic) doPause(pause bool) error {
