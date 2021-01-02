@@ -447,7 +447,7 @@ func (n *NSQD) Exit() {
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
 func (n *NSQD) GetTopic(topicName string) *Topic {
-	// most likely, we already have this topic, so try read lock first.
+	// most likely we already have this topic, so try read lock first
 	n.RLock()
 	t, ok := n.topicMap[topicName]
 	n.RUnlock()
@@ -473,13 +473,14 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	n.logf(LOG_INFO, "TOPIC(%s): created", t.name)
 	// topic is created but messagePump not yet started
 
-	// if loading metadata at startup, no lookupd connections yet, topic started after load
+	// if this topic was created while loading metadata at startup don't do any further initialization
+	// (topic will be "started" after loading completes)
 	if atomic.LoadInt32(&n.isLoading) == 1 {
 		return t
 	}
 
-	// if using lookupd, make a blocking call to get the topics, and immediately create them.
-	// this makes sure that any message received is buffered to the right channels
+	// if using lookupd, make a blocking call to get channels and immediately create them
+	// to ensure that all channels receive published messages
 	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
 	if len(lookupdHTTPAddrs) > 0 {
 		channelNames, err := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
