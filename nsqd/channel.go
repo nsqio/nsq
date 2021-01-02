@@ -3,6 +3,7 @@ package nsqd
 import (
 	"container/heap"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -400,7 +401,8 @@ func (c *Channel) AddClient(clientID int64, client Consumer) error {
 
 	maxChannelConsumers := c.nsqd.getOpts().MaxChannelConsumers
 	if maxChannelConsumers != 0 && len(c.clients) >= maxChannelConsumers {
-		return errors.New("E_TOO_MANY_CHANNEL_CONSUMERS")
+		return fmt.Errorf("consumers for %s:%s exceeds limit of %d",
+			c.topicName, c.name, c.nsqd.getOpts().MaxChannelConsumers)
 	}
 
 	c.clients[clientID] = client
