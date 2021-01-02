@@ -615,7 +615,7 @@ func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 	// last client can leave the channel between GetChannel() and AddClient().
 	// Avoid adding a client to an ephemeral channel / topic which has started exiting.
 	var channel *Channel
-	for {
+	for i := 1; ; i++ {
 		topic := p.nsqd.GetTopic(topicName)
 		channel = topic.GetChannel(channelName)
 		if err := channel.AddClient(client.ID, client); err != nil {
@@ -624,8 +624,11 @@ func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 
 		if (channel.ephemeral && channel.Exiting()) || (topic.ephemeral && topic.Exiting()) {
 			channel.RemoveClient(client.ID)
-			time.Sleep(1 * time.Millisecond)
-			continue
+			if i < 2 {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			return nil, protocol.NewFatalClientErr(nil, "E_SUB_FAILED", "SUB failed to deleted topic/channel")
 		}
 		break
 	}
