@@ -145,22 +145,27 @@ func (t *Topic) GetExistingChannel(channelName string) (*Channel, error) {
 
 // DeleteExistingChannel removes a channel from the topic only if it exists
 func (t *Topic) DeleteExistingChannel(channelName string) error {
-	t.Lock()
+	t.RLock()
 	channel, ok := t.channelMap[channelName]
+	t.RUnlock()
 	if !ok {
-		t.Unlock()
 		return errors.New("channel does not exist")
 	}
-	delete(t.channelMap, channelName)
-	// not defered so that we can continue while the channel async closes
-	numChannels := len(t.channelMap)
-	t.Unlock()
 
 	t.nsqd.logf(LOG_INFO, "TOPIC(%s): deleting channel %s", t.name, channel.name)
 
 	// delete empties the channel before closing
 	// (so that we dont leave any messages around)
+	//
+	// we do this before removing the channel from map below (with no lock)
+	// so that any incoming subs will error and not create a new channel
+	// to enforce ordering
 	channel.Delete()
+
+	t.Lock()
+	delete(t.channelMap, channelName)
+	numChannels := len(t.channelMap)
+	t.Unlock()
 
 	// update messagePump state
 	select {
