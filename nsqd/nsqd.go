@@ -538,18 +538,18 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	return nil
 }
 
-func (n *NSQD) Notify(v interface{}) {
+func (n *NSQD) Notify(v interface{}, persist bool) {
 	// since the in-memory metadata is incomplete,
 	// should not persist metadata while loading it.
 	// nsqd will call `PersistMetadata` it after loading
-	persist := atomic.LoadInt32(&n.isLoading) == 0
+	loading := atomic.LoadInt32(&n.isLoading) == 1
 	n.waitGroup.Wrap(func() {
 		// by selecting on exitChan we guarantee that
 		// we do not block exit, see issue #123
 		select {
 		case <-n.exitChan:
 		case n.notifyChan <- v:
-			if !persist {
+			if loading || !persist {
 				return
 			}
 			n.Lock()

@@ -82,7 +82,7 @@ func NewTopic(topicName string, nsqd *NSQD, deleteCallback func(*Topic)) *Topic 
 
 	t.waitGroup.Wrap(t.messagePump)
 
-	t.nsqd.Notify(t)
+	t.nsqd.Notify(t, !t.ephemeral)
 
 	return t
 }
@@ -360,7 +360,7 @@ func (t *Topic) exit(deleted bool) error {
 
 		// since we are explicitly deleting a topic (not just at system exit time)
 		// de-register this from the lookupd
-		t.nsqd.Notify(t)
+		t.nsqd.Notify(t, !t.ephemeral)
 	} else {
 		t.nsqd.logf(LOG_INFO, "TOPIC(%s): closing", t.name)
 	}
