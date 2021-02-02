@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -46,6 +47,9 @@ type NSQD struct {
 	clientIDSequence int64
 
 	sync.RWMutex
+	ctx context.Context
+	// ctxCancel cancels a context that main() is waiting on
+	ctxCancel context.CancelFunc
 
 	opts atomic.Value
 
@@ -98,6 +102,7 @@ func New(opts *Options) (*NSQD, error) {
 		optsNotificationChan: make(chan struct{}, 1),
 		dl:                   dirlock.New(dataPath),
 	}
+	n.ctx, n.ctxCancel = context.WithCancel(context.Background())
 	httpcli := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
 	n.ci = clusterinfo.New(n.logf, httpcli)
 
@@ -425,6 +430,12 @@ func (n *NSQD) PersistMetadata() error {
 	return nil
 }
 
+// TermSignal handles a SIGTERM calling Exit
+// This is a noop after first call
+func (n *NSQD) TermSignal() {
+	n.Exit()
+}
+
 func (n *NSQD) Exit() {
 	if n.tcpListener != nil {
 		n.tcpListener.Close()
@@ -457,6 +468,7 @@ func (n *NSQD) Exit() {
 	n.waitGroup.Wait()
 	n.dl.Unlock()
 	n.logf(LOG_INFO, "NSQ: bye")
+	n.ctxCancel()
 }
 
 // GetTopic performs a thread safe operation
@@ -755,4 +767,9 @@ func buildTLSConfig(opts *Options) (*tls.Config, error) {
 
 func (n *NSQD) IsAuthEnabled() bool {
 	return len(n.getOpts().AuthHTTPAddresses) != 0
+}
+
+// Context returns a context that will be canceled when nsqd initiates the shutdown
+func (n *NSQD) Context() context.Context {
+	return n.ctx
 }
