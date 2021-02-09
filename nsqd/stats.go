@@ -99,6 +99,8 @@ type ClientStats struct {
 	Authed          bool   `json:"authed,omitempty"`
 	AuthIdentity    string `json:"auth_identity,omitempty"`
 	AuthIdentityURL string `json:"auth_identity_url,omitempty"`
+	TopologyZone    string `json:"topology_zone"`
+	TopologyRegion  string `json:"topology_region"`
 
 	PubCounts []PubCount `json:"pub_counts,omitempty"`
 

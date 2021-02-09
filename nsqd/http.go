@@ -132,6 +132,8 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 		HTTPPort         int    `json:"http_port"`
 		TCPPort          int    `json:"tcp_port"`
 		StartTime        int64  `json:"start_time"`
+		TopologyZone     string `json:"topology_zone"`
+		TopologyRegion   string `json:"topology_region"`
 	}{
 		Version:          version.Binary,
 		BroadcastAddress: s.nsqd.getOpts().BroadcastAddress,
@@ -139,6 +141,8 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 		TCPPort:          s.nsqd.RealTCPAddr().Port,
 		HTTPPort:         s.nsqd.RealHTTPAddr().Port,
 		StartTime:        s.nsqd.GetStartTime().Unix(),
+		TopologyZone:     s.nsqd.getOpts().TopologyZone,
+		TopologyRegion:   s.nsqd.getOpts().TopologyRegion,
 	}, nil
 }
 
