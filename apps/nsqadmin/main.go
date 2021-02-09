@@ -9,7 +9,7 @@ import (
 	"syscall"
 
 	"github.com/BurntSushi/toml"
-	"github.com/judwhite/go-svc/svc"
+	"github.com/judwhite/go-svc"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/app"
 	"github.com/nsqio/nsq/internal/lg"
