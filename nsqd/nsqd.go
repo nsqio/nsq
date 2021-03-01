@@ -371,8 +371,8 @@ func (n *NSQD) PersistMetadata() error {
 			channelData := make(map[string]interface{})
 			channelData["name"] = channel.name
 			channelData["paused"] = channel.IsPaused()
-			channels = append(channels, channelData)
 			channel.Unlock()
+			channels = append(channels, channelData)
 		}
 		topic.Unlock()
 		topicData["channels"] = channels

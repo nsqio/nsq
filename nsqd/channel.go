@@ -289,8 +289,8 @@ func (c *Channel) IsPaused() bool {
 
 // PutMessage writes a Message to the queue
 func (c *Channel) PutMessage(m *Message) error {
-	c.RLock()
-	defer c.RUnlock()
+	c.exitMutex.RLock()
+	defer c.exitMutex.RUnlock()
 	if c.Exiting() {
 		return errors.New("exiting")
 	}
@@ -391,34 +391,52 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 
 // AddClient adds a client to the Channel's client list
 func (c *Channel) AddClient(clientID int64, client Consumer) error {
-	c.Lock()
-	defer c.Unlock()
+	c.exitMutex.RLock()
+	defer c.exitMutex.RUnlock()
 
+	if c.Exiting() {
+		return errors.New("exiting")
+	}
+
+	c.RLock()
 	_, ok := c.clients[clientID]
+	numClients := len(c.clients)
+	c.RUnlock()
 	if ok {
 		return nil
 	}
 
 	maxChannelConsumers := c.nsqd.getOpts().MaxChannelConsumers
-	if maxChannelConsumers != 0 && len(c.clients) >= maxChannelConsumers {
+	if maxChannelConsumers != 0 && numClients >= maxChannelConsumers {
 		return fmt.Errorf("consumers for %s:%s exceeds limit of %d",
-			c.topicName, c.name, c.nsqd.getOpts().MaxChannelConsumers)
+			c.topicName, c.name, maxChannelConsumers)
 	}
 
+	c.Lock()
 	c.clients[clientID] = client
+	c.Unlock()
 	return nil
 }
 
 // RemoveClient removes a client from the Channel's client list
 func (c *Channel) RemoveClient(clientID int64) {
-	c.Lock()
-	defer c.Unlock()
+	c.exitMutex.RLock()
+	defer c.exitMutex.RUnlock()
 
+	if c.Exiting() {
+		return
+	}
+
+	c.RLock()
 	_, ok := c.clients[clientID]
+	c.RUnlock()
 	if !ok {
 		return
 	}
+
+	c.Lock()
 	delete(c.clients, clientID)
+	c.Unlock()
 
 	if len(c.clients) == 0 && c.ephemeral == true {
 		go c.deleter.Do(func() { c.deleteCallback(c) })
