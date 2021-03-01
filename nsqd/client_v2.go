@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,6 +46,78 @@ type identifyEvent struct {
 	HeartbeatInterval   time.Duration
 	SampleRate          int32
 	MsgTimeout          time.Duration
+}
+
+type PubCount struct {
+	Topic string `json:"topic"`
+	Count uint64 `json:"count"`
+}
+
+type ClientV2Stats struct {
+	ClientID        string `json:"client_id"`
+	Hostname        string `json:"hostname"`
+	Version         string `json:"version"`
+	RemoteAddress   string `json:"remote_address"`
+	State           int32  `json:"state"`
+	ReadyCount      int64  `json:"ready_count"`
+	InFlightCount   int64  `json:"in_flight_count"`
+	MessageCount    uint64 `json:"message_count"`
+	FinishCount     uint64 `json:"finish_count"`
+	RequeueCount    uint64 `json:"requeue_count"`
+	ConnectTime     int64  `json:"connect_ts"`
+	SampleRate      int32  `json:"sample_rate"`
+	Deflate         bool   `json:"deflate"`
+	Snappy          bool   `json:"snappy"`
+	UserAgent       string `json:"user_agent"`
+	Authed          bool   `json:"authed,omitempty"`
+	AuthIdentity    string `json:"auth_identity,omitempty"`
+	AuthIdentityURL string `json:"auth_identity_url,omitempty"`
+
+	PubCounts []PubCount `json:"pub_counts,omitempty"`
+
+	TLS                           bool   `json:"tls"`
+	CipherSuite                   string `json:"tls_cipher_suite"`
+	TLSVersion                    string `json:"tls_version"`
+	TLSNegotiatedProtocol         string `json:"tls_negotiated_protocol"`
+	TLSNegotiatedProtocolIsMutual bool   `json:"tls_negotiated_protocol_is_mutual"`
+}
+
+func (s ClientV2Stats) String() string {
+	connectTime := time.Unix(s.ConnectTime, 0)
+	duration := time.Since(connectTime).Truncate(time.Second)
+
+	_, port, _ := net.SplitHostPort(s.RemoteAddress)
+	id := fmt.Sprintf("%s:%s %s", s.Hostname, port, s.UserAgent)
+
+	// producer
+	if len(s.PubCounts) > 0 {
+		var total uint64
+		var topicOut []string
+		for _, v := range s.PubCounts {
+			total += v.Count
+			topicOut = append(topicOut, fmt.Sprintf("%s=%d", v.Topic, v.Count))
+		}
+		return fmt.Sprintf("[%s %-21s] msgs: %-8d topics: %s connected: %s",
+			s.Version,
+			id,
+			total,
+			strings.Join(topicOut, ","),
+			duration,
+		)
+	}
+
+	// consumer
+	return fmt.Sprintf("[%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s",
+		s.Version,
+		id,
+		s.State,
+		s.InFlightCount,
+		s.ReadyCount,
+		s.FinishCount,
+		s.RequeueCount,
+		s.MessageCount,
+		duration,
+	)
 }
 
 type clientV2 struct {
@@ -154,6 +227,16 @@ func (c *clientV2) String() string {
 	return c.RemoteAddr().String()
 }
 
+func (c *clientV2) Type() int {
+	c.metaLock.RLock()
+	hasPublished := len(c.pubCounts) > 0
+	c.metaLock.RUnlock()
+	if hasPublished {
+		return typeProducer
+	}
+	return typeConsumer
+}
+
 func (c *clientV2) Identify(data identifyDataV2) error {
 	c.nsqd.logf(LOG_INFO, "[%s] IDENTIFY: %+v", c, data)
 
@@ -199,7 +282,7 @@ func (c *clientV2) Identify(data identifyDataV2) error {
 	return nil
 }
 
-func (c *clientV2) Stats() ClientStats {
+func (c *clientV2) Stats(topicName string) ClientStats {
 	c.metaLock.RLock()
 	clientID := c.ClientID
 	hostname := c.Hostname
@@ -212,13 +295,17 @@ func (c *clientV2) Stats() ClientStats {
 	}
 	pubCounts := make([]PubCount, 0, len(c.pubCounts))
 	for topic, count := range c.pubCounts {
+		if len(topicName) > 0 && topic != topicName {
+			continue
+		}
 		pubCounts = append(pubCounts, PubCount{
 			Topic: topic,
 			Count: count,
 		})
+		break
 	}
 	c.metaLock.RUnlock()
-	stats := ClientStats{
+	stats := ClientV2Stats{
 		Version:         "V2",
 		RemoteAddress:   c.RemoteAddr().String(),
 		ClientID:        clientID,
@@ -248,13 +335,6 @@ func (c *clientV2) Stats() ClientStats {
 		stats.TLSNegotiatedProtocolIsMutual = p.NegotiatedProtocolIsMutual
 	}
 	return stats
-}
-
-func (c *clientV2) IsProducer() bool {
-	c.metaLock.RLock()
-	retval := len(c.pubCounts) > 0
-	c.metaLock.RUnlock()
-	return retval
 }
 
 // struct to convert from integers to the human readable strings

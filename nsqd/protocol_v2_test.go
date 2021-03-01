@@ -1608,7 +1608,8 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	prot := &protocolV2{nsqd: nsqd}
 	defer prot.nsqd.Exit()
 
-	err = prot.IOLoop(fakeConn)
+	client := prot.NewClient(fakeConn)
+	err = prot.IOLoop(client)
 	test.NotNil(t, err)
 	test.Equal(t, "E_INVALID invalid command INVALID_COMMAND", err.Error())
 	test.NotNil(t, err.(*protocol.FatalClientErr))

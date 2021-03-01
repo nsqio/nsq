@@ -471,8 +471,6 @@ func (s *httpServer) doPauseChannel(w http.ResponseWriter, req *http.Request, ps
 }
 
 func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	var producerStats []ClientStats
-
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
 		s.nsqd.logf(LOG_ERROR, "failed to parse request params - %s", err)
@@ -493,55 +491,11 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 	if !ok {
 		includeMem = true
 	}
-	if includeClients {
-		producerStats = s.nsqd.GetProducerStats()
-	}
 
 	stats := s.nsqd.GetStats(topicName, channelName, includeClients)
 	health := s.nsqd.GetHealth()
 	startTime := s.nsqd.GetStartTime()
 	uptime := time.Since(startTime)
-
-	// filter by topic (if specified)
-	if len(topicName) > 0 {
-		for _, topicStats := range stats {
-			if topicStats.TopicName == topicName {
-				// filter by channel (if specified)
-				if len(channelName) > 0 {
-					for _, channelStats := range topicStats.Channels {
-						if channelStats.ChannelName == channelName {
-							topicStats.Channels = []ChannelStats{channelStats}
-							break
-						}
-					}
-				}
-				stats = []TopicStats{topicStats}
-				break
-			}
-		}
-
-		filteredProducerStats := make([]ClientStats, 0)
-		for _, clientStat := range producerStats {
-			var found bool
-			var count uint64
-			for _, v := range clientStat.PubCounts {
-				if v.Topic == topicName {
-					count = v.Count
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
-			clientStat.PubCounts = []PubCount{PubCount{
-				Topic: topicName,
-				Count: count,
-			}}
-			filteredProducerStats = append(filteredProducerStats, clientStat)
-		}
-		producerStats = filteredProducerStats
-	}
 
 	var ms *memStats
 	if includeMem {
@@ -549,9 +503,10 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		ms = &m
 	}
 	if !jsonFormat {
-		return s.printStats(stats, producerStats, ms, health, startTime, uptime), nil
+		return s.printStats(stats, ms, health, startTime, uptime), nil
 	}
 
+	// TODO: should producer stats be hung off topics?
 	return struct {
 		Version   string        `json:"version"`
 		Health    string        `json:"health"`
@@ -559,14 +514,12 @@ func (s *httpServer) doStats(w http.ResponseWriter, req *http.Request, ps httpro
 		Topics    []TopicStats  `json:"topics"`
 		Memory    *memStats     `json:"memory,omitempty"`
 		Producers []ClientStats `json:"producers"`
-	}{version.Binary, health, startTime.Unix(), stats, ms, producerStats}, nil
+	}{version.Binary, health, startTime.Unix(), stats.Topics, ms, stats.Producers}, nil
 }
 
-func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats, ms *memStats, health string, startTime time.Time, uptime time.Duration) []byte {
+func (s *httpServer) printStats(stats Stats, ms *memStats, health string, startTime time.Time, uptime time.Duration) []byte {
 	var buf bytes.Buffer
 	w := &buf
-
-	now := time.Now()
 
 	fmt.Fprintf(w, "%s\n", version.String("nsqd"))
 	fmt.Fprintf(w, "start_time %v\n", startTime.Format(time.RFC3339))
@@ -587,13 +540,13 @@ func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats,
 		fmt.Fprintf(w, "   %-25s\t%d\n", "gc_total_runs", ms.GCTotalRuns)
 	}
 
-	if len(stats) == 0 {
+	if len(stats.Topics) == 0 {
 		fmt.Fprintf(w, "\nTopics: None\n")
 	} else {
 		fmt.Fprintf(w, "\nTopics:")
 	}
 
-	for _, t := range stats {
+	for _, t := range stats.Topics {
 		var pausedPrefix string
 		if t.Paused {
 			pausedPrefix = "*P "
@@ -627,48 +580,17 @@ func (s *httpServer) printStats(stats []TopicStats, producerStats []ClientStats,
 				c.E2eProcessingLatency,
 			)
 			for _, client := range c.Clients {
-				connectTime := time.Unix(client.ConnectTime, 0)
-				// truncate to the second
-				duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
-				fmt.Fprintf(w, "        [%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s\n",
-					client.Version,
-					client.ClientID,
-					client.State,
-					client.InFlightCount,
-					client.ReadyCount,
-					client.FinishCount,
-					client.RequeueCount,
-					client.MessageCount,
-					duration,
-				)
+				fmt.Fprintf(w, "        %s\n", client)
 			}
 		}
 	}
 
-	if len(producerStats) == 0 {
+	if len(stats.Producers) == 0 {
 		fmt.Fprintf(w, "\nProducers: None\n")
 	} else {
-		fmt.Fprintf(w, "\nProducers:")
-		for _, client := range producerStats {
-			connectTime := time.Unix(client.ConnectTime, 0)
-			// truncate to the second
-			duration := time.Duration(int64(now.Sub(connectTime).Seconds())) * time.Second
-			var totalPubCount uint64
-			for _, v := range client.PubCounts {
-				totalPubCount += v.Count
-			}
-			fmt.Fprintf(w, "\n   [%s %-21s] msgs: %-8d connected: %s\n",
-				client.Version,
-				client.ClientID,
-				totalPubCount,
-				duration,
-			)
-			for _, v := range client.PubCounts {
-				fmt.Fprintf(w, "      [%-15s] msgs: %-8d\n",
-					v.Topic,
-					v.Count,
-				)
-			}
+		fmt.Fprintf(w, "\nProducers:\n")
+		for _, client := range stats.Producers {
+			fmt.Fprintf(w, "   %s\n", client)
 		}
 	}
 

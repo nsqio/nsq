@@ -21,11 +21,16 @@ type LookupProtocolV1 struct {
 	nsqlookupd *NSQLookupd
 }
 
-func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
+func (p *LookupProtocolV1) NewClient(conn net.Conn) protocol.Client {
+	return NewClientV1(conn)
+}
+
+func (p *LookupProtocolV1) IOLoop(c protocol.Client) error {
 	var err error
 	var line string
 
-	client := NewClientV1(conn)
+	client := c.(*ClientV1)
+
 	reader := bufio.NewReader(client)
 	for {
 		line, err = reader.ReadString('\n')
@@ -66,8 +71,8 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 		}
 	}
 
-	conn.Close()
-	p.nsqlookupd.logf(LOG_INFO, "CLIENT(%s): closing", client)
+	p.nsqlookupd.logf(LOG_INFO, "PROTOCOL(V1): [%s] exiting ioloop", client)
+
 	if client.peerInfo != nil {
 		registrations := p.nsqlookupd.DB.LookupRegistrations(client.peerInfo.id)
 		for _, r := range registrations {
@@ -77,6 +82,7 @@ func (p *LookupProtocolV1) IOLoop(conn net.Conn) error {
 			}
 		}
 	}
+
 	return err
 }
 

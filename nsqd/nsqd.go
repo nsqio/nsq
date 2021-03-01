@@ -37,11 +37,6 @@ type errStore struct {
 	err error
 }
 
-type Client interface {
-	Stats() ClientStats
-	IsProducer() bool
-}
-
 type NSQD struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	clientIDSequence int64
@@ -59,9 +54,6 @@ type NSQD struct {
 	startTime time.Time
 
 	topicMap map[string]*Topic
-
-	clientLock sync.RWMutex
-	clients    map[int64]Client
 
 	lookupPeers atomic.Value
 
@@ -96,7 +88,6 @@ func New(opts *Options) (*NSQD, error) {
 	n := &NSQD{
 		startTime:            time.Now(),
 		topicMap:             make(map[string]*Topic),
-		clients:              make(map[int64]Client),
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
@@ -146,7 +137,7 @@ func New(opts *Options) (*NSQD, error) {
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
-	n.tcpServer = &tcpServer{}
+	n.tcpServer = &tcpServer{nsqd: n}
 	n.tcpListener, err = net.Listen("tcp", opts.TCPAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
@@ -235,23 +226,6 @@ func (n *NSQD) GetStartTime() time.Time {
 	return n.startTime
 }
 
-func (n *NSQD) AddClient(clientID int64, client Client) {
-	n.clientLock.Lock()
-	n.clients[clientID] = client
-	n.clientLock.Unlock()
-}
-
-func (n *NSQD) RemoveClient(clientID int64) {
-	n.clientLock.Lock()
-	_, ok := n.clients[clientID]
-	if !ok {
-		n.clientLock.Unlock()
-		return
-	}
-	delete(n.clients, clientID)
-	n.clientLock.Unlock()
-}
-
 func (n *NSQD) Main() error {
 	exitCh := make(chan error)
 	var once sync.Once
@@ -264,7 +238,6 @@ func (n *NSQD) Main() error {
 		})
 	}
 
-	n.tcpServer.nsqd = n
 	n.waitGroup.Wrap(func() {
 		exitFunc(protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf))
 	})
@@ -273,7 +246,6 @@ func (n *NSQD) Main() error {
 	n.waitGroup.Wrap(func() {
 		exitFunc(http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf))
 	})
-
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
 		httpsServer := newHTTPServer(n, true, true)
 		n.waitGroup.Wrap(func() {
@@ -440,8 +412,9 @@ func (n *NSQD) Exit() {
 	if n.tcpListener != nil {
 		n.tcpListener.Close()
 	}
+
 	if n.tcpServer != nil {
-		n.tcpServer.CloseAll()
+		n.tcpServer.Close()
 	}
 
 	if n.httpListener != nil {

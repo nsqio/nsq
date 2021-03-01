@@ -162,14 +162,14 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	}
 
 	for _, cl := range channel.clients {
-		stats := cl.Stats()
+		stats := cl.Stats("").(ClientV2Stats)
 		test.Equal(t, int64(25), stats.InFlightCount)
 	}
 
 	channel.Empty()
 
 	for _, cl := range channel.clients {
-		stats := cl.Stats()
+		stats := cl.Stats("").(ClientV2Stats)
 		test.Equal(t, int64(0), stats.InFlightCount)
 	}
 }

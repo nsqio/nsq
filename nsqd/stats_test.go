@@ -38,7 +38,7 @@ func TestStats(t *testing.T) {
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	stats := nsqd.GetStats(topicName, "ch", true)
+	stats := nsqd.GetStats(topicName, "ch", true).Topics
 	t.Logf("stats: %+v", stats)
 
 	test.Equal(t, 1, len(stats))
@@ -46,7 +46,7 @@ func TestStats(t *testing.T) {
 	test.Equal(t, 1, len(stats[0].Channels[0].Clients))
 	test.Equal(t, 1, stats[0].Channels[0].ClientCount)
 
-	stats = nsqd.GetStats(topicName, "ch", false)
+	stats = nsqd.GetStats(topicName, "ch", false).Topics
 	t.Logf("stats: %+v", stats)
 
 	test.Equal(t, 1, len(stats))
@@ -54,12 +54,12 @@ func TestStats(t *testing.T) {
 	test.Equal(t, 0, len(stats[0].Channels[0].Clients))
 	test.Equal(t, 1, stats[0].Channels[0].ClientCount)
 
-	stats = nsqd.GetStats(topicName, "none_exist_channel", false)
+	stats = nsqd.GetStats(topicName, "none_exist_channel", false).Topics
 	t.Logf("stats: %+v", stats)
 
 	test.Equal(t, 0, len(stats))
 
-	stats = nsqd.GetStats("none_exist_topic", "none_exist_channel", false)
+	stats = nsqd.GetStats("none_exist_topic", "none_exist_channel", false).Topics
 	t.Logf("stats: %+v", stats)
 
 	test.Equal(t, 0, len(stats))
@@ -150,7 +150,7 @@ func TestStatsChannelLocking(t *testing.T) {
 
 	wg.Wait()
 
-	stats := nsqd.GetStats(topicName, "channel", false)
+	stats := nsqd.GetStats(topicName, "channel", false).Topics
 	t.Logf("stats: %+v", stats)
 
 	test.Equal(t, 1, len(stats))
