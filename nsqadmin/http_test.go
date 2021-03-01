@@ -253,7 +253,8 @@ func TestHTTPChannelGET(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_channel_get" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic, err := nsqds[0].GetOrCreateTopic(topicName)
+	test.Nil(t, err)
 	topic.GetOrCreateChannel("ch")
 	time.Sleep(100 * time.Millisecond)
 
@@ -292,7 +293,8 @@ func TestHTTPNodesSingleGET(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_nodes_single_get" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic, err := nsqds[0].GetOrCreateTopic(topicName)
+	test.Nil(t, err)
 	topic.GetOrCreateChannel("ch")
 	time.Sleep(100 * time.Millisecond)
 
@@ -419,7 +421,8 @@ func TestHTTPDeleteChannelPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_delete_channel_post" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic, err := nsqds[0].GetOrCreateTopic(topicName)
+	test.Nil(t, err)
 	topic.GetOrCreateChannel("ch")
 	time.Sleep(100 * time.Millisecond)
 
@@ -474,7 +477,8 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_pause_channel_post" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic, err := nsqds[0].GetOrCreateTopic(topicName)
+	test.Nil(t, err)
 	topic.GetOrCreateChannel("ch")
 	time.Sleep(100 * time.Millisecond)
 
@@ -509,7 +513,8 @@ func TestHTTPEmptyTopicPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_empty_topic_post" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic, err := nsqds[0].GetOrCreateTopic(topicName)
+	test.Nil(t, err)
 	topic.PutMessage(nsqd.NewMessage(nsqd.MessageID{}, []byte("1234")))
 	test.Equal(t, int64(1), topic.Depth())
 	time.Sleep(100 * time.Millisecond)
@@ -537,7 +542,8 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	defer nsqadmin1.Exit()
 
 	topicName := "test_empty_channel_post" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqds[0].GetOrCreateTopic(topicName)
+	topic, err := nsqds[0].GetOrCreateTopic(topicName)
+	test.Nil(t, err)
 	channel := topic.GetOrCreateChannel("ch")
 	channel.PutMessage(nsqd.NewMessage(nsqd.MessageID{}, []byte("1234")))
 

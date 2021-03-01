@@ -137,7 +137,7 @@ func TestBasicV2(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_v2" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), []byte("test body"))
 	topic.PutMessage(msg)
 
@@ -172,7 +172,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_multiple_v2" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), []byte("test body"))
 	topic.GetOrCreateChannel("ch1")
 	topic.GetOrCreateChannel("ch2")
@@ -382,9 +382,9 @@ func TestPausing(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Nil(t, err)
 
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), []byte("test body"))
-	channel := topic.GetOrCreateChannel("ch")
+	channel, _ := topic.GetOrCreateChannel("ch")
 	topic.PutMessage(msg)
 
 	// receive the first message via the client, finish it, and send new RDY
@@ -590,7 +590,8 @@ func TestDPUB(t *testing.T) {
 
 	time.Sleep(25 * time.Millisecond)
 
-	ch := nsqd.GetOrCreateTopic(topicName).GetOrCreateChannel("ch")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	ch, _ := topic.GetOrCreateChannel("ch")
 	ch.deferredMutex.Lock()
 	numDef := len(ch.deferredMessages)
 	ch.deferredMutex.Unlock()
@@ -624,8 +625,8 @@ func TestTouch(t *testing.T) {
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	topic := nsqd.GetOrCreateTopic(topicName)
-	channel := topic.GetOrCreateChannel("ch")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel, _ := topic.GetOrCreateChannel("ch")
 	msg := NewMessage(topic.GenerateID(), []byte("test body"))
 	topic.PutMessage(msg)
 
@@ -667,7 +668,7 @@ func TestMaxRdyCount(t *testing.T) {
 	test.Nil(t, err)
 	defer conn.Close()
 
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), []byte("test body"))
 	topic.PutMessage(msg)
 
@@ -743,7 +744,7 @@ func TestOutputBuffering(t *testing.T) {
 	outputBufferSize := 256 * 1024
 	outputBufferTimeout := 500
 
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), make([]byte, outputBufferSize-1024))
 	topic.PutMessage(msg)
 
@@ -1139,7 +1140,7 @@ func TestSnappy(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(rw)
 	test.Nil(t, err)
 
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), msgBody)
 	topic.PutMessage(msg)
 
@@ -1232,12 +1233,12 @@ func TestSampling(t *testing.T) {
 	test.Equal(t, int32(sampleRate), r.SampleRate)
 
 	topicName := "test_sampling" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 	for i := 0; i < num; i++ {
 		msg := NewMessage(topic.GenerateID(), []byte("test body"))
 		topic.PutMessage(msg)
 	}
-	channel := topic.GetOrCreateChannel("ch")
+	channel, _ := topic.GetOrCreateChannel("ch")
 
 	// let the topic drain into the channel
 	time.Sleep(50 * time.Millisecond)
@@ -1336,8 +1337,8 @@ func TestClientMsgTimeout(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_cmsg_timeout" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
-	ch := topic.GetOrCreateChannel("ch")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	ch, _ := topic.GetOrCreateChannel("ch")
 	msg := NewMessage(topic.GenerateID(), make([]byte, 100))
 	topic.PutMessage(msg)
 
@@ -1429,8 +1430,8 @@ func TestReqTimeoutRange(t *testing.T) {
 	identify(t, conn, nil, frameTypeResponse)
 	sub(t, conn, topicName, "ch")
 
-	topic := nsqd.GetOrCreateTopic(topicName)
-	channel := topic.GetOrCreateChannel("ch")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel, _ := topic.GetOrCreateChannel("ch")
 	msg := NewMessage(topic.GenerateID(), []byte("test body"))
 	topic.PutMessage(msg)
 
@@ -1796,7 +1797,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, size)
 	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 	for i := 0; i < b.N; i++ {
 		msg := NewMessage(topic.GenerateID(), msg)
 		topic.PutMessage(msg)
@@ -1896,7 +1897,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	workers := runtime.GOMAXPROCS(0)
 	for i := 0; i < num; i++ {
 		topicName := "bench_v2" + strconv.Itoa(b.N) + "_" + strconv.Itoa(i) + "_" + strconv.Itoa(int(time.Now().Unix()))
-		topic := nsqd.GetOrCreateTopic(topicName)
+		topic, _ := nsqd.GetOrCreateTopic(topicName)
 		for i := 0; i < b.N; i++ {
 			msg := NewMessage(topic.GenerateID(), msg)
 			topic.PutMessage(msg)

@@ -23,14 +23,14 @@ func TestGetTopic(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic1 := nsqd.GetOrCreateTopic("test")
+	topic1, _ := nsqd.GetOrCreateTopic("test")
 	test.NotNil(t, topic1)
 	test.Equal(t, "test", topic1.name)
 
-	topic2 := nsqd.GetOrCreateTopic("test")
+	topic2, _ := nsqd.GetOrCreateTopic("test")
 	test.Equal(t, topic1, topic2)
 
-	topic3 := nsqd.GetOrCreateTopic("test2")
+	topic3, _ := nsqd.GetOrCreateTopic("test2")
 	test.Equal(t, "test2", topic3.name)
 	test.NotEqual(t, topic2, topic3)
 }
@@ -42,13 +42,13 @@ func TestGetChannel(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetOrCreateTopic("test")
+	topic, _ := nsqd.GetOrCreateTopic("test")
 
-	channel1 := topic.GetOrCreateChannel("ch1")
+	channel1, _ := topic.GetOrCreateChannel("ch1")
 	test.NotNil(t, channel1)
 	test.Equal(t, "ch1", channel1.name)
 
-	channel2 := topic.GetOrCreateChannel("ch2")
+	channel2, _ := topic.GetOrCreateChannel("ch2")
 
 	test.Equal(t, channel1, topic.channelMap["ch1"])
 	test.Equal(t, channel2, topic.channelMap["ch2"])
@@ -75,7 +75,7 @@ func TestHealth(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetOrCreateTopic("test")
+	topic, _ := nsqd.GetOrCreateTopic("test")
 	topic.backend = &errorBackendQueue{}
 
 	msg := NewMessage(topic.GenerateID(), make([]byte, 100))
@@ -123,16 +123,16 @@ func TestDeletes(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetOrCreateTopic("test")
+	topic, _ := nsqd.GetOrCreateTopic("test")
 
-	channel1 := topic.GetOrCreateChannel("ch1")
+	channel1, _ := topic.GetOrCreateChannel("ch1")
 	test.NotNil(t, channel1)
 
 	err := topic.DeleteExistingChannel("ch1")
 	test.Nil(t, err)
 	test.Equal(t, 0, len(topic.channelMap))
 
-	channel2 := topic.GetOrCreateChannel("ch2")
+	channel2, _ := topic.GetOrCreateChannel("ch2")
 	test.NotNil(t, channel2)
 
 	err = nsqd.DeleteExistingTopic("test")
@@ -148,9 +148,9 @@ func TestDeleteLast(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetOrCreateTopic("test")
+	topic, _ := nsqd.GetOrCreateTopic("test")
 
-	channel1 := topic.GetOrCreateChannel("ch1")
+	channel1, _ := topic.GetOrCreateChannel("ch1")
 	test.NotNil(t, channel1)
 
 	err := topic.DeleteExistingChannel("ch1")
@@ -172,11 +172,11 @@ func TestPause(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_topic_pause" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 	err := topic.Pause()
 	test.Nil(t, err)
 
-	channel := topic.GetOrCreateChannel("ch1")
+	channel, _ := topic.GetOrCreateChannel("ch1")
 	test.NotNil(t, channel)
 
 	msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
@@ -204,11 +204,11 @@ func TestDrainEmpty(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetOrCreateTopic("drain_topic_empty")
+	topic, _ := nsqd.GetOrCreateTopic("drain_topic_empty")
 
-	channel1 := topic.GetOrCreateChannel("ch1")
+	channel1, _ := topic.GetOrCreateChannel("ch1")
 	test.NotNil(t, channel1)
-	channel2 := topic.GetOrCreateChannel("ch2")
+	channel2, _ := topic.GetOrCreateChannel("ch2")
 	test.NotNil(t, channel2)
 	test.Equal(t, 2, len(topic.channelMap))
 
@@ -243,7 +243,7 @@ func BenchmarkTopicPut(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
-		topic := nsqd.GetOrCreateTopic(topicName)
+		topic, _ := nsqd.GetOrCreateTopic(topicName)
 		msg := NewMessage(guid(gf.NextMessageID()).Hex(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
@@ -260,12 +260,12 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 	_, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
-	channel := nsqd.GetOrCreateTopic(topicName).GetOrCreateChannel(channelName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel, _ := topic.GetOrCreateChannel(channelName)
 	gf := &test.GUIDFactory{}
 	b.StartTimer()
 
 	for i := 0; i <= b.N; i++ {
-		topic := nsqd.GetOrCreateTopic(topicName)
 		msg := NewMessage(guid(gf.NextMessageID()).Hex(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 		topic.PutMessage(msg)
 	}
@@ -289,8 +289,8 @@ func BenchmarkTopicMessagePump(b *testing.B) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetOrCreateTopic(topicName)
-	ch := topic.GetOrCreateChannel("ch")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	ch, _ := topic.GetOrCreateChannel("ch")
 	ctx, cancel := context.WithCancel(context.Background())
 	gf := &test.GUIDFactory{}
 

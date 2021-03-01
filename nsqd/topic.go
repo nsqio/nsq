@@ -134,12 +134,12 @@ func (t *Topic) Exiting() bool {
 // to return a Channel object (potentially new)
 //
 // The creation might fail if the topic is draining and no messages are outstanding
-func (t *Topic) GetOrCreateChannel(channelName string) *Channel {
+func (t *Topic) GetOrCreateChannel(channelName string) (*Channel, error) {
 	t.Lock()
-	channel, isNew := t.getOrCreateChannel(channelName)
+	channel, isNew, err := t.getOrCreateChannel(channelName)
 	t.Unlock()
 
-	if isNew {
+	if isNew && err != nil {
 		// update messagePump state
 		select {
 		case t.channelUpdateChan <- 1:
@@ -147,17 +147,17 @@ func (t *Topic) GetOrCreateChannel(channelName string) *Channel {
 		}
 	}
 
-	return channel
+	return channel, err
 }
 
 // getOrCreateChannel expects the caller to handle locking
-func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
+func (t *Topic) getOrCreateChannel(channelName string) (c *Channel, isNew bool, err error) {
 	channel, ok := t.channelMap[channelName]
 	if !ok {
 		if atomic.LoadInt32(&t.isDraining) == 1 {
 			// if this topic is draining, and there are no messages on the topic don't create a new channel
 			if t.Depth() == 0 {
-				return nil, false
+				return nil, false, errors.New("topic draining")
 			}
 		}
 
@@ -178,9 +178,9 @@ func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 		channel = NewChannel(t.name, channelName, t.nsqd, deleteCallback)
 		t.channelMap[channelName] = channel
 		t.nsqd.logf(LOG_INFO, "TOPIC(%s): new channel(%s)", t.name, channel.name)
-		return channel, true
+		return channel, true, nil
 	}
-	return channel, false
+	return channel, false, nil
 }
 
 func (t *Topic) GetExistingChannel(channelName string) (*Channel, error) {

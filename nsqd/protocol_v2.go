@@ -616,15 +616,15 @@ func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 	// Avoid adding a client to an ephemeral channel / topic which has started exiting.
 	var channel *Channel
 	for {
-		topic := p.nsqd.GetOrCreateTopic(topicName)
-		if topic == nil {
+		topic, err := p.nsqd.GetOrCreateTopic(topicName)
+		if err != nil {
 			// topic creation might be blocked because of draining
 			return nil, protocol.NewFatalClientErr(nil, "E_NSQD_DRAINING",
 				fmt.Sprintf("SUB create channel %s:%s failed. nsqd is draining",
 					topicName, channelName))
 		}
-		channel = topic.GetOrCreateChannel(channelName)
-		if channel == nil {
+		channel, _ = topic.GetOrCreateChannel(channelName)
+		if err != nil {
 			// channel creation might be blocked because of draining
 			return nil, protocol.NewFatalClientErr(nil, "E_TOPIC_DRAINING",
 				fmt.Sprintf("SUB create channel %s:%s failed. Topic is draining with no messages left",
@@ -814,8 +814,8 @@ func (p *protocolV2) PUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.nsqd.GetOrCreateTopic(topicName)
-	if topic == nil {
+	topic, err := p.nsqd.GetOrCreateTopic(topicName)
+	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed. nsqd draining")
 	}
 	msg := NewMessage(topic.GenerateID(), messageBody)
@@ -846,8 +846,8 @@ func (p *protocolV2) MPUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.nsqd.GetOrCreateTopic(topicName)
-	if topic == nil {
+	topic, err := p.nsqd.GetOrCreateTopic(topicName)
+	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_PUB_FAILED", "PUB failed. nsqd draining")
 	}
 
@@ -936,8 +936,8 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	topic := p.nsqd.GetOrCreateTopic(topicName)
-	if topic == nil {
+	topic, err := p.nsqd.GetOrCreateTopic(topicName)
+	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_DPUB_FAILED", "DPUB failed. nsqd draining")
 	}
 	msg := NewMessage(topic.GenerateID(), messageBody)

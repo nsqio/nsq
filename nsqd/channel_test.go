@@ -21,8 +21,8 @@ func TestPutMessage(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_put_message" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
-	channel1 := topic.GetOrCreateChannel("ch")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel1, _ := topic.GetOrCreateChannel("ch")
 
 	var id MessageID
 	msg := NewMessage(id, []byte("test"))
@@ -42,9 +42,9 @@ func TestPutMessage2Chan(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_put_message_2chan" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
-	channel1 := topic.GetOrCreateChannel("ch1")
-	channel2 := topic.GetOrCreateChannel("ch2")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel1, _ := topic.GetOrCreateChannel("ch1")
+	channel2, _ := topic.GetOrCreateChannel("ch2")
 
 	var id MessageID
 	msg := NewMessage(id, []byte("test"))
@@ -71,8 +71,8 @@ func TestInFlightWorker(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_in_flight_worker" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
-	channel := topic.GetOrCreateChannel("channel")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel, _ := topic.GetOrCreateChannel("channel")
 
 	for i := 0; i < count; i++ {
 		msg := NewMessage(topic.GenerateID(), []byte("test"))
@@ -112,8 +112,8 @@ func TestChannelEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
-	channel := topic.GetOrCreateChannel("channel")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel, _ := topic.GetOrCreateChannel("channel")
 
 	msgs := make([]*Message, 0, 25)
 	for i := 0; i < 25; i++ {
@@ -148,8 +148,8 @@ func TestChannelEmptyConsumer(t *testing.T) {
 	defer conn.Close()
 
 	topicName := "test_channel_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
-	channel := topic.GetOrCreateChannel("channel")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel, _ := topic.GetOrCreateChannel("channel")
 	client := newClientV2(0, conn, nsqd)
 	client.SetReadyCount(25)
 	err := channel.AddClient(client.ID, client)
@@ -186,8 +186,8 @@ func TestMaxChannelConsumers(t *testing.T) {
 	defer conn.Close()
 
 	topicName := "test_max_channel_consumers" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
-	channel := topic.GetOrCreateChannel("channel")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel, _ := topic.GetOrCreateChannel("channel")
 
 	client1 := newClientV2(1, conn, nsqd)
 	client1.SetReadyCount(25)
@@ -209,9 +209,9 @@ func TestChannelHealth(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	topic := nsqd.GetOrCreateTopic("test")
+	topic, _ := nsqd.GetOrCreateTopic("test")
 
-	channel := topic.GetOrCreateChannel("channel")
+	channel, _ := topic.GetOrCreateChannel("channel")
 
 	channel.backend = &errorBackendQueue{}
 
@@ -258,8 +258,8 @@ func TestChannelDraining(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_drain_channel" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
-	channel1 := topic.GetOrCreateChannel("ch")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	channel1, _ := topic.GetOrCreateChannel("ch")
 
 	msg := NewMessage(topic.GenerateID(), []byte("test"))
 	topic.PutMessage(msg)

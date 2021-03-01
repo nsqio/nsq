@@ -46,7 +46,7 @@ func TestHTTPpub(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -69,7 +69,7 @@ func TestHTTPpubEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte(""))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -93,7 +93,7 @@ func TestHTTPmpub(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	msg := []byte("test message")
 	msgs := make([][]byte, 4)
@@ -122,7 +122,7 @@ func TestHTTPmpubEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	msg := []byte("test message")
 	msgs := make([][]byte, 4)
@@ -153,7 +153,7 @@ func TestHTTPmpubBinary(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub_bin" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	mpub := make([][]byte, 5)
 	for i := range mpub {
@@ -182,7 +182,7 @@ func TestHTTPmpubForNonNormalizedBinaryParam(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub_bin" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	mpub := make([][]byte, 5)
 	for i := range mpub {
@@ -211,8 +211,8 @@ func TestHTTPpubDefer(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub_defer" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
-	ch := topic.GetOrCreateChannel("ch")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	ch, _ := topic.GetOrCreateChannel("ch")
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s&defer=%d", httpAddr, topicName, 1000)
@@ -242,7 +242,7 @@ func TestHTTPSRequire(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub_req" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -289,7 +289,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 
 	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
 	topicName := "test_http_pub_req_verf" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
@@ -353,7 +353,7 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_req_verf_except_http" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
@@ -761,7 +761,7 @@ func TestEmptyChannel(t *testing.T) {
 	test.Equal(t, 404, resp.StatusCode)
 	test.HTTPError(t, resp, 404, "TOPIC_NOT_FOUND")
 
-	topic := nsqd.GetOrCreateTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	url = fmt.Sprintf("http://%s/channel/empty?topic=%s&channel=%s", httpAddr, topicName, channelName)
 	resp, err = http.Post(url, "application/json", nil)

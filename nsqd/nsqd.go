@@ -329,8 +329,8 @@ func (n *NSQD) LoadMetadata() error {
 			n.logf(LOG_WARN, "skipping creation of invalid topic %s", t.Name)
 			continue
 		}
-		topic := n.GetOrCreateTopic(t.Name)
-		if topic == nil {
+		topic, err := n.GetOrCreateTopic(t.Name)
+		if err != nil {
 			n.logf(LOG_WARN, "skipping creation of topic, nsqd draining %s", t.Name)
 			continue
 		}
@@ -342,8 +342,8 @@ func (n *NSQD) LoadMetadata() error {
 				n.logf(LOG_WARN, "skipping creation of invalid channel %s", c.Name)
 				continue
 			}
-			channel := topic.GetOrCreateChannel(c.Name)
-			if c.Paused && channel != nil {
+			channel, err := topic.GetOrCreateChannel(c.Name)
+			if c.Paused && err != nil {
 				channel.Pause()
 			}
 		}
@@ -460,14 +460,14 @@ func (n *NSQD) Exit() {
 
 // GetOrCreateTopic performs a thread safe operation to get an existing topic or create a new one
 //
-// The creation might fail if nsqd is draining
-func (n *NSQD) GetOrCreateTopic(topicName string) *Topic {
+// An error will be returned if nsqd is draining
+func (n *NSQD) GetOrCreateTopic(topicName string) (*Topic, error) {
 	// most likely, we already have this topic, so try read lock first.
 	n.RLock()
 	t, ok := n.topicMap[topicName]
 	n.RUnlock()
 	if ok {
-		return t
+		return t, nil
 	}
 
 	n.Lock()
@@ -475,11 +475,11 @@ func (n *NSQD) GetOrCreateTopic(topicName string) *Topic {
 	t, ok = n.topicMap[topicName]
 	if ok {
 		n.Unlock()
-		return t
+		return t, nil
 	}
 	if atomic.LoadInt32(&n.isDraining) == 1 {
 		// don't create new topics when nsqd is draining
-		return nil
+		return nil, errors.New("nsqd draining")
 	}
 
 	deleteCallback := func(t *Topic) {
@@ -506,7 +506,7 @@ func (n *NSQD) GetOrCreateTopic(topicName string) *Topic {
 
 	// if loading metadata at startup, no lookupd connections yet, topic started after load
 	if atomic.LoadInt32(&n.isLoading) == 1 {
-		return t
+		return t, nil
 	}
 
 	// if using lookupd, make a blocking call to get the topics, and immediately create them.
@@ -529,7 +529,7 @@ func (n *NSQD) GetOrCreateTopic(topicName string) *Topic {
 
 	// now that all channels are added, start topic messagePump
 	t.Start()
-	return t
+	return t, nil
 }
 
 // GetExistingTopic gets a topic only if it exists

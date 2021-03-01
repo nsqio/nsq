@@ -201,8 +201,8 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	if !protocol.IsValidTopicName(topicName) {
 		return nil, nil, http_api.Err{400, "INVALID_TOPIC"}
 	}
-	topic := s.nsqd.GetOrCreateTopic(topicName)
-	if topic == nil {
+	topic, err := s.nsqd.GetOrCreateTopic(topicName)
+	if err != nil {
 		return nil, nil, http_api.Err{503, "EXITING"}
 	}
 
@@ -416,8 +416,8 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 	if err != nil {
 		return nil, err
 	}
-	ch := topic.GetOrCreateChannel(channelName)
-	if ch == nil {
+	_, err = topic.GetOrCreateChannel(channelName)
+	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
 	}
 	return nil, nil
