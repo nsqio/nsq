@@ -1,5 +1,5 @@
 ## log verbosity level: debug, info, warn, error, or fatal
-log-level = "info"
+log_level = "info"
 
 ## <addr>:<port> to listen on for HTTP clients
 http_address = "0.0.0.0:4171"
