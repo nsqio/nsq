@@ -384,6 +384,7 @@ func (t *Topic) exit(deleted bool) error {
 	}
 
 	// close all the channels
+	t.RLock()
 	for _, channel := range t.channelMap {
 		err := channel.Close()
 		if err != nil {
@@ -391,6 +392,7 @@ func (t *Topic) exit(deleted bool) error {
 			t.nsqd.logf(LOG_ERROR, "channel(%s) close - %s", channel.name, err)
 		}
 	}
+	t.RUnlock()
 
 	// write anything leftover to disk
 	t.flush()
