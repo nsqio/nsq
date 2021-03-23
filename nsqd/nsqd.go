@@ -50,6 +50,7 @@ type NSQD struct {
 
 	dl        *dirlock.DirLock
 	isLoading int32
+	isExiting int32
 	errValue  atomic.Value
 	startTime time.Time
 
@@ -402,13 +403,11 @@ func (n *NSQD) PersistMetadata() error {
 	return nil
 }
 
-// TermSignal handles a SIGTERM calling Exit
-// This is a noop after first call
-func (n *NSQD) TermSignal() {
-	n.Exit()
-}
-
 func (n *NSQD) Exit() {
+	if !atomic.CompareAndSwapInt32(&n.isExiting, 0, 1) {
+		// avoid double call
+		return
+	}
 	if n.tcpListener != nil {
 		n.tcpListener.Close()
 	}

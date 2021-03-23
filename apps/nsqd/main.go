@@ -87,7 +87,9 @@ func (p *program) Start() error {
 		// we don't want to un-register our sigterm handler which would
 		// cause default go behavior to apply
 		for range signalChan {
-			p.nsqd.TermSignal()
+			p.once.Do(func() {
+				p.nsqd.Exit()
+			})
 		}
 	}()
 	signal.Notify(signalChan, syscall.SIGTERM)
