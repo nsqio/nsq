@@ -68,7 +68,7 @@ func (p *program) Start() error {
 		os.Exit(0)
 	}
 
-	var cfg map[string]interface{}
+	var cfg config
 	configFile := flagSet.Lookup("config").Value.String()
 	if configFile != "" {
 		_, err := toml.DecodeFile(configFile, &cfg)
@@ -76,6 +76,7 @@ func (p *program) Start() error {
 			logFatal("failed to load config file %s - %s", configFile, err)
 		}
 	}
+	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
 	nsqlookupd, err := nsqlookupd.New(opts)

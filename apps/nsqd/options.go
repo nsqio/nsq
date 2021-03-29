@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/nsqd"
 )
 
@@ -89,6 +90,15 @@ func (cfg config) Validate() {
 			}
 		} else {
 			logFatal("failed parsing tls_min_version %+v", v)
+		}
+	}
+	if v, exists := cfg["log_level"]; exists {
+		var t lg.LogLevel
+		err := t.Set(fmt.Sprintf("%v", v))
+		if err == nil {
+			cfg["log_level"] = t
+		} else {
+			logFatal("failed parsing log_level %+v", v)
 		}
 	}
 }
