@@ -1,6 +1,9 @@
 package test
 
 import (
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -55,4 +58,19 @@ func isNil(object interface{}) bool {
 	}
 
 	return false
+}
+
+func HTTPError(t *testing.T, resp *http.Response, code int, message string) {
+	type ErrMessage struct {
+		Message string `json:"message"`
+	}
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	t.Log(string(body))
+	Equal(t, code, resp.StatusCode)
+
+	var em ErrMessage
+	Nil(t, json.Unmarshal(body, &em))
+	Equal(t, message, em.Message)
 }

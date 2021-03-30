@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -45,7 +46,7 @@ func TestHTTPpub(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -68,7 +69,7 @@ func TestHTTPpubEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte(""))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -92,7 +93,7 @@ func TestHTTPmpub(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	msg := []byte("test message")
 	msgs := make([][]byte, 4)
@@ -121,7 +122,7 @@ func TestHTTPmpubEmpty(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub_empty" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	msg := []byte("test message")
 	msgs := make([][]byte, 4)
@@ -152,7 +153,7 @@ func TestHTTPmpubBinary(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub_bin" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	mpub := make([][]byte, 5)
 	for i := range mpub {
@@ -181,7 +182,7 @@ func TestHTTPmpubForNonNormalizedBinaryParam(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_mpub_bin" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	mpub := make([][]byte, 5)
 	for i := range mpub {
@@ -210,8 +211,8 @@ func TestHTTPpubDefer(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub_defer" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
-	ch := topic.GetChannel("ch")
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
+	ch, _ := topic.GetOrCreateChannel("ch")
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s&defer=%d", httpAddr, topicName, 1000)
@@ -241,7 +242,7 @@ func TestHTTPSRequire(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_pub_req" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
@@ -288,7 +289,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 
 	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
 	topicName := "test_http_pub_req_verf" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
@@ -352,7 +353,7 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 	defer nsqd.Exit()
 
 	topicName := "test_http_req_verf_except_http" + strconv.Itoa(int(time.Now().Unix()))
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
@@ -404,33 +405,15 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.NotNil(t, channel)
 
-	em := ErrMessage{}
-
 	url = fmt.Sprintf("http://%s/topic/pause", httpAddr)
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 400, resp.StatusCode)
-	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "MISSING_ARG_TOPIC", em.Message)
+	test.HTTPError(t, resp, 400, "MISSING_ARG_TOPIC")
 
 	url = fmt.Sprintf("http://%s/topic/pause?topic=%s", httpAddr, topicName+"abc")
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 404, resp.StatusCode)
-	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "TOPIC_NOT_FOUND", em.Message)
+	test.HTTPError(t, resp, 404, "TOPIC_NOT_FOUND")
 
 	url = fmt.Sprintf("http://%s/topic/pause?topic=%s", httpAddr, topicName)
 	resp, err = http.Post(url, "application/json", nil)
@@ -691,42 +674,24 @@ func TestDeleteTopic(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	em := ErrMessage{}
-
 	url := fmt.Sprintf("http://%s/topic/delete", httpAddr)
 	resp, err := http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 400, resp.StatusCode)
-	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "MISSING_ARG_TOPIC", em.Message)
+	test.HTTPError(t, resp, 400, "MISSING_ARG_TOPIC")
 
 	topicName := "test_http_delete_topic" + strconv.Itoa(int(time.Now().Unix()))
 
 	url = fmt.Sprintf("http://%s/topic/delete?topic=%s", httpAddr, topicName)
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 404, resp.StatusCode)
-	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
+	test.HTTPError(t, resp, 404, "TOPIC_NOT_FOUND")
 
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "TOPIC_NOT_FOUND", em.Message)
-
-	nsqd.GetTopic(topicName)
+	nsqd.GetOrCreateTopic(topicName)
 
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -740,55 +705,29 @@ func TestEmptyTopic(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	em := ErrMessage{}
-
 	url := fmt.Sprintf("http://%s/topic/empty", httpAddr)
 	resp, err := http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 400, resp.StatusCode)
-	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "MISSING_ARG_TOPIC", em.Message)
+	test.HTTPError(t, resp, 400, "MISSING_ARG_TOPIC")
 
 	topicName := "test_http_empty_topic" + strconv.Itoa(int(time.Now().Unix()))
 
 	url = fmt.Sprintf("http://%s/topic/empty?topic=%s", httpAddr, topicName+"$")
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 400, resp.StatusCode)
-	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "INVALID_TOPIC", em.Message)
+	test.HTTPError(t, resp, 400, "INVALID_ARG_TOPIC")
 
 	url = fmt.Sprintf("http://%s/topic/empty?topic=%s", httpAddr, topicName)
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 404, resp.StatusCode)
-	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
+	test.HTTPError(t, resp, 404, "TOPIC_NOT_FOUND")
 
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "TOPIC_NOT_FOUND", em.Message)
-
-	nsqd.GetTopic(topicName)
+	nsqd.GetOrCreateTopic(topicName)
 
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -802,35 +741,17 @@ func TestEmptyChannel(t *testing.T) {
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	em := ErrMessage{}
-
 	url := fmt.Sprintf("http://%s/channel/empty", httpAddr)
 	resp, err := http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 400, resp.StatusCode)
-	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "MISSING_ARG_TOPIC", em.Message)
+	test.HTTPError(t, resp, 400, "MISSING_ARG_TOPIC")
 
 	topicName := "test_http_empty_channel" + strconv.Itoa(int(time.Now().Unix()))
 
 	url = fmt.Sprintf("http://%s/channel/empty?topic=%s", httpAddr, topicName)
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 400, resp.StatusCode)
-	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "MISSING_ARG_CHANNEL", em.Message)
+	test.HTTPError(t, resp, 400, "MISSING_ARG_CHANNEL")
 
 	channelName := "ch"
 
@@ -838,40 +759,64 @@ func TestEmptyChannel(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 404, resp.StatusCode)
-	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
+	test.HTTPError(t, resp, 404, "TOPIC_NOT_FOUND")
 
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "TOPIC_NOT_FOUND", em.Message)
-
-	topic := nsqd.GetTopic(topicName)
+	topic, _ := nsqd.GetOrCreateTopic(topicName)
 
 	url = fmt.Sprintf("http://%s/channel/empty?topic=%s&channel=%s", httpAddr, topicName, channelName)
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
-	test.Equal(t, 404, resp.StatusCode)
-	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
+	test.HTTPError(t, resp, 404, "CHANNEL_NOT_FOUND")
 
-	t.Logf("%s", body)
-	err = json.Unmarshal(body, &em)
-	test.Nil(t, err)
-	test.Equal(t, "CHANNEL_NOT_FOUND", em.Message)
-
-	topic.GetChannel(channelName)
+	topic.GetOrCreateChannel(channelName)
 
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
 	test.Equal(t, []byte(""), body)
+}
+
+func TestTopicDrain(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	url := fmt.Sprintf("http://%s/topic/drain", httpAddr)
+	resp, err := http.Post(url, "application/json", nil)
+	test.Nil(t, err)
+	test.HTTPError(t, resp, 400, "MISSING_ARG_TOPIC")
+
+	topicName := "test_http_topic_drain" + strconv.Itoa(int(time.Now().Unix()))
+
+	url = fmt.Sprintf("http://%s/topic/drain?topic=%s", httpAddr, topicName+"$")
+	resp, err = http.Post(url, "application/json", nil)
+	test.HTTPError(t, resp, 400, "INVALID_ARG_TOPIC")
+
+	url = fmt.Sprintf("http://%s/topic/drain?topic=%s", httpAddr, topicName)
+	resp, err = http.Post(url, "application/json", nil)
+	test.Nil(t, err)
+	test.HTTPError(t, resp, 404, "TOPIC_NOT_FOUND")
+
+	nsqd.GetOrCreateTopic(topicName)
+
+	resp, err = http.Post(url, "application/json", nil)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	t.Logf("%s", body)
+	test.Equal(t, []byte(""), body)
+
+	time.Sleep(time.Millisecond * 100)
+	topic, _ := nsqd.GetExistingTopic(topicName)
+	test.Nil(t, topic)
 }
 
 func TestInfo(t *testing.T) {
@@ -894,6 +839,40 @@ func TestInfo(t *testing.T) {
 	err = json.Unmarshal(body, &info)
 	test.Nil(t, err)
 	test.Equal(t, version.Binary, info.Version)
+}
+
+func TestShutdown(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	url := fmt.Sprintf("http://%s/state/shutdown", httpAddr)
+	req, err := http.NewRequest(http.MethodPut, url, nil)
+	test.Nil(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
+	time.Sleep(10 * time.Millisecond)
+	test.Equal(t, int32(1), atomic.LoadInt32(&nsqd.isExiting))
+}
+
+func TestDrain(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	url := fmt.Sprintf("http://%s/state/drain", httpAddr)
+	req, err := http.NewRequest(http.MethodPut, url, nil)
+	test.Nil(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	test.Nil(t, err)
+	test.Equal(t, 200, resp.StatusCode)
+	time.Sleep(10 * time.Millisecond)
+	test.Equal(t, int32(1), atomic.LoadInt32(&nsqd.isExiting))
 }
 
 func BenchmarkHTTPpub(b *testing.B) {

@@ -30,6 +30,7 @@ type Topic struct {
 	waitGroup         util.WaitGroupWrapper
 	exitFlag          int32
 	idFactory         *guidFactory
+	isDraining        int32
 
 	ephemeral      bool
 	deleteCallback func(*Topic)
@@ -94,20 +95,51 @@ func (t *Topic) Start() {
 	}
 }
 
+// StartDraining does a clean delete of a topic.
+//
+// - Puts of new messages will error
+// - If messages are left channel draining will start after Empty()
+//   or when the last message is written to a channel (in messagePump)
+// - If no messages are left, channels will start draining immediately
+func (t *Topic) StartDraining() {
+	t.Lock() // block PutMessage
+	defer t.Unlock()
+	if t.Exiting() {
+		return
+	}
+	if !atomic.CompareAndSwapInt32(&t.isDraining, 0, 1) {
+		return
+	}
+
+	msgsLeft := t.Depth()
+	t.nsqd.logf(LOG_INFO, "TOPIC(%s): draining. depth:%d channels:%d", t.name, msgsLeft, len(t.channelMap))
+
+	// if no outstanding messages, start channel drain
+	if msgsLeft == 0 {
+		for _, c := range t.channelMap {
+			c.StartDraining()
+		}
+		if len(t.channelMap) == 0 {
+			go t.deleter.Do(func() { t.deleteCallback(t) })
+		}
+	}
+}
+
 // Exiting returns a boolean indicating if this topic is closed/exiting
 func (t *Topic) Exiting() bool {
 	return atomic.LoadInt32(&t.exitFlag) == 1
 }
 
-// GetChannel performs a thread safe operation
-// to return a pointer to a Channel object (potentially new)
-// for the given Topic
-func (t *Topic) GetChannel(channelName string) *Channel {
+// GetOrCreateChannel performs a thread safe operation
+// to return a Channel object (potentially new)
+//
+// The creation might fail if the topic is draining and no messages are outstanding
+func (t *Topic) GetOrCreateChannel(channelName string) (*Channel, error) {
 	t.Lock()
-	channel, isNew := t.getOrCreateChannel(channelName)
+	channel, isNew, err := t.getOrCreateChannel(channelName)
 	t.Unlock()
 
-	if isNew {
+	if isNew && err != nil {
 		// update messagePump state
 		select {
 		case t.channelUpdateChan <- 1:
@@ -115,22 +147,40 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 		}
 	}
 
-	return channel
+	return channel, err
 }
 
-// this expects the caller to handle locking
-func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
+// getOrCreateChannel expects the caller to handle locking
+func (t *Topic) getOrCreateChannel(channelName string) (c *Channel, isNew bool, err error) {
 	channel, ok := t.channelMap[channelName]
 	if !ok {
+		if atomic.LoadInt32(&t.isDraining) == 1 {
+			// if this topic is draining, and there are no messages on the topic don't create a new channel
+			if t.Depth() == 0 {
+				return nil, false, errors.New("topic draining")
+			}
+		}
+
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
+			if atomic.LoadInt32(&t.isDraining) == 1 {
+				// if no channels left; no msgs left delete
+				t.RLock()
+				numChannels := len(t.channelMap)
+				depth := t.Depth()
+				t.nsqd.logf(LOG_INFO, "TOPIC(%s): deleting channel(%s). Draining status: channels:%d topic depth:%d", t.name, c.name, numChannels, depth)
+				t.RUnlock()
+				if numChannels == 0 && depth == 0 {
+					go t.deleter.Do(func() { t.deleteCallback(t) })
+				}
+			}
 		}
 		channel = NewChannel(t.name, channelName, t.nsqd, deleteCallback)
 		t.channelMap[channelName] = channel
 		t.nsqd.logf(LOG_INFO, "TOPIC(%s): new channel(%s)", t.name, channel.name)
-		return channel, true
+		return channel, true, nil
 	}
-	return channel, false
+	return channel, false, nil
 }
 
 func (t *Topic) GetExistingChannel(channelName string) (*Channel, error) {
@@ -182,6 +232,9 @@ func (t *Topic) PutMessage(m *Message) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
+	if atomic.LoadInt32(&t.isDraining) == 1 {
+		return errors.New("draining")
+	}
 	err := t.put(m)
 	if err != nil {
 		return err
@@ -197,6 +250,9 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 	defer t.RUnlock()
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
+	}
+	if atomic.LoadInt32(&t.isDraining) == 1 {
+		return errors.New("draining")
 	}
 
 	messageTotalBytes := 0
@@ -232,6 +288,7 @@ func (t *Topic) put(m *Message) error {
 	return nil
 }
 
+// Depth returns the number of unconsumed messages in the channel buffer or the disk backend
 func (t *Topic) Depth() int64 {
 	return int64(len(t.memoryMsgChan)) + t.backend.Depth()
 }
@@ -329,6 +386,19 @@ func (t *Topic) messagePump() {
 					t.name, msg.ID, channel.name, err)
 			}
 		}
+
+		// If in draining mode and we wrote a message to channels
+		// check if it was the last message on the topic (there are no more left)
+		// in which case we start draining each channel
+		if atomic.LoadInt32(&t.isDraining) == 1 {
+			if t.Depth() == 0 {
+				t.RLock()
+				for _, c := range t.channelMap {
+					c.StartDraining()
+				}
+				t.RUnlock()
+			}
+		}
 	}
 
 exit:
@@ -392,17 +462,36 @@ func (t *Topic) exit(deleted bool) error {
 	return t.backend.Close()
 }
 
+// Empty drains the topic of messages.
+//
+// If the topic is draining this will start draining each channel
+// if there are no channels the topic will be deleted
 func (t *Topic) Empty() error {
+MemoryDrain:
 	for {
 		select {
 		case <-t.memoryMsgChan:
 		default:
-			goto finish
+			break MemoryDrain
 		}
 	}
 
-finish:
-	return t.backend.Empty()
+	err := t.backend.Empty()
+	if err != nil {
+		return err
+	}
+
+	if atomic.LoadInt32(&t.isDraining) == 1 {
+		t.RLock()
+		for _, c := range t.channelMap {
+			c.StartDraining()
+		}
+		if len(t.channelMap) == 0 {
+			go t.deleter.Do(func() { t.deleteCallback(t) })
+		}
+		t.RUnlock()
+	}
+	return nil
 }
 
 func (t *Topic) flush() error {

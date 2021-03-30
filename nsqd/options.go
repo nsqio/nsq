@@ -3,10 +3,12 @@ package nsqd
 import (
 	"crypto/md5"
 	"crypto/tls"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/nsqio/nsq/internal/lg"
@@ -14,10 +16,11 @@ import (
 
 type Options struct {
 	// basic options
-	ID        int64       `flag:"node-id" cfg:"id"`
-	LogLevel  lg.LogLevel `flag:"log-level"`
-	LogPrefix string      `flag:"log-prefix"`
-	Logger    Logger
+	ID          int64       `flag:"node-id" cfg:"id"`
+	LogLevel    lg.LogLevel `flag:"log-level"`
+	LogPrefix   string      `flag:"log-prefix"`
+	Logger      Logger
+	SigtermMode string `flag:"sigterm-mode"` // shutdown, drain
 
 	TCPAddress               string        `flag:"tcp-address"`
 	HTTPAddress              string        `flag:"http-address"`
@@ -96,9 +99,10 @@ func NewOptions() *Options {
 	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 
 	return &Options{
-		ID:        defaultID,
-		LogPrefix: "[nsqd] ",
-		LogLevel:  lg.INFO,
+		ID:          defaultID,
+		LogPrefix:   "[nsqd] ",
+		LogLevel:    lg.INFO,
+		SigtermMode: "shutdown",
 
 		TCPAddress:        "0.0.0.0:4150",
 		HTTPAddress:       "0.0.0.0:4151",
@@ -152,4 +156,25 @@ func NewOptions() *Options {
 
 		TLSMinVersion: tls.VersionTLS10,
 	}
+}
+
+type ValidationErrors []string
+
+func (v ValidationErrors) Error() string {
+	return fmt.Sprintf("Invalid configuration:\n  %s", strings.Join([]string(v), "\n  "))
+}
+
+func (o *Options) Validate() error {
+	var msgs ValidationErrors
+
+	switch o.SigtermMode {
+	case "shutdown", "drain":
+	default:
+		msgs = append(msgs, fmt.Sprintf("invalid sigterm-mode=%q (valid: \"shutdown\", \"drain\")", o.SigtermMode))
+	}
+
+	if len(msgs) != 0 {
+		return msgs
+	}
+	return nil
 }
