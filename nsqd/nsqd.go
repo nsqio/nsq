@@ -364,16 +364,15 @@ func (n *NSQD) PersistMetadata() error {
 		channels := []interface{}{}
 		topic.Lock()
 		for _, channel := range topic.channelMap {
-			channel.Lock()
 			if channel.ephemeral {
-				channel.Unlock()
 				continue
 			}
+			channel.Lock()
 			channelData := make(map[string]interface{})
 			channelData["name"] = channel.name
 			channelData["paused"] = channel.IsPaused()
-			channels = append(channels, channelData)
 			channel.Unlock()
+			channels = append(channels, channelData)
 		}
 		topic.Unlock()
 		topicData["channels"] = channels
@@ -447,7 +446,7 @@ func (n *NSQD) Exit() {
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
 func (n *NSQD) GetTopic(topicName string) *Topic {
-	// most likely, we already have this topic, so try read lock first.
+	// most likely we already have this topic, so try read lock first
 	n.RLock()
 	t, ok := n.topicMap[topicName]
 	n.RUnlock()
@@ -473,13 +472,14 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	n.logf(LOG_INFO, "TOPIC(%s): created", t.name)
 	// topic is created but messagePump not yet started
 
-	// if loading metadata at startup, no lookupd connections yet, topic started after load
+	// if this topic was created while loading metadata at startup don't do any further initialization
+	// (topic will be "started" after loading completes)
 	if atomic.LoadInt32(&n.isLoading) == 1 {
 		return t
 	}
 
-	// if using lookupd, make a blocking call to get the topics, and immediately create them.
-	// this makes sure that any message received is buffered to the right channels
+	// if using lookupd, make a blocking call to get channels and immediately create them
+	// to ensure that all channels receive published messages
 	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
 	if len(lookupdHTTPAddrs) > 0 {
 		channelNames, err := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
@@ -537,18 +537,18 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	return nil
 }
 
-func (n *NSQD) Notify(v interface{}) {
+func (n *NSQD) Notify(v interface{}, persist bool) {
 	// since the in-memory metadata is incomplete,
 	// should not persist metadata while loading it.
 	// nsqd will call `PersistMetadata` it after loading
-	persist := atomic.LoadInt32(&n.isLoading) == 0
+	loading := atomic.LoadInt32(&n.isLoading) == 1
 	n.waitGroup.Wrap(func() {
 		// by selecting on exitChan we guarantee that
 		// we do not block exit, see issue #123
 		select {
 		case <-n.exitChan:
 		case n.notifyChan <- v:
-			if !persist {
+			if loading || !persist {
 				return
 			}
 			n.Lock()
