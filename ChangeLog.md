@@ -2,6 +2,44 @@
 
 ## Releases
 
+### WIP
+
+**Upgrading**
+
+ * #1227 - bump dependencies, officially drop `dep` support, drop Go `1.9` support
+
+Features:
+
+ * #1307 - remove `Context` to use stdlib `context`
+ * #1295 / #1296 - switch to GitHub Actions CI
+ * #1292 - `nsqd`: minimize allocations on message send
+ * #1289 - optimize `uniq`
+ * #1230 / #1232 - `nsqd`: ability to omit memory stats from `/stats`
+ * #1226 - `nsqd`: only update internal `RDY` count for client when it changes
+ * #1221 - test against more recent versions of Go (`1.12` and `1.13`)
+ * #1209 - `nsqd`: bump `go-diskqueue` (interface change)
+ * #1206 - prefer idiomatic `sort.Ints` over `sort.Sort`
+ * #1197 - Dockerfile: update Alpine base image, use /data by default
+ * #1178 - `nsqd`: configurable queue scan worker pool
+ * #1159 - `nsqd`: don't buffer messages when `--mem-queue-size=0`
+ * #1073 / #1297 - `nsqd`: support separate broadcast ports for TCP and HTTP
+
+Bugs:
+
+ * #765 / #1195 / #1203 / #1205 - fix build on illumos
+ * #1333 - fix race detector tests on non-bash shells
+ * #1330 - fix `log_level` support in configuration file
+ * #1319 / #1331 - `nsqd`: handle SIGTERM
+ * #1287 - `nsqadmin`: fix `--proxy-graphite` support
+ * #1270 / #1271 - `nsqlookupd`: fix incorrect error message for HTTP listener
+ * #1264 - fix benchmark script
+ * #1251 / #1314 / #1327 - `nsqd`: fix live lock for high churn ephemeral topic/channel reconnections
+ * #1237 - Dockerfile: add `nsswitch.conf` to ensure go resolver uses `/etc/hosts` first
+ * #1217 / #1220 - `nsqd`: improve error message when `--data-path` does not exist
+ * #1198 / #1190 / #1262 - synchronize close of all connections on Exit
+ * #1188 / #1189 - `nsqadmin`: fix channel delete, fix source-maps in Firefox
+ * #1186 - `nsqadmin`: fix nodes list with ipv6 addresses
+
 ### 1.2.0 - 2019-08-26
 
 **Upgrading**
