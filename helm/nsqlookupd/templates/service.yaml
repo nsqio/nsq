@@ -1,0 +1,18 @@
+# headless service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nsqlookupd.fullname" . }}
+  labels:
+    {{- include "nsqlookupd.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 4160
+      targetPort: tcp
+      name: tcp
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      name: http
+  clusterIP: None
+  selector:
+    {{- include "nsqlookupd.selectorLabels" . | nindent 4 }}
