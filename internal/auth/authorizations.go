@@ -107,7 +107,7 @@ func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName strin
 	v.Set("common_name", commonName)
 
 	var endpoint string
-	if strings.Contains(authd,"://"){
+	if strings.Contains(authd, "://"){
 		endpoint = fmt.Sprintf("%s?%s", authd, v.Encode())
 	} else {
 		endpoint = fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
