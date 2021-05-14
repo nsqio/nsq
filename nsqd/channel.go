@@ -220,6 +220,9 @@ func (c *Channel) flush() error {
 	for {
 		select {
 		case msg := <-c.memoryMsgChan:
+			if c.ephemeral {
+				return tryQueueToMemoryChan(c.memoryMsgChan, msg)
+			}
 			err := writeMessageToBackend(msg, c.backend)
 			if err != nil {
 				c.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)

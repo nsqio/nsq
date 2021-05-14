@@ -225,6 +225,9 @@ func (t *Topic) put(m *Message) error {
 	select {
 	case t.memoryMsgChan <- m:
 	default:
+		if t.ephemeral {
+			return tryQueueToMemoryChan(t.memoryMsgChan, m)
+		}
 		err := writeMessageToBackend(m, t.backend)
 		t.nsqd.SetHealth(err)
 		if err != nil {
