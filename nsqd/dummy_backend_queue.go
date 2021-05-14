@@ -31,3 +31,22 @@ func (d *dummyBackendQueue) Depth() int64 {
 func (d *dummyBackendQueue) Empty() error {
 	return nil
 }
+
+func tryQueueToMemoryChan(msgChan chan *Message, m *Message) error {
+	for i := 0; i < 100; i++ {
+		select {
+		case msgChan <- m:
+			return nil
+		default:
+			// Wait for retry...
+		}
+
+		select {
+		case <- msgChan:
+		default:
+			// Wait for retry...
+		}
+	}
+
+	return nil
+}

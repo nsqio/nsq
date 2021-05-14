@@ -218,6 +218,9 @@ func (t *Topic) put(m *Message) error {
 	select {
 	case t.memoryMsgChan <- m:
 	default:
+		if t.ephemeral {
+			return tryQueueToMemoryChan(t.memoryMsgChan, m)
+		}
 		b := bufferPoolGet()
 		err := writeMessageToBackend(b, m, t.backend)
 		bufferPoolPut(b)
