@@ -1,17 +1,19 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math/rand"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/judwhite/go-svc/svc"
+	"github.com/judwhite/go-svc"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/version"
@@ -25,7 +27,8 @@ type program struct {
 
 func main() {
 	prg := &program{}
-	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM); err != nil {
+	// SIGTERM handling is in Start()
+	if err := svc.Run(prg, syscall.SIGINT); err != nil {
 		logFatal("%s", err)
 	}
 }
@@ -62,6 +65,7 @@ func (p *program) Start() error {
 	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
+
 	nsqd, err := nsqd.New(opts)
 	if err != nil {
 		logFatal("failed to instantiate nsqd - %s", err)
@@ -76,6 +80,19 @@ func (p *program) Start() error {
 	if err != nil {
 		logFatal("failed to persist metadata - %s", err)
 	}
+
+	signalChan := make(chan os.Signal, 1)
+	go func() {
+		// range over all term signals
+		// we don't want to un-register our sigterm handler which would
+		// cause default go behavior to apply
+		for range signalChan {
+			p.once.Do(func() {
+				p.nsqd.Exit()
+			})
+		}
+	}()
+	signal.Notify(signalChan, syscall.SIGTERM)
 
 	go func() {
 		err := p.nsqd.Main()
@@ -93,6 +110,11 @@ func (p *program) Stop() error {
 		p.nsqd.Exit()
 	})
 	return nil
+}
+
+// Context returns a context that will be canceled when nsqd initiates the shutdown
+func (p *program) Context() context.Context {
+	return p.nsqd.Context()
 }
 
 func logFatal(f string, args ...interface{}) {

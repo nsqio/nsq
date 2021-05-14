@@ -7,6 +7,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/mreiferson/go-options"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/nsqd"
 )
@@ -23,7 +24,9 @@ func TestConfigFlagParsing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
+	defer f.Close()
 	toml.DecodeReader(f, &cfg)
+	cfg["log_level"] = "debug"
 	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
@@ -31,5 +34,8 @@ func TestConfigFlagParsing(t *testing.T) {
 
 	if opts.TLSMinVersion != tls.VersionTLS10 {
 		t.Errorf("min %#v not expected %#v", opts.TLSMinVersion, tls.VersionTLS10)
+	}
+	if opts.LogLevel != lg.DEBUG {
+		t.Fatalf("log level: want debug, got %s", opts.LogLevel.String())
 	}
 }

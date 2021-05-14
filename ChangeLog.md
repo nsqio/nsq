@@ -2,6 +2,44 @@
 
 ## Releases
 
+### WIP
+
+**Upgrading**
+
+ * #1227 - bump dependencies, officially drop `dep` support, drop Go `1.9` support
+
+Features:
+
+ * #1307 - remove `Context` to use stdlib `context`
+ * #1295 / #1296 - switch to GitHub Actions CI
+ * #1292 - `nsqd`: minimize allocations on message send
+ * #1289 - optimize `uniq`
+ * #1230 / #1232 - `nsqd`: ability to omit memory stats from `/stats`
+ * #1226 - `nsqd`: only update internal `RDY` count for client when it changes
+ * #1221 - test against more recent versions of Go (`1.12` and `1.13`)
+ * #1209 - `nsqd`: bump `go-diskqueue` (interface change)
+ * #1206 - prefer idiomatic `sort.Ints` over `sort.Sort`
+ * #1197 - Dockerfile: update Alpine base image, use /data by default
+ * #1178 - `nsqd`: configurable queue scan worker pool
+ * #1159 - `nsqd`: don't buffer messages when `--mem-queue-size=0`
+ * #1073 / #1297 - `nsqd`: support separate broadcast ports for TCP and HTTP
+
+Bugs:
+
+ * #765 / #1195 / #1203 / #1205 - fix build on illumos
+ * #1333 - fix race detector tests on non-bash shells
+ * #1330 - fix `log_level` support in configuration file
+ * #1319 / #1331 - `nsqd`: handle SIGTERM
+ * #1287 - `nsqadmin`: fix `--proxy-graphite` support
+ * #1270 / #1271 - `nsqlookupd`: fix incorrect error message for HTTP listener
+ * #1264 - fix benchmark script
+ * #1251 / #1314 / #1327 - `nsqd`: fix live lock for high churn ephemeral topic/channel reconnections
+ * #1237 - Dockerfile: add `nsswitch.conf` to ensure go resolver uses `/etc/hosts` first
+ * #1217 / #1220 - `nsqd`: improve error message when `--data-path` does not exist
+ * #1198 / #1190 / #1262 - synchronize close of all connections on Exit
+ * #1188 / #1189 - `nsqadmin`: fix channel delete, fix source-maps in Firefox
+ * #1186 - `nsqadmin`: fix nodes list with ipv6 addresses
+
 ### 1.2.0 - 2019-08-26
 
 **Upgrading**
@@ -352,7 +390,7 @@ those features/fixes.
 **Upgrading from 0.3.1**: Binaries contain no backwards incompatible changes however as of this
 release we've updated our official Docker images.
 
-We now provide a single Docker image [`nsqio/nsq`](https://registry.hub.docker.com/u/nsqio/nsq/)
+We now provide a single Docker image [`nsqio/nsq`](https://registry.hub.docker.com/r/nsqio/nsq/)
 that includes *all* of the NSQ binaries. We did this for several reasons, primarily because the
 tagged versions in the previous incarnation were broken (and did not actually pin to a version!).
 The new image is an order of magnitude smaller, weighing in around 70mb.
@@ -510,8 +548,8 @@ When `nsqd` is configured with an `--auth-http-address` it will require clients 
 command. The `AUTH` command body is opaque to `nsqd`, it simply passes it along to the configured
 auth daemon which responds with well formed JSON, indicating which topics/channels and properties
 on those entities are accessible to that client (rejecting the client if it accesses anything
-prohibited). For more details, see [the spec](http://nsq.io/clients/tcp_protocol_spec.html) or [the
-`nsqd` guide](http://nsq.io/components/nsqd.html#auth).
+prohibited). For more details, see [the spec](https://nsq.io/clients/tcp_protocol_spec.html) or [the
+`nsqd` guide](https://nsq.io/components/nsqd.html#auth).
 
 Additionally, we've improved performance in a few areas. First, we refactored in-flight handling in
 `nsqd` to reduce garbage creation and improve baseline performance 6%. End-to-end processing
@@ -676,7 +714,7 @@ NOTE: we are now publishing additional binaries built against go1.2
 The most prominent addition is the tracking of end-to-end message processing percentiles. This
 measures the amount of time it's taking from `PUB` to `FIN` per topic/channel. The percentiles are
 configurable and, because there is *some* overhead in collecting this data, it can be turned off
-entirely. Please see [the section in the docs](http://nsq.io/components/nsqd.html) for
+entirely. Please see [the section in the docs](https://nsq.io/components/nsqd.html) for
 implementation details.
 
 Additionally, the utility apps received comprehensive support for all configurable reader options

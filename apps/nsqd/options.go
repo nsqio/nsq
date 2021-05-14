@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nsqio/nsq/internal/app"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/nsqd"
 )
 
@@ -91,6 +92,15 @@ func (cfg config) Validate() {
 			logFatal("failed parsing tls_min_version %+v", v)
 		}
 	}
+	if v, exists := cfg["log_level"]; exists {
+		var t lg.LogLevel
+		err := t.Set(fmt.Sprintf("%v", v))
+		if err == nil {
+			cfg["log_level"] = t
+		} else {
+			logFatal("failed parsing log_level %+v", v)
+		}
+	}
 }
 
 func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
@@ -112,8 +122,10 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.String("http-address", opts.HTTPAddress, "<addr>:<port> to listen on for HTTP clients")
 	flagSet.String("tcp-address", opts.TCPAddress, "<addr>:<port> to listen on for TCP clients")
 	authHTTPAddresses := app.StringArray{}
-	flagSet.Var(&authHTTPAddresses, "auth-http-address", "<addr>:<port> to query auth server (may be given multiple times)")
+	flagSet.Var(&authHTTPAddresses, "auth-http-address", "<addr>:<port> or a full url to query auth server (may be given multiple times)")
 	flagSet.String("broadcast-address", opts.BroadcastAddress, "address that will be registered with lookupd (defaults to the OS hostname)")
+	flagSet.Int("broadcast-tcp-port", opts.BroadcastTCPPort, "TCP port that will be registered with lookupd (defaults to the TCP port that this nsqd is listening on)")
+	flagSet.Int("broadcast-http-port", opts.BroadcastHTTPPort, "HTTP port that will be registered with lookupd (defaults to the HTTP port that this nsqd is listening on)")
 	lookupdTCPAddrs := app.StringArray{}
 	flagSet.Var(&lookupdTCPAddrs, "lookupd-tcp-address", "lookupd TCP address (may be given multiple times)")
 	flagSet.Duration("http-client-connect-timeout", opts.HTTPClientConnectTimeout, "timeout for HTTP connect")
@@ -125,6 +137,9 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	flagSet.Int64("max-bytes-per-file", opts.MaxBytesPerFile, "number of bytes per diskqueue file before rolling")
 	flagSet.Int64("sync-every", opts.SyncEvery, "number of messages per diskqueue fsync")
 	flagSet.Duration("sync-timeout", opts.SyncTimeout, "duration of time per diskqueue fsync")
+
+	flagSet.Int("queue-scan-worker-pool-max", opts.QueueScanWorkerPoolMax, "max concurrency for checking in-flight and deferred message timeouts")
+	flagSet.Int("queue-scan-selection-count", opts.QueueScanSelectionCount, "number of channels to check per cycle (every 100ms) for in-flight and deferred timeouts")
 
 	// msg and command options
 	flagSet.Duration("msg-timeout", opts.MsgTimeout, "default duration to wait before auto-requeing a message")

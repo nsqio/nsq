@@ -178,7 +178,7 @@ func TestEphemeralTopicsAndChannels(t *testing.T) {
 	body := []byte("an_ephemeral_message")
 	topic := nsqd.GetTopic(topicName)
 	ephemeralChannel := topic.GetChannel("ch1#ephemeral")
-	client := newClientV2(0, nil, &context{nsqd})
+	client := newClientV2(0, nil, nsqd)
 	err := ephemeralChannel.AddClient(client.ID, client)
 	test.Equal(t, err, nil)
 

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,6 +48,78 @@ type identifyEvent struct {
 	MsgTimeout          time.Duration
 }
 
+type PubCount struct {
+	Topic string `json:"topic"`
+	Count uint64 `json:"count"`
+}
+
+type ClientV2Stats struct {
+	ClientID        string `json:"client_id"`
+	Hostname        string `json:"hostname"`
+	Version         string `json:"version"`
+	RemoteAddress   string `json:"remote_address"`
+	State           int32  `json:"state"`
+	ReadyCount      int64  `json:"ready_count"`
+	InFlightCount   int64  `json:"in_flight_count"`
+	MessageCount    uint64 `json:"message_count"`
+	FinishCount     uint64 `json:"finish_count"`
+	RequeueCount    uint64 `json:"requeue_count"`
+	ConnectTime     int64  `json:"connect_ts"`
+	SampleRate      int32  `json:"sample_rate"`
+	Deflate         bool   `json:"deflate"`
+	Snappy          bool   `json:"snappy"`
+	UserAgent       string `json:"user_agent"`
+	Authed          bool   `json:"authed,omitempty"`
+	AuthIdentity    string `json:"auth_identity,omitempty"`
+	AuthIdentityURL string `json:"auth_identity_url,omitempty"`
+
+	PubCounts []PubCount `json:"pub_counts,omitempty"`
+
+	TLS                           bool   `json:"tls"`
+	CipherSuite                   string `json:"tls_cipher_suite"`
+	TLSVersion                    string `json:"tls_version"`
+	TLSNegotiatedProtocol         string `json:"tls_negotiated_protocol"`
+	TLSNegotiatedProtocolIsMutual bool   `json:"tls_negotiated_protocol_is_mutual"`
+}
+
+func (s ClientV2Stats) String() string {
+	connectTime := time.Unix(s.ConnectTime, 0)
+	duration := time.Since(connectTime).Truncate(time.Second)
+
+	_, port, _ := net.SplitHostPort(s.RemoteAddress)
+	id := fmt.Sprintf("%s:%s %s", s.Hostname, port, s.UserAgent)
+
+	// producer
+	if len(s.PubCounts) > 0 {
+		var total uint64
+		var topicOut []string
+		for _, v := range s.PubCounts {
+			total += v.Count
+			topicOut = append(topicOut, fmt.Sprintf("%s=%d", v.Topic, v.Count))
+		}
+		return fmt.Sprintf("[%s %-21s] msgs: %-8d topics: %s connected: %s",
+			s.Version,
+			id,
+			total,
+			strings.Join(topicOut, ","),
+			duration,
+		)
+	}
+
+	// consumer
+	return fmt.Sprintf("[%s %-21s] state: %d inflt: %-4d rdy: %-4d fin: %-8d re-q: %-8d msgs: %-8d connected: %s",
+		s.Version,
+		id,
+		s.State,
+		s.InFlightCount,
+		s.ReadyCount,
+		s.FinishCount,
+		s.RequeueCount,
+		s.MessageCount,
+		duration,
+	)
+}
+
 type clientV2 struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	ReadyCount    int64
@@ -61,7 +134,7 @@ type clientV2 struct {
 	metaLock  sync.RWMutex
 
 	ID        int64
-	ctx       *context
+	nsqd      *NSQD
 	UserAgent string
 
 	// original connection
@@ -108,15 +181,15 @@ type clientV2 struct {
 	AuthState  *auth.State
 }
 
-func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
+func newClientV2(id int64, conn net.Conn, nsqd *NSQD) *clientV2 {
 	var identifier string
 	if conn != nil {
 		identifier, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 	}
 
 	c := &clientV2{
-		ID:  id,
-		ctx: ctx,
+		ID:   id,
+		nsqd: nsqd,
 
 		Conn: conn,
 
@@ -124,9 +197,9 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 		Writer: bufio.NewWriterSize(conn, defaultBufferSize),
 
 		OutputBufferSize:    defaultBufferSize,
-		OutputBufferTimeout: ctx.nsqd.getOpts().OutputBufferTimeout,
+		OutputBufferTimeout: nsqd.getOpts().OutputBufferTimeout,
 
-		MsgTimeout: ctx.nsqd.getOpts().MsgTimeout,
+		MsgTimeout: nsqd.getOpts().MsgTimeout,
 
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
@@ -142,7 +215,7 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 		IdentifyEventChan: make(chan identifyEvent, 1),
 
 		// heartbeats are client configurable but default to 30s
-		HeartbeatInterval: ctx.nsqd.getOpts().ClientTimeout / 2,
+		HeartbeatInterval: nsqd.getOpts().ClientTimeout / 2,
 
 		pubCounts: make(map[string]uint64),
 	}
@@ -154,8 +227,18 @@ func (c *clientV2) String() string {
 	return c.RemoteAddr().String()
 }
 
+func (c *clientV2) Type() int {
+	c.metaLock.RLock()
+	hasPublished := len(c.pubCounts) > 0
+	c.metaLock.RUnlock()
+	if hasPublished {
+		return typeProducer
+	}
+	return typeConsumer
+}
+
 func (c *clientV2) Identify(data identifyDataV2) error {
-	c.ctx.nsqd.logf(LOG_INFO, "[%s] IDENTIFY: %+v", c, data)
+	c.nsqd.logf(LOG_INFO, "[%s] IDENTIFY: %+v", c, data)
 
 	c.metaLock.Lock()
 	c.ClientID = data.ClientID
@@ -199,7 +282,7 @@ func (c *clientV2) Identify(data identifyDataV2) error {
 	return nil
 }
 
-func (c *clientV2) Stats() ClientStats {
+func (c *clientV2) Stats(topicName string) ClientStats {
 	c.metaLock.RLock()
 	clientID := c.ClientID
 	hostname := c.Hostname
@@ -212,13 +295,17 @@ func (c *clientV2) Stats() ClientStats {
 	}
 	pubCounts := make([]PubCount, 0, len(c.pubCounts))
 	for topic, count := range c.pubCounts {
+		if len(topicName) > 0 && topic != topicName {
+			continue
+		}
 		pubCounts = append(pubCounts, PubCount{
 			Topic: topic,
 			Count: count,
 		})
+		break
 	}
 	c.metaLock.RUnlock()
-	stats := ClientStats{
+	stats := ClientV2Stats{
 		Version:         "V2",
 		RemoteAddress:   c.RemoteAddr().String(),
 		ClientID:        clientID,
@@ -248,13 +335,6 @@ func (c *clientV2) Stats() ClientStats {
 		stats.TLSNegotiatedProtocolIsMutual = p.NegotiatedProtocolIsMutual
 	}
 	return stats
-}
-
-func (c *clientV2) IsProducer() bool {
-	c.metaLock.RLock()
-	retval := len(c.pubCounts) > 0
-	c.metaLock.RUnlock()
-	return retval
 }
 
 // struct to convert from integers to the human readable strings
@@ -317,7 +397,7 @@ func (c *clientV2) IsReadyForMessages() bool {
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
-	c.ctx.nsqd.logf(LOG_DEBUG, "[%s] state rdy: %4d inflt: %4d", c, readyCount, inFlightCount)
+	c.nsqd.logf(LOG_DEBUG, "[%s] state rdy: %4d inflt: %4d", c, readyCount, inFlightCount)
 
 	if inFlightCount >= readyCount || readyCount <= 0 {
 		return false
@@ -327,8 +407,11 @@ func (c *clientV2) IsReadyForMessages() bool {
 }
 
 func (c *clientV2) SetReadyCount(count int64) {
-	atomic.StoreInt64(&c.ReadyCount, count)
-	c.tryUpdateReadyState()
+	oldCount := atomic.SwapInt64(&c.ReadyCount, count)
+
+	if oldCount != count {
+		c.tryUpdateReadyState()
+	}
 }
 
 func (c *clientV2) tryUpdateReadyState() {
@@ -399,7 +482,7 @@ func (c *clientV2) SetHeartbeatInterval(desiredInterval int) error {
 	case desiredInterval == 0:
 		// do nothing (use default)
 	case desiredInterval >= 1000 &&
-		desiredInterval <= int(c.ctx.nsqd.getOpts().MaxHeartbeatInterval/time.Millisecond):
+		desiredInterval <= int(c.nsqd.getOpts().MaxHeartbeatInterval/time.Millisecond):
 		c.HeartbeatInterval = time.Duration(desiredInterval) * time.Millisecond
 	default:
 		return fmt.Errorf("heartbeat interval (%d) is invalid", desiredInterval)
@@ -418,8 +501,8 @@ func (c *clientV2) SetOutputBuffer(desiredSize int, desiredTimeout int) error {
 	case desiredTimeout == 0:
 		// do nothing (use default)
 	case true &&
-		desiredTimeout >= int(c.ctx.nsqd.getOpts().MinOutputBufferTimeout/time.Millisecond) &&
-		desiredTimeout <= int(c.ctx.nsqd.getOpts().MaxOutputBufferTimeout/time.Millisecond):
+		desiredTimeout >= int(c.nsqd.getOpts().MinOutputBufferTimeout/time.Millisecond) &&
+		desiredTimeout <= int(c.nsqd.getOpts().MaxOutputBufferTimeout/time.Millisecond):
 
 		c.OutputBufferTimeout = time.Duration(desiredTimeout) * time.Millisecond
 	default:
@@ -433,7 +516,7 @@ func (c *clientV2) SetOutputBuffer(desiredSize int, desiredTimeout int) error {
 		c.OutputBufferTimeout = 0
 	case desiredSize == 0:
 		// do nothing (use default)
-	case desiredSize >= 64 && desiredSize <= int(c.ctx.nsqd.getOpts().MaxOutputBufferSize):
+	case desiredSize >= 64 && desiredSize <= int(c.nsqd.getOpts().MaxOutputBufferSize):
 		c.OutputBufferSize = desiredSize
 	default:
 		return fmt.Errorf("output buffer size (%d) is invalid", desiredSize)
@@ -466,7 +549,7 @@ func (c *clientV2) SetMsgTimeout(msgTimeout int) error {
 	case msgTimeout == 0:
 		// do nothing (use default)
 	case msgTimeout >= 1000 &&
-		msgTimeout <= int(c.ctx.nsqd.getOpts().MaxMsgTimeout/time.Millisecond):
+		msgTimeout <= int(c.nsqd.getOpts().MaxMsgTimeout/time.Millisecond):
 		c.MsgTimeout = time.Duration(msgTimeout) * time.Millisecond
 	default:
 		return fmt.Errorf("msg timeout (%d) is invalid", msgTimeout)
@@ -479,7 +562,7 @@ func (c *clientV2) UpgradeTLS() error {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
 
-	tlsConn := tls.Server(c.Conn, c.ctx.nsqd.tlsConfig)
+	tlsConn := tls.Server(c.Conn, c.nsqd.tlsConfig)
 	tlsConn.SetDeadline(time.Now().Add(5 * time.Second))
 	err := tlsConn.Handshake()
 	if err != nil {
@@ -567,10 +650,10 @@ func (c *clientV2) QueryAuthd() error {
 		}
 	}
 
-	authState, err := auth.QueryAnyAuthd(c.ctx.nsqd.getOpts().AuthHTTPAddresses,
+	authState, err := auth.QueryAnyAuthd(c.nsqd.getOpts().AuthHTTPAddresses,
 		remoteIP, tlsEnabled, commonName, c.AuthSecret,
-		c.ctx.nsqd.getOpts().HTTPClientConnectTimeout,
-		c.ctx.nsqd.getOpts().HTTPClientRequestTimeout)
+		c.nsqd.getOpts().HTTPClientConnectTimeout,
+		c.nsqd.getOpts().HTTPClientRequestTimeout)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"runtime"
@@ -75,7 +76,9 @@ func subWorker(td time.Duration, workers int, tcpAddr string, topic string, chan
 	conn.Write(nsq.MagicV2)
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 	ci := make(map[string]interface{})
-	ci["client_id"] = "test"
+	ci["client_id"] = "reader"
+	ci["hostname"] = "reader"
+	ci["user_agent"] = fmt.Sprintf("bench_reader/%s", nsq.VERSION)
 	cmd, _ := nsq.Identify(ci)
 	cmd.WriteTo(rw)
 	nsq.Subscribe(topic, channel).WriteTo(rw)

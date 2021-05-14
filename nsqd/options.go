@@ -23,6 +23,8 @@ type Options struct {
 	HTTPAddress              string        `flag:"http-address"`
 	HTTPSAddress             string        `flag:"https-address"`
 	BroadcastAddress         string        `flag:"broadcast-address"`
+	BroadcastTCPPort         int           `flag:"broadcast-tcp-port"`
+	BroadcastHTTPPort        int           `flag:"broadcast-http-port"`
 	NSQLookupdTCPAddresses   []string      `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
 	AuthHTTPAddresses        []string      `flag:"auth-http-address" cfg:"auth_http_addresses"`
 	HTTPClientConnectTimeout time.Duration `flag:"http-client-connect-timeout" cfg:"http_client_connect_timeout"`
@@ -37,8 +39,8 @@ type Options struct {
 
 	QueueScanInterval        time.Duration
 	QueueScanRefreshInterval time.Duration
-	QueueScanSelectionCount  int
-	QueueScanWorkerPoolMax   int
+	QueueScanSelectionCount  int `flag:"queue-scan-selection-count"`
+	QueueScanWorkerPoolMax   int `flag:"queue-scan-worker-pool-max"`
 	QueueScanDirtyPercent    float64
 
 	// msg and command options
@@ -98,10 +100,12 @@ func NewOptions() *Options {
 		LogPrefix: "[nsqd] ",
 		LogLevel:  lg.INFO,
 
-		TCPAddress:       "0.0.0.0:4150",
-		HTTPAddress:      "0.0.0.0:4151",
-		HTTPSAddress:     "0.0.0.0:4152",
-		BroadcastAddress: hostname,
+		TCPAddress:        "0.0.0.0:4150",
+		HTTPAddress:       "0.0.0.0:4151",
+		HTTPSAddress:      "0.0.0.0:4152",
+		BroadcastAddress:  hostname,
+		BroadcastTCPPort:  0,
+		BroadcastHTTPPort: 0,
 
 		NSQLookupdTCPAddresses: make([]string, 0),
 		AuthHTTPAddresses:      make([]string, 0),

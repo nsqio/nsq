@@ -1,0 +1,66 @@
+name: tests
+
+on:
+  push:         {branches: [master]}
+  pull_request: {branches: [master]}
+
+jobs:
+  test:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        imgtag:
+          - "golang:1.12-buster"
+          - "golang:1.13-buster"
+          - "golang:1.14-buster"
+          - "golang:1.15-buster"
+        goarch:
+          - "amd64"
+          - "386"
+
+    container: "${{matrix.imgtag}}"
+    env:
+      GOPATH: "${{github.workspace}}/go"
+      GOARCH: "${{matrix.goarch}}"
+      SRCDIR: "go/src/github.com/nsqio/nsq"
+      GO111MODULE: "on"  # only needed up to go-1.12
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: ${{env.SRCDIR}}
+
+      - name: build
+        run: |
+          cd $SRCDIR
+          make all
+
+      - name: test
+        run: |
+          cd $SRCDIR
+          ./test.sh
+
+  send-coverage:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    container: "golang:1.15-buster"
+    env:
+      GOPATH: "${{github.workspace}}/go"
+      SRCDIR: "go/src/github.com/nsqio/nsq"
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: ${{env.SRCDIR}}
+
+      - name: Install goveralls
+        run: GO111MODULE=off go get github.com/mattn/goveralls
+
+      - name: Send coverage
+        env:
+          COVERALLS_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        run: |
+          cd $SRCDIR
+          ./coverage.sh --coveralls

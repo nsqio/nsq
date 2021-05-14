@@ -1,31 +1,31 @@
 {
   "name": "nsqadmin",
   "version": "0.3.0",
-  "description": "operational dashboard for NSQ (http://nsq.io/)",
+  "description": "operational dashboard for NSQ (https://nsq.io/)",
   "repository": {
     "type": "git",
     "url": ""
   },
   "devDependencies": {
     "browserify": "^16.2.2",
-    "gulp": "^3.9.1",
+    "gulp": "^4.0.2",
     "gulp-clean": "^0.4.0",
     "gulp-notify": "^3.2.0",
     "gulp-sass": "^4.0.1",
     "gulp-sourcemaps": "^2.6.4",
     "gulp-task-listing": "^1.0.0",
     "gulp-uglify": "^3.0.1",
-    "handlebars": "^4.0.11",
+    "handlebars": "^4.7.6",
     "hbsfy": "^2.8.1",
     "vinyl-buffer": "^1.0.0",
     "vinyl-source-stream": "^2.0.0"
   },
   "dependencies": {
-    "backbone": "^1.2.3",
+    "backbone": "^1.4.0",
     "bootbox": "^4.4.0",
-    "bootstrap": "^3.3.6",
-    "jquery": "^3.3.1",
-    "moment": "^2.11.2",
+    "bootstrap": "^3.4.1",
+    "jquery": "^3.5.1",
+    "moment": "^2.24.0",
     "underscore": "^1.8.3"
   },
   "browserify": {

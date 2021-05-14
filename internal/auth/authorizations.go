@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/nsqio/nsq/internal/http_api"
@@ -105,7 +106,12 @@ func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName strin
 	v.Set("secret", authSecret)
 	v.Set("common_name", commonName)
 
-	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
+	var endpoint string
+	if strings.Contains(authd, "://") {
+		endpoint = fmt.Sprintf("%s?%s", authd, v.Encode())
+	} else {
+		endpoint = fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
+	}
 
 	var authState State
 	client := http_api.NewClient(nil, connectTimeout, requestTimeout)

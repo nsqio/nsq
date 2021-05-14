@@ -1,6 +1,6 @@
 .godeps
 vendor
-./build
+build/
 .cover/
 apps/nsqlookupd/nsqlookupd
 apps/nsqd/nsqd

@@ -43,10 +43,11 @@ var ChannelView = BaseView.extend({
                 return;
             }
             if (action === 'delete') {
+                var topic = this.model.get('topic');
                 $.ajax(this.model.url(), {'method': 'DELETE'})
                     .done(function() {
                         window.location = AppState.basePath('/topics/' +
-                            encodeURIComponent(this.model.get('topic')));
+                            encodeURIComponent(topic));
                     })
                     .fail(this.handleAJAXError.bind(this));
             } else {

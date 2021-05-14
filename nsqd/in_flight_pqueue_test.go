@@ -39,7 +39,7 @@ func TestUnsortedInsert(t *testing.T) {
 	test.Equal(t, c, len(pq))
 	test.Equal(t, c, cap(pq))
 
-	sort.Sort(sort.IntSlice(ints))
+	sort.Ints(ints)
 
 	for i := 0; i < c; i++ {
 		msg, _ := pq.PeekAndShift(int64(ints[len(ints)-1]))

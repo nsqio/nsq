@@ -1,9 +1,9 @@
 package nsqd
 
 import (
-	"bytes"
 	"container/heap"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nsqio/go-diskqueue"
+
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/pqueue"
 	"github.com/nsqio/nsq/internal/quantile"
@@ -21,7 +22,7 @@ type Consumer interface {
 	Pause()
 	Close() error
 	TimedOutMessage()
-	Stats() ClientStats
+	Stats(string) ClientStats
 	Empty()
 }
 
@@ -43,7 +44,7 @@ type Channel struct {
 
 	topicName string
 	name      string
-	ctx       *context
+	nsqd      *NSQD
 
 	backend BackendQueue
 
@@ -71,21 +72,25 @@ type Channel struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, ctx *context,
+func NewChannel(topicName string, channelName string, nsqd *NSQD,
 	deleteCallback func(*Channel)) *Channel {
 
 	c := &Channel{
 		topicName:      topicName,
 		name:           channelName,
-		memoryMsgChan:  make(chan *Message, ctx.nsqd.getOpts().MemQueueSize),
+		memoryMsgChan:  nil,
 		clients:        make(map[int64]Consumer),
 		deleteCallback: deleteCallback,
-		ctx:            ctx,
+		nsqd:           nsqd,
 	}
-	if len(ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles) > 0 {
+	// create mem-queue only if size > 0 (do not use unbuffered chan)
+	if nsqd.getOpts().MemQueueSize > 0 {
+		c.memoryMsgChan = make(chan *Message, nsqd.getOpts().MemQueueSize)
+	}
+	if len(nsqd.getOpts().E2EProcessingLatencyPercentiles) > 0 {
 		c.e2eProcessingLatencyStream = quantile.New(
-			ctx.nsqd.getOpts().E2EProcessingLatencyWindowTime,
-			ctx.nsqd.getOpts().E2EProcessingLatencyPercentiles,
+			nsqd.getOpts().E2EProcessingLatencyWindowTime,
+			nsqd.getOpts().E2EProcessingLatencyPercentiles,
 		)
 	}
 
@@ -96,30 +101,30 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		c.backend = newDummyBackendQueue()
 	} else {
 		dqLogf := func(level diskqueue.LogLevel, f string, args ...interface{}) {
-			opts := ctx.nsqd.getOpts()
+			opts := nsqd.getOpts()
 			lg.Logf(opts.Logger, opts.LogLevel, lg.LogLevel(level), f, args...)
 		}
 		// backend names, for uniqueness, automatically include the topic...
 		backendName := getBackendName(topicName, channelName)
 		c.backend = diskqueue.New(
 			backendName,
-			ctx.nsqd.getOpts().DataPath,
-			ctx.nsqd.getOpts().MaxBytesPerFile,
+			nsqd.getOpts().DataPath,
+			nsqd.getOpts().MaxBytesPerFile,
 			int32(minValidMsgLength),
-			int32(ctx.nsqd.getOpts().MaxMsgSize)+minValidMsgLength,
-			ctx.nsqd.getOpts().SyncEvery,
-			ctx.nsqd.getOpts().SyncTimeout,
+			int32(nsqd.getOpts().MaxMsgSize)+minValidMsgLength,
+			nsqd.getOpts().SyncEvery,
+			nsqd.getOpts().SyncTimeout,
 			dqLogf,
 		)
 	}
 
-	c.ctx.nsqd.Notify(c)
+	c.nsqd.Notify(c, !c.ephemeral)
 
 	return c
 }
 
 func (c *Channel) initPQ() {
-	pqSize := int(math.Max(1, float64(c.ctx.nsqd.getOpts().MemQueueSize)/10))
+	pqSize := int(math.Max(1, float64(c.nsqd.getOpts().MemQueueSize)/10))
 
 	c.inFlightMutex.Lock()
 	c.inFlightMessages = make(map[MessageID]*Message)
@@ -156,13 +161,13 @@ func (c *Channel) exit(deleted bool) error {
 	}
 
 	if deleted {
-		c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): deleting", c.name)
+		c.nsqd.logf(LOG_INFO, "CHANNEL(%s): deleting", c.name)
 
 		// since we are explicitly deleting a channel (not just at system exit time)
 		// de-register this from the lookupd
-		c.ctx.nsqd.Notify(c)
+		c.nsqd.Notify(c, !c.ephemeral)
 	} else {
-		c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): closing", c.name)
+		c.nsqd.logf(LOG_INFO, "CHANNEL(%s): closing", c.name)
 	}
 
 	// this forceably closes client connections
@@ -207,10 +212,8 @@ finish:
 // flush persists all the messages in internal memory buffers to the backend
 // it does not drain inflight/deferred because it is only called in Close()
 func (c *Channel) flush() error {
-	var msgBuf bytes.Buffer
-
 	if len(c.memoryMsgChan) > 0 || len(c.inFlightMessages) > 0 || len(c.deferredMessages) > 0 {
-		c.ctx.nsqd.logf(LOG_INFO, "CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
+		c.nsqd.logf(LOG_INFO, "CHANNEL(%s): flushing %d memory %d in-flight %d deferred messages to backend",
 			c.name, len(c.memoryMsgChan), len(c.inFlightMessages), len(c.deferredMessages))
 	}
 
@@ -220,9 +223,9 @@ func (c *Channel) flush() error {
 			if c.ephemeral {
 				return tryQueueToMemoryChan(c.memoryMsgChan, msg)
 			}
-			err := writeMessageToBackend(&msgBuf, msg, c.backend)
+			err := writeMessageToBackend(msg, c.backend)
 			if err != nil {
-				c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
+				c.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 			}
 		default:
 			goto finish
@@ -232,9 +235,9 @@ func (c *Channel) flush() error {
 finish:
 	c.inFlightMutex.Lock()
 	for _, msg := range c.inFlightMessages {
-		err := writeMessageToBackend(&msgBuf, msg, c.backend)
+		err := writeMessageToBackend(msg, c.backend)
 		if err != nil {
-			c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
+			c.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 		}
 	}
 	c.inFlightMutex.Unlock()
@@ -242,9 +245,9 @@ finish:
 	c.deferredMutex.Lock()
 	for _, item := range c.deferredMessages {
 		msg := item.Value.(*Message)
-		err := writeMessageToBackend(&msgBuf, msg, c.backend)
+		err := writeMessageToBackend(msg, c.backend)
 		if err != nil {
-			c.ctx.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
+			c.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
 		}
 	}
 	c.deferredMutex.Unlock()
@@ -289,8 +292,8 @@ func (c *Channel) IsPaused() bool {
 
 // PutMessage writes a Message to the queue
 func (c *Channel) PutMessage(m *Message) error {
-	c.RLock()
-	defer c.RUnlock()
+	c.exitMutex.RLock()
+	defer c.exitMutex.RUnlock()
 	if c.Exiting() {
 		return errors.New("exiting")
 	}
@@ -306,12 +309,10 @@ func (c *Channel) put(m *Message) error {
 	select {
 	case c.memoryMsgChan <- m:
 	default:
-		b := bufferPoolGet()
-		err := writeMessageToBackend(b, m, c.backend)
-		bufferPoolPut(b)
-		c.ctx.nsqd.SetHealth(err)
+		err := writeMessageToBackend(m, c.backend)
+		c.nsqd.SetHealth(err)
 		if err != nil {
-			c.ctx.nsqd.logf(LOG_ERROR, "CHANNEL(%s): failed to write message to backend - %s",
+			c.nsqd.logf(LOG_ERROR, "CHANNEL(%s): failed to write message to backend - %s",
 				c.name, err)
 			return err
 		}
@@ -334,9 +335,9 @@ func (c *Channel) TouchMessage(clientID int64, id MessageID, clientMsgTimeout ti
 
 	newTimeout := time.Now().Add(clientMsgTimeout)
 	if newTimeout.Sub(msg.deliveryTS) >=
-		c.ctx.nsqd.getOpts().MaxMsgTimeout {
+		c.nsqd.getOpts().MaxMsgTimeout {
 		// we would have gone over, set to the max
-		newTimeout = msg.deliveryTS.Add(c.ctx.nsqd.getOpts().MaxMsgTimeout)
+		newTimeout = msg.deliveryTS.Add(c.nsqd.getOpts().MaxMsgTimeout)
 	}
 
 	msg.pri = newTimeout.UnixNano()
@@ -393,33 +394,52 @@ func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Dura
 
 // AddClient adds a client to the Channel's client list
 func (c *Channel) AddClient(clientID int64, client Consumer) error {
-	c.Lock()
-	defer c.Unlock()
+	c.exitMutex.RLock()
+	defer c.exitMutex.RUnlock()
 
+	if c.Exiting() {
+		return errors.New("exiting")
+	}
+
+	c.RLock()
 	_, ok := c.clients[clientID]
+	numClients := len(c.clients)
+	c.RUnlock()
 	if ok {
 		return nil
 	}
 
-	maxChannelConsumers := c.ctx.nsqd.getOpts().MaxChannelConsumers
-	if maxChannelConsumers != 0 && len(c.clients) >= maxChannelConsumers {
-		return errors.New("E_TOO_MANY_CHANNEL_CONSUMERS")
+	maxChannelConsumers := c.nsqd.getOpts().MaxChannelConsumers
+	if maxChannelConsumers != 0 && numClients >= maxChannelConsumers {
+		return fmt.Errorf("consumers for %s:%s exceeds limit of %d",
+			c.topicName, c.name, maxChannelConsumers)
 	}
 
+	c.Lock()
 	c.clients[clientID] = client
+	c.Unlock()
 	return nil
 }
 
 // RemoveClient removes a client from the Channel's client list
 func (c *Channel) RemoveClient(clientID int64) {
-	c.Lock()
-	defer c.Unlock()
+	c.exitMutex.RLock()
+	defer c.exitMutex.RUnlock()
 
+	if c.Exiting() {
+		return
+	}
+
+	c.RLock()
 	_, ok := c.clients[clientID]
+	c.RUnlock()
 	if !ok {
 		return
 	}
+
+	c.Lock()
 	delete(c.clients, clientID)
+	c.Unlock()
 
 	if len(c.clients) == 0 && c.ephemeral == true {
 		go c.deleter.Do(func() { c.deleteCallback(c) })

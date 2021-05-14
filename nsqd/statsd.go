@@ -26,7 +26,7 @@ func (s Uint64Slice) Less(i, j int) bool {
 
 func (n *NSQD) statsdLoop() {
 	var lastMemStats memStats
-	var lastStats []TopicStats
+	var lastStats Stats
 	interval := n.getOpts().StatsdInterval
 	ticker := time.NewTicker(interval)
 	for {
@@ -48,10 +48,10 @@ func (n *NSQD) statsdLoop() {
 			n.logf(LOG_INFO, "STATSD: pushing stats to %s", addr)
 
 			stats := n.GetStats("", "", false)
-			for _, topic := range stats {
+			for _, topic := range stats.Topics {
 				// try to find the topic in the last collection
 				lastTopic := TopicStats{}
-				for _, checkTopic := range lastStats {
+				for _, checkTopic := range lastStats.Topics {
 					if topic.TopicName == checkTopic.TopicName {
 						lastTopic = checkTopic
 						break

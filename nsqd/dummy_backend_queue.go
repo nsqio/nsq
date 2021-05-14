@@ -12,7 +12,7 @@ func (d *dummyBackendQueue) Put([]byte) error {
 	return nil
 }
 
-func (d *dummyBackendQueue) ReadChan() chan []byte {
+func (d *dummyBackendQueue) ReadChan() <-chan []byte {
 	return d.readChan
 }
 

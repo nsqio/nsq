@@ -1,4 +1,4 @@
-// +build !windows
+// +build !windows,!illumos
 
 package dirlock
 
@@ -27,7 +27,7 @@ func (l *DirLock) Lock() error {
 	l.f = f
 	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err != nil {
-		return fmt.Errorf("cannot flock directory %s - %s", l.dir, err)
+		return fmt.Errorf("cannot flock directory %s - %s (possibly in use by another instance of nsqd)", l.dir, err)
 	}
 	return nil
 }

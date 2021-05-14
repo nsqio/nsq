@@ -48,11 +48,11 @@ function logBundle(filename, watching) {
 
 
 function sassTask(root, inputFile) {
-    return function() {
+    return function sassing() {
         var onError = function(err) {
             notify({'title': 'Sass Compile Error'}).write(err);
         };
-        gulp.src(path.join(root, 'css', inputFile))
+        return gulp.src(path.join(root, 'css', inputFile))
             .pipe(sass({
                 'sourceComments': 'map',
                 'onError': onError
@@ -63,7 +63,7 @@ function sassTask(root, inputFile) {
 
 
 function browserifyTask(root, inputFile) {
-    return function() {
+    return function browserifying() {
         var onError = function() {
             var args = Array.prototype.slice.call(arguments);
             notify.onError({
@@ -97,24 +97,24 @@ function browserifyTask(root, inputFile) {
 
 
 function watchTask(root) {
-    return function() {
-        gulp.watch(path.join(root, 'sass/**/*.scss'), ['sass']);
+    return function watching() {
+        gulp.watch(path.join(root, 'sass/**/*.scss'), gulp.series('sass'));
         gulp.watch([
             path.join(root, 'js/**/*.js'),
             path.join(root, 'js/**/*.hbs')
-        ], ['browserify']);
+        ], gulp.series('browserify'));
         gulp.watch([
           path.join(root, 'html/**'),
           path.join(root, 'fonts/**')
-        ], ['sync-static-assets'])
+        ], gulp.series('sync-static-assets'))
     };
 }
 
 
-function cleanTask(){
+function cleanTask() {
     var paths = Array.prototype.slice.apply(arguments);
-    return function () {
-        gulp.src(paths).pipe(clean());
+    return function cleaning() {
+        return gulp.src(paths, {allowEmpty: true}).pipe(clean());
     };
 }
 
@@ -153,8 +153,8 @@ gulp.task('sync-static-assets', function() {
 
 gulp.task('sass', sassTask(ROOT, '*.*css'));
 gulp.task('browserify', browserifyTask(ROOT, 'main.js'));
-gulp.task('build', ['sass', 'browserify', 'sync-static-assets', 'vendor-build-js']);
-gulp.task('watch', ['build'], watchTask(ROOT));
-gulp.task('clean', cleanTask(path.join(ROOT, 'build')));
+gulp.task('build', gulp.parallel('sass', 'browserify', 'sync-static-assets', 'vendor-build-js'));
+gulp.task('watch', gulp.series('build', watchTask(ROOT)));
+gulp.task('clean', gulp.series(cleanTask(path.join(ROOT, 'build'))));
 
-gulp.task('default', ['help']);
+gulp.task('default', gulp.series('help'));

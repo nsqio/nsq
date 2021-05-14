@@ -1,8 +1,13 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
-GOMAXPROCS=1 go test -timeout 90s $(go list ./... | grep -v /vendor/)
-GOMAXPROCS=4 go test -timeout 90s -race $(go list ./... | grep -v /vendor/)
+GOMAXPROCS=1 go test -timeout 90s ./...
+
+if [ "$GOARCH" = "amd64" ] || [ "$GOARCH" = "arm64" ]; then
+    # go test: -race is only supported on linux/amd64, linux/ppc64le,
+    # linux/arm64, freebsd/amd64, netbsd/amd64, darwin/amd64 and windows/amd64
+    GOMAXPROCS=4 go test -timeout 90s -race ./...
+fi
 
 # no tests, but a build is something
 for dir in apps/*/ bench/*/; do
@@ -14,3 +19,9 @@ for dir in apps/*/ bench/*/; do
         echo "(skipped $dir)"
     fi
 done
+
+FMTDIFF="$(find apps internal nsqd nsqlookupd -name '*.go' -exec gofmt -d '{}' ';')"
+if [ -n "$FMTDIFF" ]; then
+    printf '%s\n' "$FMTDIFF"
+    exit 1
+fi

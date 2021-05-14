@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"runtime"
@@ -77,8 +78,16 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 	}
 	conn.Write(nsq.MagicV2)
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+	ci := make(map[string]interface{})
+	ci["client_id"] = "writer"
+	ci["hostname"] = "writer"
+	ci["user_agent"] = fmt.Sprintf("bench_writer/%s", nsq.VERSION)
+	cmd, _ := nsq.Identify(ci)
+	cmd.WriteTo(rw)
 	rdyChan <- 1
 	<-goChan
+	rw.Flush()
+	nsq.ReadResponse(rw)
 	var msgCount int64
 	endTime := time.Now().Add(td)
 	for {

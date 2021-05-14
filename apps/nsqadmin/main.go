@@ -9,7 +9,7 @@ import (
 	"syscall"
 
 	"github.com/BurntSushi/toml"
-	"github.com/judwhite/go-svc/svc"
+	"github.com/judwhite/go-svc"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/app"
 	"github.com/nsqio/nsq/internal/lg"
@@ -93,7 +93,7 @@ func (p *program) Start() error {
 		os.Exit(0)
 	}
 
-	var cfg map[string]interface{}
+	var cfg config
 	configFile := flagSet.Lookup("config").Value.String()
 	if configFile != "" {
 		_, err := toml.DecodeFile(configFile, &cfg)
@@ -101,6 +101,7 @@ func (p *program) Start() error {
 			logFatal("failed to load config file %s - %s", configFile, err)
 		}
 	}
+	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
 	nsqadmin, err := nsqadmin.New(opts)

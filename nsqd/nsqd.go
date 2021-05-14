@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -36,31 +37,28 @@ type errStore struct {
 	err error
 }
 
-type Client interface {
-	Stats() ClientStats
-	IsProducer() bool
-}
-
 type NSQD struct {
 	// 64bit atomic vars need to be first for proper alignment on 32bit platforms
 	clientIDSequence int64
 
 	sync.RWMutex
+	ctx context.Context
+	// ctxCancel cancels a context that main() is waiting on
+	ctxCancel context.CancelFunc
 
 	opts atomic.Value
 
 	dl        *dirlock.DirLock
 	isLoading int32
+	isExiting int32
 	errValue  atomic.Value
 	startTime time.Time
 
 	topicMap map[string]*Topic
 
-	clientLock sync.RWMutex
-	clients    map[int64]Client
-
 	lookupPeers atomic.Value
 
+	tcpServer     *tcpServer
 	tcpListener   net.Listener
 	httpListener  net.Listener
 	httpsListener net.Listener
@@ -91,12 +89,12 @@ func New(opts *Options) (*NSQD, error) {
 	n := &NSQD{
 		startTime:            time.Now(),
 		topicMap:             make(map[string]*Topic),
-		clients:              make(map[int64]Client),
 		exitChan:             make(chan int),
 		notifyChan:           make(chan interface{}),
 		optsNotificationChan: make(chan struct{}, 1),
 		dl:                   dirlock.New(dataPath),
 	}
+	n.ctx, n.ctxCancel = context.WithCancel(context.Background())
 	httpcli := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
 	n.ci = clusterinfo.New(n.logf, httpcli)
 
@@ -107,7 +105,7 @@ func New(opts *Options) (*NSQD, error) {
 
 	err = n.dl.Lock()
 	if err != nil {
-		return nil, fmt.Errorf("--data-path=%s in use (possibly by another instance of nsqd)", dataPath)
+		return nil, fmt.Errorf("failed to lock data-path: %v", err)
 	}
 
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
@@ -116,20 +114,6 @@ func New(opts *Options) (*NSQD, error) {
 
 	if opts.ID < 0 || opts.ID >= 1024 {
 		return nil, errors.New("--node-id must be [0,1024)")
-	}
-
-	if opts.StatsdPrefix != "" {
-		var port string
-		_, port, err = net.SplitHostPort(opts.HTTPAddress)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse HTTP address (%s) - %s", opts.HTTPAddress, err)
-		}
-		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
-		prefixWithHost := strings.Replace(opts.StatsdPrefix, "%s", statsdHostKey, -1)
-		if prefixWithHost[len(prefixWithHost)-1] != '.' {
-			prefixWithHost += "."
-		}
-		opts.StatsdPrefix = prefixWithHost
 	}
 
 	if opts.TLSClientAuthPolicy != "" && opts.TLSRequired == TLSNotRequired {
@@ -154,6 +138,7 @@ func New(opts *Options) (*NSQD, error) {
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
+	n.tcpServer = &tcpServer{nsqd: n}
 	n.tcpListener, err = net.Listen("tcp", opts.TCPAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
@@ -167,6 +152,24 @@ func New(opts *Options) (*NSQD, error) {
 		if err != nil {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPSAddress, err)
 		}
+	}
+
+	if opts.BroadcastHTTPPort == 0 {
+		opts.BroadcastHTTPPort = n.RealHTTPAddr().Port
+	}
+
+	if opts.BroadcastTCPPort == 0 {
+		opts.BroadcastTCPPort = n.RealTCPAddr().Port
+	}
+
+	if opts.StatsdPrefix != "" {
+		var port string = fmt.Sprint(opts.BroadcastHTTPPort)
+		statsdHostKey := statsd.HostKey(net.JoinHostPort(opts.BroadcastAddress, port))
+		prefixWithHost := strings.Replace(opts.StatsdPrefix, "%s", statsdHostKey, -1)
+		if prefixWithHost[len(prefixWithHost)-1] != '.' {
+			prefixWithHost += "."
+		}
+		opts.StatsdPrefix = prefixWithHost
 	}
 
 	return n, nil
@@ -224,26 +227,7 @@ func (n *NSQD) GetStartTime() time.Time {
 	return n.startTime
 }
 
-func (n *NSQD) AddClient(clientID int64, client Client) {
-	n.clientLock.Lock()
-	n.clients[clientID] = client
-	n.clientLock.Unlock()
-}
-
-func (n *NSQD) RemoveClient(clientID int64) {
-	n.clientLock.Lock()
-	_, ok := n.clients[clientID]
-	if !ok {
-		n.clientLock.Unlock()
-		return
-	}
-	delete(n.clients, clientID)
-	n.clientLock.Unlock()
-}
-
 func (n *NSQD) Main() error {
-	ctx := &context{n}
-
 	exitCh := make(chan error)
 	var once sync.Once
 	exitFunc := func(err error) {
@@ -255,16 +239,16 @@ func (n *NSQD) Main() error {
 		})
 	}
 
-	tcpServer := &tcpServer{ctx: ctx}
 	n.waitGroup.Wrap(func() {
-		exitFunc(protocol.TCPServer(n.tcpListener, tcpServer, n.logf))
+		exitFunc(protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf))
 	})
-	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
+
+	httpServer := newHTTPServer(n, false, n.getOpts().TLSRequired == TLSRequired)
 	n.waitGroup.Wrap(func() {
 		exitFunc(http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf))
 	})
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
-		httpsServer := newHTTPServer(ctx, true, true)
+		httpsServer := newHTTPServer(n, true, true)
 		n.waitGroup.Wrap(func() {
 			exitFunc(http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf))
 		})
@@ -381,16 +365,15 @@ func (n *NSQD) PersistMetadata() error {
 		channels := []interface{}{}
 		topic.Lock()
 		for _, channel := range topic.channelMap {
-			channel.Lock()
 			if channel.ephemeral {
-				channel.Unlock()
 				continue
 			}
+			channel.Lock()
 			channelData := make(map[string]interface{})
 			channelData["name"] = channel.name
 			channelData["paused"] = channel.IsPaused()
-			channels = append(channels, channelData)
 			channel.Unlock()
+			channels = append(channels, channelData)
 		}
 		topic.Unlock()
 		topicData["channels"] = channels
@@ -420,8 +403,16 @@ func (n *NSQD) PersistMetadata() error {
 }
 
 func (n *NSQD) Exit() {
+	if !atomic.CompareAndSwapInt32(&n.isExiting, 0, 1) {
+		// avoid double call
+		return
+	}
 	if n.tcpListener != nil {
 		n.tcpListener.Close()
+	}
+
+	if n.tcpServer != nil {
+		n.tcpServer.Close()
 	}
 
 	if n.httpListener != nil {
@@ -448,12 +439,13 @@ func (n *NSQD) Exit() {
 	n.waitGroup.Wait()
 	n.dl.Unlock()
 	n.logf(LOG_INFO, "NSQ: bye")
+	n.ctxCancel()
 }
 
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
 func (n *NSQD) GetTopic(topicName string) *Topic {
-	// most likely, we already have this topic, so try read lock first.
+	// most likely we already have this topic, so try read lock first
 	n.RLock()
 	t, ok := n.topicMap[topicName]
 	n.RUnlock()
@@ -471,7 +463,7 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.name)
 	}
-	t = NewTopic(topicName, &context{n}, deleteCallback)
+	t = NewTopic(topicName, n, deleteCallback)
 	n.topicMap[topicName] = t
 
 	n.Unlock()
@@ -479,13 +471,14 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	n.logf(LOG_INFO, "TOPIC(%s): created", t.name)
 	// topic is created but messagePump not yet started
 
-	// if loading metadata at startup, no lookupd connections yet, topic started after load
+	// if this topic was created while loading metadata at startup don't do any further initialization
+	// (topic will be "started" after loading completes)
 	if atomic.LoadInt32(&n.isLoading) == 1 {
 		return t
 	}
 
-	// if using lookupd, make a blocking call to get the topics, and immediately create them.
-	// this makes sure that any message received is buffered to the right channels
+	// if using lookupd, make a blocking call to get channels and immediately create them
+	// to ensure that all channels receive published messages
 	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
 	if len(lookupdHTTPAddrs) > 0 {
 		channelNames, err := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
@@ -543,18 +536,18 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	return nil
 }
 
-func (n *NSQD) Notify(v interface{}) {
+func (n *NSQD) Notify(v interface{}, persist bool) {
 	// since the in-memory metadata is incomplete,
 	// should not persist metadata while loading it.
 	// nsqd will call `PersistMetadata` it after loading
-	persist := atomic.LoadInt32(&n.isLoading) == 0
+	loading := atomic.LoadInt32(&n.isLoading) == 1
 	n.waitGroup.Wrap(func() {
 		// by selecting on exitChan we guarantee that
 		// we do not block exit, see issue #123
 		select {
 		case <-n.exitChan:
 		case n.notifyChan <- v:
-			if !persist {
+			if loading || !persist {
 				return
 			}
 			n.Lock()
@@ -746,4 +739,9 @@ func buildTLSConfig(opts *Options) (*tls.Config, error) {
 
 func (n *NSQD) IsAuthEnabled() bool {
 	return len(n.getOpts().AuthHTTPAddresses) != 0
+}
+
+// Context returns a context that will be canceled when nsqd initiates the shutdown
+func (n *NSQD) Context() context.Context {
+	return n.ctx
 }

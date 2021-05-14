@@ -1605,10 +1605,11 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 
 	nsqd, err := New(opts)
 	test.Nil(t, err)
-	prot := &protocolV2{ctx: &context{nsqd: nsqd}}
-	defer prot.ctx.nsqd.Exit()
+	prot := &protocolV2{nsqd: nsqd}
+	defer prot.nsqd.Exit()
 
-	err = prot.IOLoop(fakeConn)
+	client := prot.NewClient(fakeConn)
+	err = prot.IOLoop(client)
 	test.NotNil(t, err)
 	test.Equal(t, "E_INVALID invalid command INVALID_COMMAND", err.Error())
 	test.NotNil(t, err.(*protocol.FatalClientErr))
@@ -1619,9 +1620,8 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(b)
 	nsqd, _ := New(opts)
-	ctx := &context{nsqd}
-	p := &protocolV2{ctx}
-	c := newClientV2(0, nil, ctx)
+	p := &protocolV2{nsqd}
+	c := newClientV2(0, nil, nsqd)
 	params := [][]byte{[]byte("NOP")}
 	b.StartTimer()
 
