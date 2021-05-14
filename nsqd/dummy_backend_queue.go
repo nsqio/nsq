@@ -42,7 +42,7 @@ func tryQueueToMemoryChan(msgChan chan *Message, m *Message) error {
 		}
 
 		select {
-		case <- msgChan:
+		case <-msgChan:
 		default:
 			// Wait for retry...
 		}
