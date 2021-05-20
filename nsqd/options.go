@@ -61,11 +61,12 @@ type Options struct {
 	MaxChannelConsumers    int           `flag:"max-channel-consumers"`
 
 	// statsd integration
-	StatsdAddress       string        `flag:"statsd-address"`
-	StatsdPrefix        string        `flag:"statsd-prefix"`
-	StatsdInterval      time.Duration `flag:"statsd-interval"`
-	StatsdMemStats      bool          `flag:"statsd-mem-stats"`
-	StatsdUDPPacketSize int           `flag:"statsd-udp-packet-size"`
+	StatsdAddress          string        `flag:"statsd-address"`
+	StatsdPrefix           string        `flag:"statsd-prefix"`
+	StatsdInterval         time.Duration `flag:"statsd-interval"`
+	StatsdMemStats         bool          `flag:"statsd-mem-stats"`
+	StatsdUDPPacketSize    int           `flag:"statsd-udp-packet-size"`
+	StatsdExcludeEphemeral bool          `flag:"statsd-exclude-ephemeral"`
 
 	// e2e message latency
 	E2EProcessingLatencyWindowTime  time.Duration `flag:"e2e-processing-latency-window-time"`
