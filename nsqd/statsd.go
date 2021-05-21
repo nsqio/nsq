@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/nsqio/nsq/internal/statsd"
@@ -36,6 +37,7 @@ func (n *NSQD) statsdLoop() {
 		case <-ticker.C:
 			addr := n.getOpts().StatsdAddress
 			prefix := n.getOpts().StatsdPrefix
+			excludeEphemeral := n.getOpts().StatsdExcludeEphemeral
 			conn, err := net.DialTimeout("udp", addr, time.Second)
 			if err != nil {
 				n.logf(LOG_ERROR, "failed to create UDP socket to statsd(%s)", addr)
@@ -49,6 +51,10 @@ func (n *NSQD) statsdLoop() {
 
 			stats := n.GetStats("", "", false)
 			for _, topic := range stats.Topics {
+				if excludeEphemeral && strings.HasSuffix(topic.TopicName, "#ephemeral") {
+					continue
+				}
+
 				// try to find the topic in the last collection
 				lastTopic := TopicStats{}
 				for _, checkTopic := range lastStats.Topics {
@@ -80,6 +86,10 @@ func (n *NSQD) statsdLoop() {
 				}
 
 				for _, channel := range topic.Channels {
+					if excludeEphemeral && strings.HasSuffix(channel.ChannelName, "#ephemeral") {
+						continue
+					}
+
 					// try to find the channel in the last collection
 					lastChannel := ChannelStats{}
 					for _, checkChannel := range lastTopic.Channels {
