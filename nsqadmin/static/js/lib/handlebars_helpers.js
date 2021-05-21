@@ -61,17 +61,24 @@ var genColorList = function(typ, key) {
     return 'blue';
 };
 
+// sanitizeGraphiteKey removes special characters from a graphite key
+// this matches behavior of bitly/statsdaemon
+// https://github.com/bitly/statsdaemon/blob/fc46d9cfe29b674a0c8abc723afaa9370430cdcd/statsdaemon.go#L64-L88
+var sanitizeGraphiteKey = function(s) {
+    return s.replaceAll(' ', '_').replaceAll('/', '-').replaceAll(/[^a-zA-Z0-9-_.]/g, '');
+}
+
 var genTargets = function(typ, node, ns1, ns2, key) {
     var targets = [];
     var prefix = statsdPrefix(node ? node : '*');
     var fullKey;
     var target;
     if (typ === 'topic') {
-        fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.' + key);
+        fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + sanitizeGraphiteKey(ns1) + '.' + key);
         targets.push('sumSeries(' + fullKey + ')');
     } else if (typ === 'channel') {
-        fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + ns1 + '.channel.' +
-            ns2 + '.' + key);
+        fullKey = formatStatsdKey(metricType(key), prefix + 'topic.' + sanitizeGraphiteKey(ns1) + '.channel.' +
+            sanitizeGraphiteKey(ns2) + '.' + key);
         targets.push('sumSeries(' + fullKey + ')');
     } else if (typ === 'node') {
         target = prefix + 'mem.' + key;
