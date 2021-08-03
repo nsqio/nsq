@@ -42,8 +42,11 @@ for os in linux darwin freebsd windows; do
     sudo rm -r $BUILD
 done
 
-docker build -t nsqio/nsq:v$version .
+docker buildx create --name nsq
+docker buildx use nsq
+docker buildx build --tag nsqio/nsq:v$version . --platform linux/amd64,linux/arm64 --push
 if [[ ! $version == *"-"* ]]; then
     echo "Tagging nsqio/nsq:v$version as the latest release."
-    docker tag nsqio/nsq:v$version nsqio/nsq:latest
+    docker buildx build --tag nsqio/nsq:latest . --platform linux/amd64,linux/arm64 --push
 fi
+docker buildx rm nsq
