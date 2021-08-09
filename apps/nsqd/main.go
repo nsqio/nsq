@@ -70,6 +70,10 @@ func (p *program) Start() error {
 	if err != nil {
 		logFatal("failed to instantiate nsqd - %s", err)
 	}
+	if p.nsqd != nil{
+		ctx, ctxCancel := p.nsqd.GetCtx()
+		nsqd.SetCtx(ctx, ctxCancel)
+	}
 	p.nsqd = nsqd
 
 	err = p.nsqd.LoadMetadata()
@@ -114,6 +118,11 @@ func (p *program) Stop() error {
 
 // Context returns a context that will be canceled when nsqd initiates the shutdown
 func (p *program) Context() context.Context {
+	if p.nsqd == nil{
+		p.nsqd = &nsqd.NSQD{}
+		ctx, ctxCancel := context.WithCancel(context.Background())
+		p.nsqd.SetCtx(ctx, ctxCancel)
+	}
 	return p.nsqd.Context()
 }
 

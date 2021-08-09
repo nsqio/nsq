@@ -175,6 +175,15 @@ func New(opts *Options) (*NSQD, error) {
 	return n, nil
 }
 
+func (n *NSQD) SetCtx(ctx context.Context, ctxCancel context.CancelFunc){
+	n.ctx = ctx
+	n.ctxCancel = ctxCancel
+}
+
+func (n *NSQD) GetCtx() (ctx context.Context, ctxCancel context.CancelFunc){
+	return n.ctx, n.ctxCancel
+}
+
 func (n *NSQD) getOpts() *Options {
 	return n.opts.Load().(*Options)
 }
