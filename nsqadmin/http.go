@@ -164,7 +164,7 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 func (s *httpServer) staticAssetHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	assetName := ps.ByName("asset")
 
-	asset, err := Asset(assetName)
+	asset, err := staticAsset(assetName)
 	if err != nil {
 		return nil, http_api.Err{404, "NOT_FOUND"}
 	}
