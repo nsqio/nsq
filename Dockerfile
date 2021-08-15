@@ -6,9 +6,8 @@ RUN mkdir -p /go/src/github.com/nsqio/nsq
 COPY    .    /go/src/github.com/nsqio/nsq
 WORKDIR      /go/src/github.com/nsqio/nsq
 
-RUN export GO111MODULE=on \
- && ./test.sh \
- && CGO_ENABLED=0 make DESTDIR=/opt PREFIX=/nsq BLDFLAGS='-ldflags="-s -w"' install
+RUN ./test.sh
+RUN CGO_ENABLED=0 make PREFIX=/opt/nsq BLDFLAGS='-ldflags="-s -w"' install
 
 
 FROM alpine:latest
