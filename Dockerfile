@@ -1,15 +1,16 @@
-FROM golang:latest AS build
+FROM golang:alpine AS build
+
+RUN apk update && apk add make gcc musl-dev
 
 RUN mkdir -p /go/src/github.com/nsqio/nsq
 COPY    .    /go/src/github.com/nsqio/nsq
 WORKDIR      /go/src/github.com/nsqio/nsq
 
-RUN export GO111MODULE=on \
- && ./test.sh \
- && CGO_ENABLED=0 make DESTDIR=/opt PREFIX=/nsq BLDFLAGS='-ldflags="-s -w"' install
+RUN ./test.sh
+RUN CGO_ENABLED=0 make PREFIX=/opt/nsq BLDFLAGS='-ldflags="-s -w"' install
 
 
-FROM alpine:3.10
+FROM alpine:latest
 
 EXPOSE 4150 4151 4160 4161 4170 4171
 
