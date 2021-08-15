@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+    <title>nsqadmin</title>
+    <link rel="icon" type="image/png" href="{{basePath "/static/favicon.png"}}">
+    <link rel="stylesheet" href="{{basePath "/static/bootstrap.min.css"}}">
+    <link rel="stylesheet" href="{{basePath "/static/base.css"}}">
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    <img class="image-preview img-polaroid">
+
+    <div id="container"></div>
+
+    <script type="text/javascript">
+        var USER_AGENT = 'nsqadmin/v{{.Version}}';
+        var VERSION = {{.Version}};
+        var GRAPHITE_URL = {{if .ProxyGraphite}}''{{else}}{{.GraphiteURL}}{{end}};
+        var GRAPH_ENABLED = {{if .GraphEnabled}}true{{else}}false{{end}};
+        var STATSD_COUNTER_FORMAT = {{.StatsdCounterFormat}};
+        var STATSD_GAUGE_FORMAT = {{.StatsdGaugeFormat}};
+        var STATSD_INTERVAL = {{.StatsdInterval}};
+        var STATSD_PREFIX = {{.StatsdPrefix}};
+        var NSQLOOKUPD = [{{range .NSQLookupd}}{{.}},{{end}}];
+        var IS_ADMIN = {{.IsAdmin}};
+        var BASE_PATH = {{basePath ""}};
+    </script>
+    <script src="{{basePath "/static/vendor.js"}}"></script>
+    <script src="{{basePath "/static/main.js"}}"></script>
+</body>
+</html>

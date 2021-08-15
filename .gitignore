@@ -1,6 +1,5 @@
 .godeps
 vendor
-build/
 .cover/
 apps/nsqlookupd/nsqlookupd
 apps/nsqd/nsqd
@@ -15,7 +14,6 @@ apps/nsq_to_http/nsq_to_http
 apps/nsq_tail/nsq_tail
 apps/nsq_stat/nsq_stat
 apps/to_nsq/to_nsq
-nsqadmin/static/build
 dist
 _site
 _posts
