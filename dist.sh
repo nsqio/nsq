@@ -43,11 +43,11 @@ for target in "linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "freebsd
     sudo rm -r $BUILD
 done
 
-docker buildx create --name nsq
-docker buildx use nsq
+rnd=$(LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c10)
+docker buildx create --use --name nsq-$rnd
 docker buildx build --tag nsqio/nsq:v$version . --platform linux/amd64,linux/arm64 --push
 if [[ ! $version == *"-"* ]]; then
     echo "Tagging nsqio/nsq:v$version as the latest release."
     docker buildx build --tag nsqio/nsq:latest . --platform linux/amd64,linux/arm64 --push
 fi
-docker buildx rm nsq
+docker buildx rm nsq-$rnd
