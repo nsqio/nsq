@@ -19,7 +19,6 @@ rm -rf   $DIR/dist/docker
 mkdir -p $DIR/dist/docker
 
 GOFLAGS='-ldflags="-s -w"'
-arch=$(go env GOARCH)
 version=$(awk '/const Binary/ {print $NF}' < $DIR/internal/version/binary.go | sed 's/"//g')
 goversion=$(go version | awk '{print $3}')
 
@@ -27,7 +26,9 @@ echo "... running tests"
 ./test.sh
 
 export GO111MODULE=on
-for os in linux darwin freebsd windows; do
+for target in "linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "freebsd/amd64" "windows/amd64"; do
+    os=${target%/*}
+    arch=${target##*/}
     echo "... building v$version for $os/$arch"
     BUILD=$(mktemp -d ${TMPDIR:-/tmp}/nsq-XXXXX)
     TARGET="nsq-$version.$os-$arch.$goversion"
