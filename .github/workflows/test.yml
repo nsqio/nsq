@@ -12,10 +12,10 @@ jobs:
       fail-fast: false
       matrix:
         imgtag:
-          - "golang:1.12-buster"
           - "golang:1.13-buster"
           - "golang:1.14-buster"
           - "golang:1.15-buster"
+          - "golang:1.16-buster"
         goarch:
           - "amd64"
           - "386"
@@ -25,7 +25,6 @@ jobs:
       GOPATH: "${{github.workspace}}/go"
       GOARCH: "${{matrix.goarch}}"
       SRCDIR: "go/src/github.com/nsqio/nsq"
-      GO111MODULE: "on"  # only needed up to go-1.12
 
     steps:
       - uses: actions/checkout@v2
@@ -45,7 +44,7 @@ jobs:
   send-coverage:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
-    container: "golang:1.15-buster"
+    container: "golang:1.16-buster"
     env:
       GOPATH: "${{github.workspace}}/go"
       SRCDIR: "go/src/github.com/nsqio/nsq"
