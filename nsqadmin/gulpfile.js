@@ -3,7 +3,7 @@ var clean = require('gulp-clean');
 var gulp = require('gulp');
 var notify = require('gulp-notify');
 var path = require('path');
-var sass = require('gulp-sass');
+var sass = require('gulp-dart-sass');
 var source = require('vinyl-source-stream');
 var taskListing = require('gulp-task-listing');
 var uglify = require('gulp-uglify');
@@ -55,8 +55,7 @@ function sassTask(root, inputFile) {
         return gulp.src(path.join(root, 'css', inputFile))
             .pipe(sass({
                 'sourceComments': 'map',
-                'onError': onError
-            }))
+            }).on('error', onError))
             .pipe(gulp.dest(path.join(root, 'build/')));
     };
 }
