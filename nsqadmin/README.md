@@ -6,19 +6,19 @@ administrative tasks.
 Read the [docs](https://nsq.io/components/nsqadmin.html)
 
 
-## Local Development
+## Local Development (Go 1.16+)
 
 ### Dependencies
 
- 1. Install [`go-bindata`](https://github.com/shuLhan/go-bindata)
- 2. Install NodeJS 14.x (includes npm)
+ 1. Install NodeJS 16.x (includes `npm`)
 
-### Workflow
+### Live Reload Workflow
 
  1. `$ npm install`
- 2. `$ ./gulp --series clean watch` or `$ ./gulp --series clean build`
- 3. `$ go-bindata --debug --pkg=nsqadmin --prefix=static/build/ static/build/...`
- 4. `$ go build ../apps/nsqadmin && ./nsqadmin`
- 5. make changes (repeat step 4 only if you make changes to any Go code)
- 6. `$ go-bindata --pkg=nsqadmin --prefix=static/build/ static/build/...`
- 7. commit other changes and `bindata.go`
+ 2. `$ ./gulp --series clean watch`
+ 3. `$ go build --tags debug` (from `apps/nsqadmin` directory)
+ 4. make changes to static assets (repeat step 3 only if you make changes to any Go code)
+
+### Build
+
+ 1. `$ ./gulp --series clean build`
