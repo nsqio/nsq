@@ -2,7 +2,7 @@
 
 ## Releases
 
-### WIP
+### 1.2.1 - 2021-08-15
 
 **Upgrading**
 
@@ -10,38 +10,40 @@
 
 Features:
 
- * #1355 / #1364 - arm64 builds
- * #1346 - `nsqd`: ability to skip ephemeral topics/channels in statsd output
+ * #1347 - `nsqadmin`: switch to go:embed for static assets
+ * #1355 / #1364 - arm64 builds (thanks @danbf)
+ * #1346 - `nsqd`: ability to skip ephemeral topics/channels in statsd output 
  * #1336 / #1341 / #1343 - `nsqd`: ability to configure auth endpoint path (thanks @tufanbarisyildirim)
  * #1307 - remove `Context` to use stdlib `context`
  * #1295 / #1296 - switch to GitHub Actions CI
- * #1292 - `nsqd`: minimize allocations on message send
- * #1289 - optimize `uniq`
- * #1230 / #1232 - `nsqd`: ability to omit memory stats from `/stats`
- * #1226 - `nsqd`: only update internal `RDY` count for client when it changes
+ * #1292 - `nsqd`: minimize allocations on message send (thanks @imxyb)
+ * #1289 - optimize `uniq` (thanks @donutloop)
+ * #1230 / #1232 - `nsqd`: ability to omit memory stats from `/stats` (thanks @creker)
+ * #1226 - `nsqd`: only update internal `RDY` count for client when it changes (thanks @andyxning)
  * #1221 / #1363 - test against more recent versions of Go
- * #1209 - `nsqd`: bump `go-diskqueue` (interface change)
- * #1206 - prefer idiomatic `sort.Ints` over `sort.Sort`
+ * #1209 - `nsqd`: bump `go-diskqueue` (interface change) (thanks @bitpeng)
+ * #1206 - prefer idiomatic `sort.Ints` over `sort.Sort` (thanks @lelenanam)
  * #1197 / #1362 - Dockerfile: update Alpine base image, use /data by default
- * #1178 - `nsqd`: configurable queue scan worker pool
- * #1159 - `nsqd`: don't buffer messages when `--mem-queue-size=0`
- * #1073 / #1297 - `nsqd`: support separate broadcast ports for TCP and HTTP
+ * #1178 - `nsqd`: configurable queue scan worker pool (thanks @andyxning)
+ * #1159 - `nsqd`: don't buffer messages when `--mem-queue-size=0` (thanks @bitpeng)
+ * #1073 / #1297 - `nsqd`: support separate broadcast ports for TCP and HTTP (thanks @shyam-king)
 
 Bugs:
 
- * #765 / #1195 / #1203 / #1205 - fix build on illumos
- * #1333 - fix race detector tests on non-bash shells
- * #1330 - fix `log_level` support in configuration file
- * #1319 / #1331 / #1361 - `nsqd`: handle SIGTERM
- * #1287 - `nsqadmin`: fix `--proxy-graphite` support
- * #1270 / #1271 - `nsqlookupd`: fix incorrect error message for HTTP listener
+ * #1347 - `nsqadmin`: fix graphite key for ephemeral topics/channels
+ * #765 / #1195 / #1203 / #1205 - fix build on illumos (thanks @i-sevostyanov)
+ * #1333 - fix race detector tests on non-bash shells 
+ * #1330 - fix `log_level` support in configuration file (thanks @edoger)
+ * #1319 / #1331 / #1361 - `nsqd`: handle SIGTERM 
+ * #1287 - `nsqadmin`: fix `--proxy-graphite` support (thanks @fanlix)
+ * #1270 / #1271 - `nsqlookupd`: fix incorrect error message for HTTP listener (thanks @TangDH03)
  * #1264 - fix benchmark script
- * #1251 / #1314 / #1327 - `nsqd`: fix live lock for high churn ephemeral topic/channel reconnections
+ * #1251 / #1314 / #1327 - `nsqd`: fix live lock for high churn ephemeral topic/channel reconnections (thanks @slayercat)
  * #1237 - Dockerfile: add `nsswitch.conf` to ensure go resolver uses `/etc/hosts` first
- * #1217 / #1220 - `nsqd`: improve error message when `--data-path` does not exist
- * #1198 / #1190 / #1262 - synchronize close of all connections on Exit
- * #1188 / #1189 - `nsqadmin`: fix channel delete, fix source-maps in Firefox
- * #1186 - `nsqadmin`: fix nodes list with ipv6 addresses
+ * #1217 / #1220 - `nsqd`: improve error message when `--data-path` does not exist (thanks @mdh67899)
+ * #1198 / #1190 / #1262 - synchronize close of all connections on Exit (thanks @benjsto)
+ * #1188 / #1189 - `nsqadmin`: fix channel delete, fix source-maps in Firefox (thanks @avtrifanov)
+ * #1186 - `nsqadmin`: fix nodes list with ipv6 addresses (thanks @andyxning)
 
 ### 1.2.0 - 2019-08-26
 
