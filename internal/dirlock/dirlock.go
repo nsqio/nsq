@@ -1,3 +1,4 @@
+//go:build !windows && !illumos
 // +build !windows,!illumos
 
 package dirlock

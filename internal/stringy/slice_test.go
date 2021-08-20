@@ -1,8 +1,9 @@
 package stringy_test
 
 import (
-	"github.com/nsqio/nsq/internal/stringy"
 	"testing"
+
+	"github.com/nsqio/nsq/internal/stringy"
 )
 
 func BenchmarkUniq(b *testing.B) {
