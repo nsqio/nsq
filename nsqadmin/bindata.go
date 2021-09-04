@@ -16,7 +16,6 @@
 
 package nsqadmin
 
-
 import (
 	"bytes"
 	"compress/gzip"
@@ -48,7 +47,6 @@ func bindataRead(data []byte, name string) ([]byte, error) {
 
 	return buf.Bytes(), nil
 }
-
 
 type asset struct {
 	bytes []byte
@@ -99,8 +97,6 @@ func bindataBaseCssBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataBaseCss() (*asset, error) {
 	bytes, err := bindataBaseCssBytes()
 	if err != nil {
@@ -108,11 +104,11 @@ func bindataBaseCss() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "base.css",
-		size: 2921,
+		name:        "base.css",
+		size:        2921,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1629068427, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1629068427, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -129,8 +125,6 @@ func bindataBootstrapMinCssBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataBootstrapMinCss() (*asset, error) {
 	bytes, err := bindataBootstrapMinCssBytes()
 	if err != nil {
@@ -138,11 +132,11 @@ func bindataBootstrapMinCss() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "bootstrap.min.css",
-		size: 141440,
+		name:        "bootstrap.min.css",
+		size:        141440,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1629068428, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1629068428, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -159,8 +153,6 @@ func bindataFaviconPngBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataFaviconPng() (*asset, error) {
 	bytes, err := bindataFaviconPngBytes()
 	if err != nil {
@@ -168,11 +160,11 @@ func bindataFaviconPng() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "favicon.png",
-		size: 8515,
+		name:        "favicon.png",
+		size:        8515,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1460837506, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1460837506, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -189,8 +181,6 @@ func bindataGlyphiconshalflingsregularEotBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataGlyphiconshalflingsregularEot() (*asset, error) {
 	bytes, err := bindataGlyphiconshalflingsregularEotBytes()
 	if err != nil {
@@ -198,11 +188,11 @@ func bindataGlyphiconshalflingsregularEot() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "glyphicons-halflings-regular.eot",
-		size: 20127,
+		name:        "glyphicons-halflings-regular.eot",
+		size:        20127,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1460837506, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1460837506, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -219,8 +209,6 @@ func bindataGlyphiconshalflingsregularSvgBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataGlyphiconshalflingsregularSvg() (*asset, error) {
 	bytes, err := bindataGlyphiconshalflingsregularSvgBytes()
 	if err != nil {
@@ -228,11 +216,11 @@ func bindataGlyphiconshalflingsregularSvg() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "glyphicons-halflings-regular.svg",
-		size: 108738,
+		name:        "glyphicons-halflings-regular.svg",
+		size:        108738,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1460837506, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1460837506, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -249,8 +237,6 @@ func bindataGlyphiconshalflingsregularTtfBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataGlyphiconshalflingsregularTtf() (*asset, error) {
 	bytes, err := bindataGlyphiconshalflingsregularTtfBytes()
 	if err != nil {
@@ -258,11 +244,11 @@ func bindataGlyphiconshalflingsregularTtf() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "glyphicons-halflings-regular.ttf",
-		size: 45404,
+		name:        "glyphicons-halflings-regular.ttf",
+		size:        45404,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1460837506, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1460837506, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -279,8 +265,6 @@ func bindataGlyphiconshalflingsregularWoffBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataGlyphiconshalflingsregularWoff() (*asset, error) {
 	bytes, err := bindataGlyphiconshalflingsregularWoffBytes()
 	if err != nil {
@@ -288,11 +272,11 @@ func bindataGlyphiconshalflingsregularWoff() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "glyphicons-halflings-regular.woff",
-		size: 23424,
+		name:        "glyphicons-halflings-regular.woff",
+		size:        23424,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1460837506, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1460837506, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -309,8 +293,6 @@ func bindataGlyphiconshalflingsregularWoff2Bytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataGlyphiconshalflingsregularWoff2() (*asset, error) {
 	bytes, err := bindataGlyphiconshalflingsregularWoff2Bytes()
 	if err != nil {
@@ -318,11 +300,11 @@ func bindataGlyphiconshalflingsregularWoff2() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "glyphicons-halflings-regular.woff2",
-		size: 18028,
+		name:        "glyphicons-halflings-regular.woff2",
+		size:        18028,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1460837506, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1460837506, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -339,8 +321,6 @@ func bindataIndexHtmlBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataIndexHtml() (*asset, error) {
 	bytes, err := bindataIndexHtmlBytes()
 	if err != nil {
@@ -348,11 +328,11 @@ func bindataIndexHtml() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "index.html",
-		size: 1311,
+		name:        "index.html",
+		size:        1311,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1604028003, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1604028003, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -369,8 +349,6 @@ func bindataMainJsBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataMainJs() (*asset, error) {
 	bytes, err := bindataMainJsBytes()
 	if err != nil {
@@ -378,11 +356,11 @@ func bindataMainJs() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "main.js",
-		size: 206903,
+		name:        "main.js",
+		size:        206903,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1629068433, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1629068433, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -399,8 +377,6 @@ func bindataMainJsMapBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataMainJsMap() (*asset, error) {
 	bytes, err := bindataMainJsMapBytes()
 	if err != nil {
@@ -408,11 +384,11 @@ func bindataMainJsMap() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "main.js.map",
-		size: 610933,
+		name:        "main.js.map",
+		size:        610933,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1629068433, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1629068433, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -429,8 +405,6 @@ func bindataNsqbluePngBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataNsqbluePng() (*asset, error) {
 	bytes, err := bindataNsqbluePngBytes()
 	if err != nil {
@@ -438,11 +412,11 @@ func bindataNsqbluePng() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "nsq_blue.png",
-		size: 8317,
+		name:        "nsq_blue.png",
+		size:        8317,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1460837506, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1460837506, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
@@ -459,8 +433,6 @@ func bindataVendorJsBytes() ([]byte, error) {
 	)
 }
 
-
-
 func bindataVendorJs() (*asset, error) {
 	bytes, err := bindataVendorJsBytes()
 	if err != nil {
@@ -468,18 +440,17 @@ func bindataVendorJs() (*asset, error) {
 	}
 
 	info := bindataFileInfo{
-		name: "vendor.js",
-		size: 150302,
+		name:        "vendor.js",
+		size:        150302,
 		md5checksum: "",
-		mode: os.FileMode(420),
-		modTime: time.Unix(1629068431, 0),
+		mode:        os.FileMode(420),
+		modTime:     time.Unix(1629068431, 0),
 	}
 
 	a := &asset{bytes: bytes, info: info}
 
 	return a, nil
 }
-
 
 //
 // Asset loads and returns the asset for the given name.
@@ -583,18 +554,18 @@ func AssetDir(name string) ([]string, error) {
 			node = node.Children[p]
 			if node == nil {
 				return nil, &os.PathError{
-					Op: "open",
+					Op:   "open",
 					Path: name,
-					Err: os.ErrNotExist,
+					Err:  os.ErrNotExist,
 				}
 			}
 		}
 	}
 	if node.Func != nil {
 		return nil, &os.PathError{
-			Op: "open",
+			Op:   "open",
 			Path: name,
-			Err: os.ErrNotExist,
+			Err:  os.ErrNotExist,
 		}
 	}
 	rv := make([]string, 0, len(node.Children))
@@ -604,26 +575,25 @@ func AssetDir(name string) ([]string, error) {
 	return rv, nil
 }
 
-
 type bintree struct {
 	Func     func() (*asset, error)
 	Children map[string]*bintree
 }
 
 var _bintree = &bintree{Func: nil, Children: map[string]*bintree{
-	"base.css": {Func: bindataBaseCss, Children: map[string]*bintree{}},
-	"bootstrap.min.css": {Func: bindataBootstrapMinCss, Children: map[string]*bintree{}},
-	"favicon.png": {Func: bindataFaviconPng, Children: map[string]*bintree{}},
-	"glyphicons-halflings-regular.eot": {Func: bindataGlyphiconshalflingsregularEot, Children: map[string]*bintree{}},
-	"glyphicons-halflings-regular.svg": {Func: bindataGlyphiconshalflingsregularSvg, Children: map[string]*bintree{}},
-	"glyphicons-halflings-regular.ttf": {Func: bindataGlyphiconshalflingsregularTtf, Children: map[string]*bintree{}},
-	"glyphicons-halflings-regular.woff": {Func: bindataGlyphiconshalflingsregularWoff, Children: map[string]*bintree{}},
+	"base.css":                           {Func: bindataBaseCss, Children: map[string]*bintree{}},
+	"bootstrap.min.css":                  {Func: bindataBootstrapMinCss, Children: map[string]*bintree{}},
+	"favicon.png":                        {Func: bindataFaviconPng, Children: map[string]*bintree{}},
+	"glyphicons-halflings-regular.eot":   {Func: bindataGlyphiconshalflingsregularEot, Children: map[string]*bintree{}},
+	"glyphicons-halflings-regular.svg":   {Func: bindataGlyphiconshalflingsregularSvg, Children: map[string]*bintree{}},
+	"glyphicons-halflings-regular.ttf":   {Func: bindataGlyphiconshalflingsregularTtf, Children: map[string]*bintree{}},
+	"glyphicons-halflings-regular.woff":  {Func: bindataGlyphiconshalflingsregularWoff, Children: map[string]*bintree{}},
 	"glyphicons-halflings-regular.woff2": {Func: bindataGlyphiconshalflingsregularWoff2, Children: map[string]*bintree{}},
-	"index.html": {Func: bindataIndexHtml, Children: map[string]*bintree{}},
-	"main.js": {Func: bindataMainJs, Children: map[string]*bintree{}},
-	"main.js.map": {Func: bindataMainJsMap, Children: map[string]*bintree{}},
-	"nsq_blue.png": {Func: bindataNsqbluePng, Children: map[string]*bintree{}},
-	"vendor.js": {Func: bindataVendorJs, Children: map[string]*bintree{}},
+	"index.html":                         {Func: bindataIndexHtml, Children: map[string]*bintree{}},
+	"main.js":                            {Func: bindataMainJs, Children: map[string]*bintree{}},
+	"main.js.map":                        {Func: bindataMainJsMap, Children: map[string]*bintree{}},
+	"nsq_blue.png":                       {Func: bindataNsqbluePng, Children: map[string]*bintree{}},
+	"vendor.js":                          {Func: bindataVendorJs, Children: map[string]*bintree{}},
 }}
 
 // RestoreAsset restores an asset under the given directory

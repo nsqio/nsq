@@ -1,6 +1,6 @@
 module github.com/nsqio/nsq
 
-go 1.16
+go 1.17
 
 require (
 	github.com/BurntSushi/toml v0.3.1
@@ -16,5 +16,7 @@ require (
 	github.com/nsqio/go-diskqueue v1.0.0
 	github.com/nsqio/go-nsq v1.0.8
 )
+
+require golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c // indirect
 
 replace github.com/judwhite/go-svc => github.com/mreiferson/go-svc v1.2.2-0.20210815184239-7a96e00010f6
