@@ -1,14 +1,18 @@
-.godeps
-build/
-test
-vendor
+/build/
+dist/
 .cover/
+profile/
+
+# nsqd data from testing
+*.dat
+
+# nsqadmin
+node_modules
+
+# apps
 apps/nsqlookupd/nsqlookupd
 apps/nsqd/nsqd
 apps/nsqadmin/nsqadmin
-bench/bench_reader/bench_reader
-bench/bench_writer/bench_writer
-bench/bench_channels/bench_channels
 apps/nsq_to_nsq/nsq_to_nsq
 apps/nsq_to_file/nsq_to_file
 apps/nsq_pubsub/nsq_pubsub
@@ -16,10 +20,9 @@ apps/nsq_to_http/nsq_to_http
 apps/nsq_tail/nsq_tail
 apps/nsq_stat/nsq_stat
 apps/to_nsq/to_nsq
-dist
-_site
-_posts
-*.dat
+bench/bench_reader/bench_reader
+bench/bench_writer/bench_writer
+bench/bench_channels/bench_channels
 
 # Go.gitignore
 
@@ -46,7 +49,6 @@ _testmain.go
 
 *.exe
 
-profile
 
 # vim stuff
 *.sw[op]
