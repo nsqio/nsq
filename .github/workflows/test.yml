@@ -12,10 +12,10 @@ jobs:
       fail-fast: false
       matrix:
         imgtag:
-          - "golang:1.13-buster"
           - "golang:1.14-buster"
           - "golang:1.15-buster"
-          - "golang:1.16-buster"
+          - "golang:1.16-bullseye"
+          - "golang:1.17-bullseye"
         goarch:
           - "amd64"
           - "386"
@@ -44,7 +44,7 @@ jobs:
   send-coverage:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
-    container: "golang:1.16-buster"
+    container: "golang:1.16-bullseye"
     env:
       GOPATH: "${{github.workspace}}/go"
       SRCDIR: "go/src/github.com/nsqio/nsq"
@@ -55,7 +55,7 @@ jobs:
           path: ${{env.SRCDIR}}
 
       - name: Install goveralls
-        run: GO111MODULE=off go get github.com/mattn/goveralls
+        run: go install github.com/mattn/goveralls@latest
 
       - name: Send coverage
         env:
