@@ -136,8 +136,8 @@ func main() {
 	cfg.UserAgent = fmt.Sprintf("nsq_to_file/%s go-nsq/%s", version.Binary, nsq.VERSION)
 	cfg.MaxInFlight = opts.MaxInFlight
 
-	hupChan := make(chan os.Signal)
-	termChan := make(chan os.Signal)
+	hupChan := make(chan os.Signal, 1)
+	termChan := make(chan os.Signal, 1)
 	signal.Notify(hupChan, syscall.SIGHUP)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
