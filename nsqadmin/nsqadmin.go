@@ -100,7 +100,6 @@ func New(opts *Options) (*NSQAdmin, error) {
 		url, err := url.Parse(opts.GraphiteURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse --graphite-url (%s) - %s", opts.GraphiteURL, err)
-			os.Exit(1)
 		}
 		n.graphiteURL = url
 	}
