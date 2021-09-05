@@ -11,14 +11,16 @@ Read the [docs](https://nsq.io/components/nsqadmin.html)
 ### Dependencies
 
  1. Install NodeJS 16.x (includes `npm`)
+ 2. Install [`go-bindata`](https://github.com/shuLhan/go-bindata) (for "legacy" go < 1.16)
 
 ### Live Reload Workflow
 
  1. `$ npm install`
  2. `$ ./gulp --series clean watch`
- 3. `$ go build --tags debug` (from `apps/nsqadmin` directory)
+ 3. `$ cd .. && make && ./build/nsqadmin --dev-static-dir=nsqadmin/static/build --lookupd-http-address=<...>`
  4. make changes to static assets (repeat step 3 only if you make changes to any Go code)
 
 ### Build
 
  1. `$ ./gulp --series clean build`
+ 2. `$ go-bindata --pkg=nsqadmin --prefix=static/build/ static/build/...` (for "legacy" go < 1.16)
