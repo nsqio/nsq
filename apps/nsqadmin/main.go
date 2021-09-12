@@ -30,6 +30,7 @@ func nsqadminFlagSet(opts *nsqadmin.Options) *flag.FlagSet {
 
 	flagSet.String("http-address", opts.HTTPAddress, "<addr>:<port> to listen on for HTTP clients")
 	flagSet.String("base-path", opts.BasePath, "URL base path")
+	flagSet.String("dev-static-dir", opts.DevStaticDir, "(development use only)")
 
 	flagSet.String("graphite-url", opts.GraphiteURL, "graphite HTTP address")
 	flagSet.Bool("proxy-graphite", false, "proxy HTTP requests to graphite")

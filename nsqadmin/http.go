@@ -48,11 +48,12 @@ func NewSingleHostReverseProxy(target *url.URL, connectTimeout time.Duration, re
 }
 
 type httpServer struct {
-	nsqadmin *NSQAdmin
-	router   http.Handler
-	client   *http_api.Client
-	ci       *clusterinfo.ClusterInfo
-	basePath string
+	nsqadmin     *NSQAdmin
+	router       http.Handler
+	client       *http_api.Client
+	ci           *clusterinfo.ClusterInfo
+	basePath     string
+	devStaticDir string
 }
 
 func NewHTTPServer(nsqadmin *NSQAdmin) *httpServer {
@@ -66,12 +67,15 @@ func NewHTTPServer(nsqadmin *NSQAdmin) *httpServer {
 	router.PanicHandler = http_api.LogPanicHandler(nsqadmin.logf)
 	router.NotFound = http_api.LogNotFoundHandler(nsqadmin.logf)
 	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(nsqadmin.logf)
+
 	s := &httpServer{
 		nsqadmin: nsqadmin,
 		router:   router,
 		client:   client,
 		ci:       clusterinfo.New(nsqadmin.logf, client),
-		basePath: nsqadmin.getOpts().BasePath,
+
+		basePath:     nsqadmin.getOpts().BasePath,
+		devStaticDir: nsqadmin.getOpts().DevStaticDir,
 	}
 
 	bp := func(p string) string {
@@ -164,7 +168,17 @@ func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps h
 func (s *httpServer) staticAssetHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	assetName := ps.ByName("asset")
 
-	asset, err := staticAsset(assetName)
+	var (
+		asset []byte
+		err   error
+	)
+	if s.devStaticDir != "" {
+		s.nsqadmin.logf(LOG_DEBUG, "using dev dir %q for static asset %q", s.devStaticDir, assetName)
+		fsPath := path.Join(s.devStaticDir, assetName)
+		asset, err = ioutil.ReadFile(fsPath)
+	} else {
+		asset, err = staticAsset(assetName)
+	}
 	if err != nil {
 		return nil, http_api.Err{404, "NOT_FOUND"}
 	}

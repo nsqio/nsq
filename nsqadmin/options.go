@@ -14,6 +14,8 @@ type Options struct {
 	HTTPAddress string `flag:"http-address"`
 	BasePath    string `flag:"base-path"`
 
+	DevStaticDir string `flag:"dev-static-dir"`
+
 	GraphiteURL   string `flag:"graphite-url"`
 	ProxyGraphite bool   `flag:"proxy-graphite"`
 

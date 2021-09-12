@@ -1,5 +1,5 @@
-//go:build go1.16 && !debug
-// +build go1.16,!debug
+//go:build go1.16
+// +build go1.16
 
 package nsqadmin
 
