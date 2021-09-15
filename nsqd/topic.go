@@ -46,7 +46,7 @@ func NewTopic(topicName string, nsqd *NSQD, deleteCallback func(*Topic)) *Topic 
 	t := &Topic{
 		name:              topicName,
 		channelMap:        make(map[string]*Channel),
-		memoryMsgChan:     nil,
+		memoryMsgChan:     make(chan *Message, nsqd.getOpts().MemQueueSize),
 		startChan:         make(chan int, 1),
 		exitChan:          make(chan int),
 		channelUpdateChan: make(chan int),
@@ -55,10 +55,6 @@ func NewTopic(topicName string, nsqd *NSQD, deleteCallback func(*Topic)) *Topic 
 		pauseChan:         make(chan int),
 		deleteCallback:    deleteCallback,
 		idFactory:         NewGUIDFactory(nsqd.getOpts().ID),
-	}
-	// create mem-queue only if size > 0 (do not use unbuffered chan)
-	if nsqd.getOpts().MemQueueSize > 0 {
-		t.memoryMsgChan = make(chan *Message, nsqd.getOpts().MemQueueSize)
 	}
 	if strings.HasSuffix(topicName, "#ephemeral") {
 		t.ephemeral = true
@@ -222,17 +218,24 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 }
 
 func (t *Topic) put(m *Message) error {
-	select {
-	case t.memoryMsgChan <- m:
-	default:
-		err := writeMessageToBackend(m, t.backend)
-		t.nsqd.SetHealth(err)
-		if err != nil {
-			t.nsqd.logf(LOG_ERROR,
-				"TOPIC(%s) ERROR: failed to write message to backend - %s",
-				t.name, err)
-			return err
+	// If mem-queue-size == 0, avoid memory chan, for more consistent ordering,
+	// but try to use memory chan for deferred messages (they lose deferred timer
+	// in backend queue) or if topic is ephemeral (there is no backend queue).
+	if cap(t.memoryMsgChan) > 0 || t.ephemeral || m.deferred != 0 {
+		select {
+		case t.memoryMsgChan <- m:
+			return nil
+		default:
+			break // write to backend
 		}
+	}
+	err := writeMessageToBackend(m, t.backend)
+	t.nsqd.SetHealth(err)
+	if err != nil {
+		t.nsqd.logf(LOG_ERROR,
+			"TOPIC(%s) ERROR: failed to write message to backend - %s",
+			t.name, err)
+		return err
 	}
 	return nil
 }
