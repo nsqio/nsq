@@ -18,6 +18,7 @@ type NSQLookupd struct {
 	opts         *Options
 	tcpListener  net.Listener
 	httpListener net.Listener
+	tcpServer    *tcpServer
 	waitGroup    util.WaitGroupWrapper
 	DB           *RegistrationDB
 }
@@ -53,9 +54,9 @@ func (l *NSQLookupd) Main() {
 	l.Lock()
 	l.tcpListener = tcpListener
 	l.Unlock()
-	tcpServer := &tcpServer{ctx: ctx}
+	l.tcpServer = &tcpServer{ctx: ctx}
 	l.waitGroup.Wrap(func() {
-		protocol.TCPServer(tcpListener, tcpServer, l.logf)
+		protocol.TCPServer(tcpListener, l.tcpServer, l.logf)
 	})
 
 	httpListener, err := net.Listen("tcp", l.opts.HTTPAddress)
@@ -87,6 +88,10 @@ func (l *NSQLookupd) RealHTTPAddr() *net.TCPAddr {
 func (l *NSQLookupd) Exit() {
 	if l.tcpListener != nil {
 		l.tcpListener.Close()
+	}
+
+	if l.tcpServer != nil {
+		l.tcpServer.CloseAll()
 	}
 
 	if l.httpListener != nil {
