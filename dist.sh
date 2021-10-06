@@ -20,7 +20,7 @@ rm -rf   $DIR/dist/docker
 mkdir -p $DIR/dist/docker
 dep ensure
 
-GOFLAGS='-ldflags="-s -w"'
+BLDFLAGS='-ldflags="-s -w"'
 arch=$(go env GOARCH)
 version=$(awk '/const Binary/ {print $NF}' < $DIR/internal/version/binary.go | sed 's/"//g')
 goversion=$(go version | awk '{print $3}')
@@ -33,7 +33,7 @@ for os in linux darwin freebsd windows; do
     BUILD=$(mktemp -d ${TMPDIR:-/tmp}/nsq-XXXXX)
     TARGET="nsq-$version.$os-$arch.$goversion"
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
-        make DESTDIR=$BUILD PREFIX=/$TARGET GOFLAGS="$GOFLAGS" install
+        make DESTDIR=$BUILD PREFIX=/$TARGET BLDFLAGS="$BLDFLAGS" install
     pushd $BUILD
     if [ "$os" == "linux" ]; then
         cp -r $TARGET/bin $DIR/dist/docker/
