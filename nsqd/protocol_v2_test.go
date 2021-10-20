@@ -937,7 +937,7 @@ func TestTLSAuthRequire(t *testing.T) {
 		InsecureSkipVerify: true,
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
-	err = tlsConn.Handshake()
+	_, err = nsq.ReadResponse(tlsConn)
 	test.NotNil(t, err)
 
 	// With Unsigned Cert
@@ -1004,7 +1004,7 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 		InsecureSkipVerify: true,
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
-	err = tlsConn.Handshake()
+	_, err = nsq.ReadResponse(tlsConn)
 	test.NotNil(t, err)
 
 	// with invalid cert
@@ -1028,7 +1028,7 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 		InsecureSkipVerify: true,
 	}
 	tlsConn = tls.Client(conn, tlsConfig)
-	err = tlsConn.Handshake()
+	_, err = nsq.ReadResponse(tlsConn)
 	test.NotNil(t, err)
 
 	// with valid cert

@@ -52,6 +52,8 @@ func (t *tlsMinVersionOption) Set(s string) error {
 		*t = tls.VersionTLS11
 	case "tls1.2":
 		*t = tls.VersionTLS12
+	case "tls1.3":
+		*t = tls.VersionTLS13
 	default:
 		return fmt.Errorf("unknown tlsVersionOption %q", s)
 	}
@@ -178,7 +180,7 @@ func nsqdFlagSet(opts *nsqd.Options) *flag.FlagSet {
 	tlsRequired := tlsRequiredOption(opts.TLSRequired)
 	tlsMinVersion := tlsMinVersionOption(opts.TLSMinVersion)
 	flagSet.Var(&tlsRequired, "tls-required", "require TLS for client connections (true, false, tcp-https)")
-	flagSet.Var(&tlsMinVersion, "tls-min-version", "minimum SSL/TLS version acceptable ('ssl3.0', 'tls1.0', 'tls1.1', or 'tls1.2')")
+	flagSet.Var(&tlsMinVersion, "tls-min-version", "minimum SSL/TLS version acceptable ('ssl3.0', 'tls1.0', 'tls1.1', 'tls1.2' or 'tls1.3')")
 
 	// compression
 	flagSet.Bool("deflate", opts.DeflateEnabled, "enable deflate feature negotiation (client compression)")
