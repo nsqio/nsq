@@ -143,9 +143,11 @@ func New(opts *Options) (*NSQD, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
 	}
-	n.httpListener, err = net.Listen("tcp", opts.HTTPAddress)
-	if err != nil {
-		return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPAddress, err)
+	if opts.HTTPAddress != "" {
+		n.httpListener, err = net.Listen("tcp", opts.HTTPAddress)
+		if err != nil {
+			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPAddress, err)
+		}
 	}
 	if n.tlsConfig != nil && opts.HTTPSAddress != "" {
 		n.httpsListener, err = tls.Listen("tcp", opts.HTTPSAddress, n.tlsConfig)
@@ -153,7 +155,6 @@ func New(opts *Options) (*NSQD, error) {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPSAddress, err)
 		}
 	}
-
 	if opts.BroadcastHTTPPort == 0 {
 		opts.BroadcastHTTPPort = n.RealHTTPAddr().Port
 	}
@@ -191,14 +192,24 @@ func (n *NSQD) triggerOptsNotification() {
 }
 
 func (n *NSQD) RealTCPAddr() *net.TCPAddr {
+	if n.tcpListener == nil {
+		return &net.TCPAddr{}
+	}
 	return n.tcpListener.Addr().(*net.TCPAddr)
+
 }
 
 func (n *NSQD) RealHTTPAddr() *net.TCPAddr {
+	if n.httpListener == nil {
+		return &net.TCPAddr{}
+	}
 	return n.httpListener.Addr().(*net.TCPAddr)
 }
 
 func (n *NSQD) RealHTTPSAddr() *net.TCPAddr {
+	if n.httpsListener == nil {
+		return &net.TCPAddr{}
+	}
 	return n.httpsListener.Addr().(*net.TCPAddr)
 }
 
@@ -242,12 +253,13 @@ func (n *NSQD) Main() error {
 	n.waitGroup.Wrap(func() {
 		exitFunc(protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf))
 	})
-
-	httpServer := newHTTPServer(n, false, n.getOpts().TLSRequired == TLSRequired)
-	n.waitGroup.Wrap(func() {
-		exitFunc(http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf))
-	})
-	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
+	if n.httpListener != nil {
+		httpServer := newHTTPServer(n, false, n.getOpts().TLSRequired == TLSRequired)
+		n.waitGroup.Wrap(func() {
+			exitFunc(http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf))
+		})
+	}
+	if n.httpsListener != nil {
 		httpsServer := newHTTPServer(n, true, true)
 		n.waitGroup.Wrap(func() {
 			exitFunc(http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf))
