@@ -35,6 +35,8 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
 
 	nsqlookupd, err := New(opts)
 	test.Nil(t, err)
