@@ -1,15 +1,17 @@
-FROM golang:latest AS build
+FROM golang:1.16 AS build
+
+RUN go env -w GO111MODULE=auto
 
 RUN mkdir -p /go/src/github.com/nsqio/nsq
 COPY . /go/src/github.com/nsqio/nsq
 
 WORKDIR /go/src/github.com/nsqio/nsq
 
-RUN wget -O /bin/dep https://github.com/golang/dep/releases/download/v0.3.2/dep-linux-amd64 \
+RUN wget -O /bin/dep https://github.com/golang/dep/releases/download/v0.5.4/dep-linux-amd64 \
  && chmod +x /bin/dep \
  && /bin/dep ensure \
  && ./test.sh \
- && CGO_ENABLED=0 make DESTDIR=/opt PREFIX=/nsq GOFLAGS='-ldflags="-s -w"' install
+ && CGO_ENABLED=0 make DESTDIR=/opt PREFIX=/nsq BLDFLAGS='-ldflags="-s -w"' install
 
 FROM alpine:3.6
 

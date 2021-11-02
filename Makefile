@@ -1,6 +1,6 @@
 PREFIX=/usr/local
 DESTDIR=
-GOFLAGS=
+BLDFLAGS=
 BINDIR=${PREFIX}/bin
 
 BLDDIR = build
@@ -25,7 +25,7 @@ $(BLDDIR)/to_nsq:      $(wildcard apps/to_nsq/*.go               internal/*/*.go
 
 $(BLDDIR)/%:
 	@mkdir -p $(dir $@)
-	go build ${GOFLAGS} -o $@ ./apps/$*
+	go build ${BLDFLAGS} -o $@ ./apps/$*
 
 $(APPS): %: $(BLDDIR)/%
 
