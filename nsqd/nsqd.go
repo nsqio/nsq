@@ -56,6 +56,7 @@ type NSQD struct {
 
 	lookupPeers atomic.Value
 
+	tcpServer     *tcpServer
 	tcpListener   net.Listener
 	httpListener  net.Listener
 	httpsListener net.Listener
@@ -158,6 +159,8 @@ func New(opts *Options) *NSQD {
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
+	n.tcpServer = &tcpServer{}
+
 	return n
 }
 
@@ -233,9 +236,9 @@ func (n *NSQD) Main() {
 	n.Lock()
 	n.tcpListener = tcpListener
 	n.Unlock()
-	tcpServer := &tcpServer{ctx: ctx}
+	n.tcpServer.ctx = ctx
 	n.waitGroup.Wrap(func() {
-		protocol.TCPServer(n.tcpListener, tcpServer, n.logf)
+		protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf)
 	})
 
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
@@ -464,6 +467,10 @@ func (n *NSQD) PersistMetadata() error {
 func (n *NSQD) Exit() {
 	if n.tcpListener != nil {
 		n.tcpListener.Close()
+	}
+
+	if n.tcpServer != nil {
+		n.tcpServer.CloseAll()
 	}
 
 	if n.httpListener != nil {
