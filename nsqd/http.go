@@ -125,20 +125,30 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 	if err != nil {
 		return nil, http_api.Err{500, err.Error()}
 	}
+
+	ops := s.nsqd.opts.Load().(*Options)
 	return struct {
-		Version          string `json:"version"`
-		BroadcastAddress string `json:"broadcast_address"`
-		Hostname         string `json:"hostname"`
-		HTTPPort         int    `json:"http_port"`
-		TCPPort          int    `json:"tcp_port"`
-		StartTime        int64  `json:"start_time"`
+		Version                string        `json:"version"`
+		BroadcastAddress       string        `json:"broadcast_address"`
+		Hostname               string        `json:"hostname"`
+		HTTPPort               int           `json:"http_port"`
+		TCPPort                int           `json:"tcp_port"`
+		StartTime              int64         `json:"start_time"`
+		MaxHeartbeatInterval   time.Duration `json:"max_heartbeat_interval"`
+		MaxOutputBufferSize    int64         `json:"max_output_buffer_size"`
+		MaxOutputBufferTimeout time.Duration `json:"max_output_buffer_timeout"`
+		MaxDeflateLevel        int           `json:"max_deflate_level"`
 	}{
-		Version:          version.Binary,
-		BroadcastAddress: s.nsqd.getOpts().BroadcastAddress,
-		Hostname:         hostname,
-		TCPPort:          s.nsqd.RealTCPAddr().Port,
-		HTTPPort:         s.nsqd.RealHTTPAddr().Port,
-		StartTime:        s.nsqd.GetStartTime().Unix(),
+		Version:                version.Binary,
+		BroadcastAddress:       s.nsqd.getOpts().BroadcastAddress,
+		Hostname:               hostname,
+		TCPPort:                s.nsqd.RealTCPAddr().Port,
+		HTTPPort:               s.nsqd.RealHTTPAddr().Port,
+		StartTime:              s.nsqd.GetStartTime().Unix(),
+		MaxHeartbeatInterval:   ops.MaxHeartbeatInterval,
+		MaxOutputBufferSize:    ops.MaxOutputBufferSize,
+		MaxOutputBufferTimeout: ops.MaxOutputBufferTimeout,
+		MaxDeflateLevel:        ops.MaxDeflateLevel,
 	}, nil
 }
 
