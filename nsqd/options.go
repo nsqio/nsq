@@ -3,9 +3,11 @@ package nsqd
 import (
 	"crypto/md5"
 	"crypto/tls"
+	"errors"
 	"hash/crc32"
 	"io"
 	"log"
+	"net"
 	"os"
 	"time"
 
@@ -86,6 +88,32 @@ type Options struct {
 	SnappyEnabled   bool `flag:"snappy"`
 }
 
+func getLocalIP() (string, error) {
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+
+	for _, value := range ifaces {
+		addrs, err := value.Addrs()
+		if err != nil {
+			continue
+		}
+
+		for _, addr := range addrs {
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip := v.IP
+				if ip.IsGlobalUnicast() {
+					return ip.String(), nil
+				}
+			}
+		}
+	}
+	return "", errors.New("IP not exist")
+}
+
 func NewOptions() *Options {
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -96,6 +124,10 @@ func NewOptions() *Options {
 	io.WriteString(h, hostname)
 	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 
+	localIP, err := getLocalIP()
+	if err != nil {
+		log.Fatalf("getLocalIP failed: %v", err)
+	}
 	return &Options{
 		ID:        defaultID,
 		LogPrefix: "[nsqd] ",
@@ -104,7 +136,7 @@ func NewOptions() *Options {
 		TCPAddress:        "0.0.0.0:4150",
 		HTTPAddress:       "0.0.0.0:4151",
 		HTTPSAddress:      "0.0.0.0:4152",
-		BroadcastAddress:  hostname,
+		BroadcastAddress:  localIP,
 		BroadcastTCPPort:  0,
 		BroadcastHTTPPort: 0,
 
