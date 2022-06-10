@@ -191,7 +191,11 @@ type memStats struct {
 
 func getMemStats() memStats {
 	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
+	if useNewMemCollection {
+		ms = runtimeMetricsCollection()
+	} else {
+		ms = runtimeMemStatsCollection()
+	}
 
 	// sort the GC pause array
 	length := len(ms.PauseNs)
