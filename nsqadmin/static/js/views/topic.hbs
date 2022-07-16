@@ -27,6 +27,7 @@
 {{else}}
 {{#if isAdmin}}
 <div class="row topic-actions">
+    <!--
     <div class="col-md-2">
         <button class="btn btn-medium btn-warning" data-action="empty">Empty Queue</button>
     </div>
@@ -40,6 +41,7 @@
         <button class="btn btn-medium btn-primary" data-action="pause">Pause Topic</button>
         {{/if}}
     </div>
+    -->
 </div>
 {{/if}}
 
@@ -67,7 +69,7 @@
         {{#each nodes}}
         <tr>
             <td>
-                <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button>
+                <!-- <button class="btn-link red tombstone-link" data-node="{{node}}" data-topic="{{../name}}" style="padding: 0 6px; border: 0;">✘</button> -->
                 {{#if show_broadcast_address}}
                 {{hostname_port}} (<a class="link" href="{{basePath "/nodes"}}/{{node}}">{{node}}</a>)
                 {{else}}
@@ -220,3 +222,4 @@
         {{/unless}}
     </div>
 </div>
+
