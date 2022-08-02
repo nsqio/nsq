@@ -22,14 +22,14 @@ const (
 	RequestTimeout = 5 * time.Second
 )
 
-func getMetadata(n *NSQD) (*meta, error) {
+func getMetadata(n *NSQD) (*Metadata, error) {
 	fn := newMetadataFile(n.getOpts())
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		return nil, err
 	}
 
-	var m meta
+	var m Metadata
 	err = json.Unmarshal(data, &m)
 	if err != nil {
 		return nil, err

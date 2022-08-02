@@ -276,15 +276,23 @@ func (n *NSQD) Main() error {
 	return err
 }
 
-type meta struct {
-	Topics []struct {
-		Name     string `json:"name"`
-		Paused   bool   `json:"paused"`
-		Channels []struct {
-			Name   string `json:"name"`
-			Paused bool   `json:"paused"`
-		} `json:"channels"`
-	} `json:"topics"`
+// Metadata is the collection of persistent information about the current NSQD.
+type Metadata struct {
+	Topics  []TopicMetadata `json:"topics"`
+	Version string          `json:"version"`
+}
+
+// TopicMetadata is the collection of persistent information about a topic.
+type TopicMetadata struct {
+	Name     string            `json:"name"`
+	Paused   bool              `json:"paused"`
+	Channels []ChannelMetadata `json:"channels"`
+}
+
+// ChannelMetadata is the collection of persistent information about a channel.
+type ChannelMetadata struct {
+	Name   string `json:"name"`
+	Paused bool   `json:"paused"`
 }
 
 func newMetadataFile(opts *Options) string {
@@ -329,7 +337,7 @@ func (n *NSQD) LoadMetadata() error {
 		return nil // fresh start
 	}
 
-	var m meta
+	var m Metadata
 	err = json.Unmarshal(data, &m)
 	if err != nil {
 		return fmt.Errorf("failed to parse metadata in %s - %s", fn, err)
@@ -359,46 +367,47 @@ func (n *NSQD) LoadMetadata() error {
 	return nil
 }
 
+// GetMetadata retrieves the current topic and channel set of the NSQ daemon. If
+// the ephemeral flag is set, ephemeral topics are also returned even though these
+// are not saved to disk.
+func (n *NSQD) GetMetadata(ephemeral bool) *Metadata {
+	meta := &Metadata{
+		Version: version.Binary,
+	}
+	for _, topic := range n.topicMap {
+		if topic.ephemeral && !ephemeral {
+			continue
+		}
+		topicData := TopicMetadata{
+			Name:   topic.name,
+			Paused: topic.IsPaused(),
+		}
+		topic.Lock()
+		for _, channel := range topic.channelMap {
+			if channel.ephemeral {
+				continue
+			}
+			topicData.Channels = append(topicData.Channels, ChannelMetadata{
+				Name:   channel.name,
+				Paused: channel.IsPaused(),
+			})
+		}
+		topic.Unlock()
+		meta.Topics = append(meta.Topics, topicData)
+	}
+	return meta
+}
+
 func (n *NSQD) PersistMetadata() error {
 	// persist metadata about what topics/channels we have, across restarts
 	fileName := newMetadataFile(n.getOpts())
 
 	n.logf(LOG_INFO, "NSQ: persisting topic/channel metadata to %s", fileName)
 
-	js := make(map[string]interface{})
-	topics := []interface{}{}
-	for _, topic := range n.topicMap {
-		if topic.ephemeral {
-			continue
-		}
-		topicData := make(map[string]interface{})
-		topicData["name"] = topic.name
-		topicData["paused"] = topic.IsPaused()
-		channels := []interface{}{}
-		topic.Lock()
-		for _, channel := range topic.channelMap {
-			if channel.ephemeral {
-				continue
-			}
-			channel.Lock()
-			channelData := make(map[string]interface{})
-			channelData["name"] = channel.name
-			channelData["paused"] = channel.IsPaused()
-			channel.Unlock()
-			channels = append(channels, channelData)
-		}
-		topic.Unlock()
-		topicData["channels"] = channels
-		topics = append(topics, topicData)
-	}
-	js["version"] = version.Binary
-	js["topics"] = topics
-
-	data, err := json.Marshal(&js)
+	data, err := json.Marshal(n.GetMetadata(false))
 	if err != nil {
 		return err
 	}
-
 	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
 
 	err = writeSyncFile(tmpFileName, data)
