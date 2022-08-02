@@ -82,9 +82,10 @@ func NewChannel(topicName string, channelName string, nsqd *NSQD,
 		clients:        make(map[int64]Consumer),
 		deleteCallback: deleteCallback,
 		nsqd:           nsqd,
+		ephemeral:      strings.HasSuffix(channelName, "#ephemeral"),
 	}
-	// create mem-queue only if size > 0 (do not use unbuffered chan)
-	if nsqd.getOpts().MemQueueSize > 0 {
+	// avoid mem-queue if size == 0 for more consistent ordering
+	if nsqd.getOpts().MemQueueSize > 0 || c.ephemeral {
 		c.memoryMsgChan = make(chan *Message, nsqd.getOpts().MemQueueSize)
 	}
 	if len(nsqd.getOpts().E2EProcessingLatencyPercentiles) > 0 {
@@ -96,8 +97,7 @@ func NewChannel(topicName string, channelName string, nsqd *NSQD,
 
 	c.initPQ()
 
-	if strings.HasSuffix(channelName, "#ephemeral") {
-		c.ephemeral = true
+	if c.ephemeral {
 		c.backend = newDummyBackendQueue()
 	} else {
 		dqLogf := func(level diskqueue.LogLevel, f string, args ...interface{}) {
