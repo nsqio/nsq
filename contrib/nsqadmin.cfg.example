@@ -1,6 +1,41 @@
 ## log verbosity level: debug, info, warn, error, or fatal
 log_level = "info"
 
+## log message prefix (default "[nsqadmin] ")
+# log_prefix = ""
+
+## HTTP header to check for authenticated admin users (default "X_Forwarded_User")
+# acl_http_header = ""
+
+## admin user (may be given multiple times; if specified, only these users will be able to perform privileged actions)
+# admin_users = [
+#     "admin"
+# ]
+
+## A CIDR from which to allow HTTP requests to the /config endpoint (default "127.0.0.1/8")
+# allow_config_from_cidr = ""
+
+## URL base path (default "/")
+# base_path = ""
+
+## timeout for HTTP connect (default 2s)
+# http_client_connect_timeout = "2s"
+
+## timeout for HTTP request (default 5s)
+# http_client_request_timeout = "5s"
+
+## path to certificate file for the HTTP client
+# http_client_tls_cert = ""
+
+## configure the HTTP client to skip verification of TLS certificates
+# http_client_tls_insecure_skip_verify = false
+
+## path to key file for the HTTP client
+# http_client_tls_key = ""
+
+## path to CA file for the HTTP client
+# http_client_tls_root_ca_file = ""
+
 ## <addr>:<port> to listen on for HTTP clients
 http_address = "0.0.0.0:4171"
 
