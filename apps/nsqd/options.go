@@ -39,30 +39,39 @@ func (t *tlsRequiredOption) IsBoolFlag() bool { return true }
 
 type tlsMinVersionOption uint16
 
+var tlsVersionTable = []struct {
+	val uint16
+	str string
+}{
+	{tls.VersionSSL30, "ssl3.0"},
+	{tls.VersionTLS10, "tls1.0"},
+	{tls.VersionTLS11, "tls1.1"},
+	{tls.VersionTLS12, "tls1.2"},
+	{tls.VersionTLS13, "tls1.3"},
+}
+
 func (t *tlsMinVersionOption) Set(s string) error {
 	s = strings.ToLower(s)
-	switch s {
-	case "":
+	if s == "" {
 		return nil
-	case "ssl3.0":
-		*t = tls.VersionSSL30
-	case "tls1.0":
-		*t = tls.VersionTLS10
-	case "tls1.1":
-		*t = tls.VersionTLS11
-	case "tls1.2":
-		*t = tls.VersionTLS12
-	case "tls1.3":
-		*t = tls.VersionTLS13
-	default:
-		return fmt.Errorf("unknown tlsVersionOption %q", s)
 	}
-	return nil
+	for _, v := range tlsVersionTable {
+		if s == v.str {
+			*t = tlsMinVersionOption(v.val)
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown tlsVersionOption %q", s)
 }
 
 func (t *tlsMinVersionOption) Get() interface{} { return uint16(*t) }
 
 func (t *tlsMinVersionOption) String() string {
+	for _, v := range tlsVersionTable {
+		if uint16(*t) == v.val {
+			return v.str
+		}
+	}
 	return strconv.FormatInt(int64(*t), 10)
 }
 
