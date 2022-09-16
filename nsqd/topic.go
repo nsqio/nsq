@@ -489,7 +489,7 @@ func (t *Topic) IsPaused() bool {
 }
 
 func (t *Topic) GenerateID() MessageID {
-	var i int64 = 0
+	var i int64 = 1
 	for {
 		id, err := t.idFactory.NewGUID()
 		if err == nil {
