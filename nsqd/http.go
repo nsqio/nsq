@@ -13,6 +13,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -85,6 +86,7 @@ func newHTTPServer(nsqd *NSQD, tlsEnabled bool, tlsRequired bool) *httpServer {
 	router.Handler("GET", "/debug/pprof/goroutine", pprof.Handler("goroutine"))
 	router.Handler("GET", "/debug/pprof/block", pprof.Handler("block"))
 	router.Handle("PUT", "/debug/setblockrate", http_api.Decorate(setBlockRateHandler, log, http_api.PlainText))
+	router.Handle("POST", "/debug/freememory", http_api.Decorate(freeMemory, log, http_api.PlainText))
 	router.Handler("GET", "/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 
 	return s
@@ -96,6 +98,11 @@ func setBlockRateHandler(w http.ResponseWriter, req *http.Request, ps httprouter
 		return nil, http_api.Err{http.StatusBadRequest, fmt.Sprintf("invalid block rate : %s", err.Error())}
 	}
 	runtime.SetBlockProfileRate(rate)
+	return nil, nil
+}
+
+func freeMemory(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	debug.FreeOSMemory()
 	return nil, nil
 }
 
