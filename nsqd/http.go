@@ -208,10 +208,12 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
 	readMax := s.nsqd.getOpts().MaxMsgSize + 1
-	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
+	bodyBuff := bytes.Buffer{}
+	_, err := io.Copy(&bodyBuff, io.LimitReader(req.Body, readMax))
 	if err != nil {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
+	body := bodyBuff.Bytes()
 	if int64(len(body)) == readMax {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
 	}
