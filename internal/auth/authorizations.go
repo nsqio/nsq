@@ -71,10 +71,7 @@ func (a *State) IsAllowed(topic, channel string) bool {
 }
 
 func (a *State) IsExpired() bool {
-	if a.Expires.Before(time.Now()) {
-		return true
-	}
-	return false
+	return a.Expires.Before(time.Now())
 }
 
 func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
