@@ -87,7 +87,8 @@ func (n *NSQD) lookupLoop() {
 	}
 
 	// for announcements, lookupd determines the host automatically
-	ticker := time.Tick(15 * time.Second)
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
 	for {
 		if connect {
 			for _, host := range n.getOpts().NSQLookupdTCPAddresses {
@@ -106,7 +107,7 @@ func (n *NSQD) lookupLoop() {
 		}
 
 		select {
-		case <-ticker:
+		case <-ticker.C:
 			// send a heartbeat and read a response (read detects closed conns)
 			for _, lookupPeer := range lookupPeers {
 				n.logf(LOG_DEBUG, "LOOKUPD(%s): sending heartbeat", lookupPeer)
