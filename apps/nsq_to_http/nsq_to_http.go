@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
@@ -130,7 +129,7 @@ func (p *PostPublisher) Publish(addr string, msg []byte) error {
 	if err != nil {
 		return err
 	}
-	io.Copy(ioutil.Discard, resp.Body)
+	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -147,7 +146,7 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	if err != nil {
 		return err
 	}
-	io.Copy(ioutil.Discard, resp.Body)
+	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {

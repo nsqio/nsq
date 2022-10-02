@@ -2,7 +2,7 @@ package nsqd
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -231,7 +231,7 @@ func TestChannelHealth(t *testing.T) {
 	resp, err := http.Get(url)
 	test.Nil(t, err)
 	test.Equal(t, 500, resp.StatusCode)
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "NOK - never gonna happen", string(body))
 
@@ -244,7 +244,7 @@ func TestChannelHealth(t *testing.T) {
 	resp, err = http.Get(url)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "OK", string(body))
 }
