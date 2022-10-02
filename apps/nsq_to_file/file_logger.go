@@ -403,7 +403,7 @@ func computeFilenameFormat(opts *Options, topic string) (string, error) {
 
 	cff := opts.FilenameFormat
 	if opts.GZIP || opts.RotateSize > 0 || opts.RotateInterval > 0 || opts.WorkDir != opts.OutputDir {
-		if strings.Index(cff, "<REV>") == -1 {
+		if !strings.Contains(cff, "<REV>") {
 			return "", errors.New("missing <REV> in --filename-format when gzip, rotation, or work dir enabled")
 		}
 	} else {
