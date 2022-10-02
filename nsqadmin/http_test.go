@@ -451,7 +451,7 @@ func TestHTTPPauseTopicPOST(t *testing.T) {
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	body, _ = io.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
@@ -486,7 +486,7 @@ func TestHTTPPauseChannelPOST(t *testing.T) {
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	body, _ = io.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
@@ -522,7 +522,7 @@ func TestHTTPEmptyTopicPOST(t *testing.T) {
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	body, _ = io.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
@@ -552,7 +552,7 @@ func TestHTTPEmptyChannelPOST(t *testing.T) {
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	resp, err := client.Do(req)
 	test.Nil(t, err)
-	body, _ = io.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
@@ -603,7 +603,7 @@ func TestHTTPconfig(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ = io.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	test.Equal(t, LOG_FATAL, nsqadmin1.getOpts().LogLevel)
 
@@ -613,7 +613,7 @@ func TestHTTPconfig(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ = io.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 400, resp.StatusCode)
 }
 

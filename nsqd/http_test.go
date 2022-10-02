@@ -244,7 +244,7 @@ func TestHTTPSRequire(t *testing.T) {
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
-	resp, err := http.Post(url, "application/octet-stream", buf)
+	resp, _ := http.Post(url, "application/octet-stream", buf)
 	test.Equal(t, 403, resp.StatusCode)
 
 	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
@@ -292,7 +292,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
-	resp, err := http.Post(url, "application/octet-stream", buf)
+	resp, _ := http.Post(url, "application/octet-stream", buf)
 	test.Equal(t, 403, resp.StatusCode)
 
 	// unsigned cert
@@ -309,7 +309,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 
 	buf = bytes.NewBuffer([]byte("test message"))
 	url = fmt.Sprintf("https://%s/pub?topic=%s", httpsAddr, topicName)
-	resp, err = client.Post(url, "application/octet-stream", buf)
+	_, err = client.Post(url, "application/octet-stream", buf)
 	test.NotNil(t, err)
 
 	// signed cert
@@ -645,7 +645,7 @@ func TestHTTPconfig(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ = io.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	test.Equal(t, LOG_FATAL, nsqd.getOpts().LogLevel)
 
@@ -655,7 +655,7 @@ func TestHTTPconfig(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ = io.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 400, resp.StatusCode)
 }
 

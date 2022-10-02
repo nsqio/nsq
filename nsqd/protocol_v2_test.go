@@ -100,8 +100,8 @@ func authCmd(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess 
 func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
 	test.Nil(t, err)
-	resp, err := nsq.ReadResponse(conn)
-	frameType, _, err := nsq.UnpackResponse(resp)
+	resp, _ := nsq.ReadResponse(conn)
+	frameType, _, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, frameTypeError, frameType)
 }
 
@@ -152,7 +152,7 @@ func TestBasicV2(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -389,7 +389,7 @@ func TestPausing(t *testing.T) {
 	// receive the first message via the client, finish it, and send new RDY
 	resp, _ := nsq.ReadResponse(conn)
 	_, data, _ := nsq.UnpackResponse(resp)
-	msg, err = decodeMessage(data)
+	msg, _ = decodeMessage(data)
 	test.Equal(t, []byte("test body"), msg.Body)
 
 	_, err = nsq.Finish(nsq.MessageID(msg.ID)).WriteTo(conn)
@@ -424,7 +424,7 @@ func TestPausing(t *testing.T) {
 
 	resp, _ = nsq.ReadResponse(conn)
 	_, data, _ = nsq.UnpackResponse(resp)
-	msg, err = decodeMessage(data)
+	msg, _ = decodeMessage(data)
 	test.Equal(t, []byte("test body3"), msg.Body)
 }
 
@@ -633,7 +633,7 @@ func TestTouch(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -684,7 +684,7 @@ func TestMaxRdyCount(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -694,7 +694,7 @@ func TestMaxRdyCount(t *testing.T) {
 
 	resp, err = nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err = nsq.UnpackResponse(resp)
+	frameType, data, _ = nsq.UnpackResponse(resp)
 	test.Equal(t, int32(1), frameType)
 	test.Equal(t, "E_INVALID RDY count 51 out of range 0-50", string(data))
 }
@@ -715,7 +715,7 @@ func TestFatalError(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, int32(1), frameType)
 	test.Equal(t, "E_INVALID invalid command ASDF", string(data))
 
@@ -756,7 +756,7 @@ func TestOutputBuffering(t *testing.T) {
 	v, ok := decoded["output_buffer_size"]
 	test.Equal(t, true, ok)
 	test.Equal(t, outputBufferSize, int(v.(float64)))
-	v, ok = decoded["output_buffer_timeout"]
+	v, _ = decoded["output_buffer_timeout"]
 	test.Equal(t, outputBufferTimeout, int(v.(float64)))
 	sub(t, conn, topicName, "ch")
 
@@ -769,7 +769,7 @@ func TestOutputBuffering(t *testing.T) {
 
 	test.Equal(t, true, int(end.Sub(start)/time.Millisecond) >= outputBufferTimeout)
 
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -1363,7 +1363,7 @@ func TestClientMsgTimeout(t *testing.T) {
 
 	resp, _ := nsq.ReadResponse(conn)
 	_, data, _ := nsq.UnpackResponse(resp)
-	msgOut, err := decodeMessage(data)
+	msgOut, _ := decodeMessage(data)
 	test.Equal(t, msg.ID, msgOut.ID)
 	test.Equal(t, msg.Body, msgOut.Body)
 
@@ -1439,7 +1439,7 @@ func TestReqTimeoutRange(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -1450,7 +1450,7 @@ func TestReqTimeoutRange(t *testing.T) {
 	// It should be immediately available for another attempt
 	resp, err = nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err = nsq.UnpackResponse(resp)
+	frameType, data, _ = nsq.UnpackResponse(resp)
 	msgOut, _ = decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
