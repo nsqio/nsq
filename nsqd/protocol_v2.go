@@ -17,8 +17,6 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
-const maxTimeout = time.Hour
-
 const (
 	frameTypeResponse int32 = 0
 	frameTypeError    int32 = 1

@@ -155,16 +155,6 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	return nil
 }
 
-func hasArg(s string) bool {
-	argExist := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == s {
-			argExist = true
-		}
-	})
-	return argExist
-}
-
 func main() {
 	var publisher Publisher
 	var addresses app.StringArray

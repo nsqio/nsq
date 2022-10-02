@@ -24,14 +24,6 @@ func (e Err) Error() string {
 	return e.Text
 }
 
-func acceptVersion(req *http.Request) int {
-	if req.Header.Get("accept") == "application/vnd.nsq; version=1.0" {
-		return 1
-	}
-
-	return 0
-}
-
 func PlainText(f APIHandler) APIHandler {
 	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 		code := 200

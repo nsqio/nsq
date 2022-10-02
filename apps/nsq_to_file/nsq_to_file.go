@@ -18,16 +18,6 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
-func hasArg(s string) bool {
-	argExist := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == s {
-			argExist = true
-		}
-	})
-	return argExist
-}
-
 func flagSet() *flag.FlagSet {
 	fs := flag.NewFlagSet("nsqd", flag.ExitOnError)
 
