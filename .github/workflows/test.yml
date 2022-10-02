@@ -12,10 +12,9 @@ jobs:
       fail-fast: false
       matrix:
         imgtag:
-          - "golang:1.14-buster"
-          - "golang:1.15-buster"
-          - "golang:1.16-bullseye"
           - "golang:1.17-bullseye"
+          - "golang:1.18-bullseye"
+          - "golang:1.19-bullseye"
         goarch:
           - "amd64"
           - "386"
@@ -44,7 +43,7 @@ jobs:
   send-coverage:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
-    container: "golang:1.16-bullseye"
+    container: "golang:1.19-bullseye"
     env:
       GOPATH: "${{github.workspace}}/go"
       SRCDIR: "go/src/github.com/nsqio/nsq"

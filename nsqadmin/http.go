@@ -130,7 +130,7 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 }
 
 func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	asset, _ := Asset("index.html")
+	asset, _ := staticAsset("index.html")
 	t, _ := template.New("index").Funcs(template.FuncMap{
 		"basePath": func(p string) string {
 			return path.Join(s.basePath, p)
