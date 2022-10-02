@@ -93,6 +93,7 @@ func TestClientAttributes(t *testing.T) {
 	test.Equal(t, true, resp.Snappy)
 
 	r := snappy.NewReader(conn)
+	//lint:ignore SA1019 NewWriter is deprecated by NewBufferedWriter, but we don't want to buffer
 	w := snappy.NewWriter(conn)
 	readValidate(t, r, frameTypeResponse, "OK")
 

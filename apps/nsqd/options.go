@@ -43,7 +43,6 @@ var tlsVersionTable = []struct {
 	val uint16
 	str string
 }{
-	{tls.VersionSSL30, "ssl3.0"},
 	{tls.VersionTLS10, "tls1.0"},
 	{tls.VersionTLS11, "tls1.1"},
 	{tls.VersionTLS12, "tls1.2"},

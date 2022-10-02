@@ -1128,6 +1128,7 @@ func TestSnappy(t *testing.T) {
 	test.Equal(t, []byte("OK"), data)
 
 	msgBody := make([]byte, 128000)
+	//lint:ignore SA1019 NewWriter is deprecated by NewBufferedWriter, but we don't want to buffer
 	w := snappy.NewWriter(conn)
 
 	rw := readWriter{compressConn, w}

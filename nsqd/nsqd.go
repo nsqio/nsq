@@ -750,8 +750,6 @@ func buildTLSConfig(opts *Options) (*tls.Config, error) {
 		tlsConfig.ClientCAs = tlsCertPool
 	}
 
-	tlsConfig.BuildNameToCertificate()
-
 	return tlsConfig, nil
 }
 

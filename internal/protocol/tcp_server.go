@@ -22,7 +22,9 @@ func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) er
 	for {
 		clientConn, err := listener.Accept()
 		if err != nil {
-			if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
+			// net.Error.Temporary() is deprecated, but is valid for accept
+			// this is a hack to avoid a staticcheck error
+			if te, ok := err.(interface{ Temporary() bool }); ok && te.Temporary() {
 				logf(lg.WARN, "temporary Accept() failure - %s", err)
 				runtime.Gosched()
 				continue
