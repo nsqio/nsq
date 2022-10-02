@@ -478,7 +478,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_MESSAGE PUB message too big 105 > 100"), string(data))
+	test.Equal(t, "E_BAD_MESSAGE PUB message too big 105 > 100", string(data))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -491,7 +491,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_MESSAGE PUB invalid message body size 0"), string(data))
+	test.Equal(t, "E_BAD_MESSAGE PUB invalid message body size 0", string(data))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -522,7 +522,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_BODY MPUB body too big 1148 > 1000"), string(data))
+	test.Equal(t, "E_BAD_BODY MPUB body too big 1148 > 1000", string(data))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -541,7 +541,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_MESSAGE MPUB invalid message(5) body size 0"), string(data))
+	test.Equal(t, "E_BAD_MESSAGE MPUB invalid message(5) body size 0", string(data))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -559,7 +559,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_MESSAGE MPUB message too big 101 > 100"), string(data))
+	test.Equal(t, "E_BAD_MESSAGE MPUB message too big 101 > 100", string(data))
 }
 
 func TestDPUB(t *testing.T) {
@@ -602,7 +602,7 @@ func TestDPUB(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_INVALID DPUB timeout 3600100 out of range 0-3600000"), string(data))
+	test.Equal(t, "E_INVALID DPUB timeout 3600100 out of range 0-3600000", string(data))
 }
 
 func TestTouch(t *testing.T) {
