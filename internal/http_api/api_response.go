@@ -72,11 +72,11 @@ func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 	var isJSON bool
 
 	if code == 200 {
-		switch data.(type) {
+		switch data := data.(type) {
 		case string:
-			response = []byte(data.(string))
+			response = []byte(data)
 		case []byte:
-			response = data.([]byte)
+			response = data
 		case nil:
 			response = []byte{}
 		default:

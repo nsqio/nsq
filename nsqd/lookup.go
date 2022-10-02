@@ -121,11 +121,11 @@ func (n *NSQD) lookupLoop() {
 			var cmd *nsq.Command
 			var branch string
 
-			switch val.(type) {
+			switch val := val.(type) {
 			case *Channel:
 				// notify all nsqlookupds that a new channel exists, or that it's removed
 				branch = "channel"
-				channel := val.(*Channel)
+				channel := val
 				if channel.Exiting() {
 					cmd = nsq.UnRegister(channel.topicName, channel.name)
 				} else {
@@ -134,7 +134,7 @@ func (n *NSQD) lookupLoop() {
 			case *Topic:
 				// notify all nsqlookupds that a new topic exists, or that it's removed
 				branch = "topic"
-				topic := val.(*Topic)
+				topic := val
 				if topic.Exiting() {
 					cmd = nsq.UnRegister(topic.name, "")
 				} else {
