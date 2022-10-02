@@ -66,10 +66,8 @@ func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f 
 	ci := make(map[string]interface{})
 	ci["client_id"] = "test"
 	ci["feature_negotiation"] = true
-	if extra != nil {
-		for k, v := range extra {
-			ci[k] = v
-		}
+	for k, v := range extra {
+		ci[k] = v
 	}
 	cmd, _ := nsq.Identify(ci)
 	_, err := cmd.WriteTo(conn)
