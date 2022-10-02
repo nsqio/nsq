@@ -169,7 +169,7 @@ func (t *Topic) DeleteExistingChannel(channelName string) error {
 	case <-t.exitChan:
 	}
 
-	if numChannels == 0 && t.ephemeral == true {
+	if numChannels == 0 && t.ephemeral {
 		go t.deleter.Do(func() { t.deleteCallback(t) })
 	}
 

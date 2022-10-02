@@ -125,7 +125,7 @@ func (n *NSQD) lookupLoop() {
 				// notify all nsqlookupds that a new channel exists, or that it's removed
 				branch = "channel"
 				channel := val.(*Channel)
-				if channel.Exiting() == true {
+				if channel.Exiting() {
 					cmd = nsq.UnRegister(channel.topicName, channel.name)
 				} else {
 					cmd = nsq.Register(channel.topicName, channel.name)
@@ -134,7 +134,7 @@ func (n *NSQD) lookupLoop() {
 				// notify all nsqlookupds that a new topic exists, or that it's removed
 				branch = "topic"
 				topic := val.(*Topic)
-				if topic.Exiting() == true {
+				if topic.Exiting() {
 					cmd = nsq.UnRegister(topic.name, "")
 				} else {
 					cmd = nsq.Register(topic.name, "")
