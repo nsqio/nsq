@@ -49,7 +49,7 @@ func (p *Producer) Tombstone() {
 }
 
 func (p *Producer) IsTombstoned(lifetime time.Duration) bool {
-	return p.tombstoned && time.Now().Sub(p.tombstonedAt) < lifetime
+	return p.tombstoned && time.Since(p.tombstonedAt) < lifetime
 }
 
 func NewRegistrationDB() *RegistrationDB {
