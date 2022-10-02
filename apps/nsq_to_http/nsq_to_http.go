@@ -295,12 +295,12 @@ func parseCustomHeaders(strs []string) (map[string]string, error) {
 	for _, s := range strs {
 		sp := strings.SplitN(s, ":", 2)
 		if len(sp) != 2 {
-			return nil, fmt.Errorf("Invalid headers: %q", s)
+			return nil, fmt.Errorf("invalid header: %q", s)
 		}
 		key := strings.TrimSpace(sp[0])
 		val := strings.TrimSpace(sp[1])
 		if key == "" || val == "" {
-			return nil, fmt.Errorf("Invalid headers: %q", s)
+			return nil, fmt.Errorf("invalid header: %q", s)
 		}
 		parsedHeaders[key] = val
 

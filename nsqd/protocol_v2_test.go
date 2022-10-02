@@ -1408,7 +1408,7 @@ func TestBadFin(t *testing.T) {
 	resp, _ := nsq.ReadResponse(conn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, "E_INVALID Invalid Message ID", string(data))
+	test.Equal(t, "E_INVALID invalid message ID", string(data))
 }
 
 func TestReqTimeoutRange(t *testing.T) {

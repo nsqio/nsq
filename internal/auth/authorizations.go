@@ -3,7 +3,6 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"net/url"
 	"regexp"
@@ -80,18 +79,23 @@ func (a *State) IsExpired() bool {
 
 func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
 	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
+	var retErr error
 	start := rand.Int()
 	n := len(authd)
 	for i := 0; i < n; i++ {
 		a := authd[(i+start)%n]
 		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, commonName, authSecret, connectTimeout, requestTimeout)
 		if err != nil {
-			log.Printf("Error: failed auth against %s %s", a, err)
+			es := fmt.Sprintf("failed to auth against %s - %s", a, err)
+			if retErr != nil {
+				es = fmt.Sprintf("%s; %s", retErr, es)
+			}
+			retErr = errors.New(es)
 			continue
 		}
 		return authState, nil
 	}
-	return nil, errors.New("Unable to access auth server")
+	return nil, retErr
 }
 
 func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
