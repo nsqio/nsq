@@ -754,7 +754,7 @@ func TestOutputBuffering(t *testing.T) {
 	v, ok := decoded["output_buffer_size"]
 	test.Equal(t, true, ok)
 	test.Equal(t, outputBufferSize, int(v.(float64)))
-	v, _ = decoded["output_buffer_timeout"]
+	v = decoded["output_buffer_timeout"]
 	test.Equal(t, outputBufferTimeout, int(v.(float64)))
 	sub(t, conn, topicName, "ch")
 
