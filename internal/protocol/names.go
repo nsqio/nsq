@@ -4,7 +4,7 @@ import (
 	"regexp"
 )
 
-var validTopicChannelNameRegex = regexp.MustCompile(`^[\.a-zA-Z0-9_-]+(#ephemeral)?$`)
+var validTopicChannelNameRegex = regexp.MustCompile(`^[.a-zA-Z0-9_-]+(#ephemeral)?$`)
 
 // IsValidTopicName checks a topic name for correctness
 func IsValidTopicName(name string) bool {
