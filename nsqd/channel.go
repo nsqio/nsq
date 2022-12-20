@@ -363,8 +363,8 @@ func (c *Channel) FinishMessage(clientID int64, id MessageID) error {
 //
 // `timeoutMs` == 0 - requeue a message immediately
 // `timeoutMs`  > 0 - asynchronously wait for the specified timeout
-//     and requeue a message (aka "deferred requeue")
 //
+//	and requeue a message (aka "deferred requeue")
 func (c *Channel) RequeueMessage(clientID int64, id MessageID, timeout time.Duration) error {
 	// remove from inflight first
 	msg, err := c.popInFlightMessage(clientID, id)
