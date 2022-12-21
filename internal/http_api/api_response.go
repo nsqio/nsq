@@ -24,14 +24,6 @@ func (e Err) Error() string {
 	return e.Text
 }
 
-func acceptVersion(req *http.Request) int {
-	if req.Header.Get("accept") == "application/vnd.nsq; version=1.0" {
-		return 1
-	}
-
-	return 0
-}
-
 func PlainText(f APIHandler) APIHandler {
 	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 		code := 200
@@ -72,11 +64,11 @@ func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 	var isJSON bool
 
 	if code == 200 {
-		switch data.(type) {
+		switch data := data.(type) {
 		case string:
-			response = []byte(data.(string))
+			response = []byte(data)
 		case []byte:
-			response = data.([]byte)
+			response = data
 		case nil:
 			response = []byte{}
 		default:

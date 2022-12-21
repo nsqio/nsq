@@ -3,7 +3,7 @@ package nsqlookupd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -54,7 +54,7 @@ func bootstrapNSQCluster(t *testing.T) (string, []*nsqd.NSQD, *NSQLookupd) {
 	nsqdOpts.BroadcastAddress = "127.0.0.1"
 	nsqdOpts.NSQLookupdTCPAddresses = []string{nsqlookupd1.RealTCPAddr().String()}
 	nsqdOpts.Logger = lgr
-	tmpDir, err := ioutil.TempDir("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
+	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("nsq-test-%d", time.Now().UnixNano()))
 	if err != nil {
 		panic(err)
 	}
@@ -98,7 +98,7 @@ func TestPing(t *testing.T) {
 	resp, err := client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	test.Equal(t, []byte("OK"), body)
@@ -116,7 +116,7 @@ func TestInfo(t *testing.T) {
 	resp, err := client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -141,7 +141,7 @@ func TestCreateTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -157,7 +157,7 @@ func TestCreateTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -172,7 +172,7 @@ func TestCreateTopic(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -194,7 +194,7 @@ func TestDeleteTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -211,7 +211,7 @@ func TestDeleteTopic(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -227,7 +227,7 @@ func TestDeleteTopic(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -250,7 +250,7 @@ func TestGetChannels(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -269,7 +269,7 @@ func TestGetChannels(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -288,7 +288,7 @@ func TestGetChannels(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -313,7 +313,7 @@ func TestCreateChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -329,7 +329,7 @@ func TestCreateChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -345,7 +345,7 @@ func TestCreateChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -361,7 +361,7 @@ func TestCreateChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -376,7 +376,7 @@ func TestCreateChannel(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -398,7 +398,7 @@ func TestDeleteChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -414,7 +414,7 @@ func TestDeleteChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -430,7 +430,7 @@ func TestDeleteChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -446,7 +446,7 @@ func TestDeleteChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -462,7 +462,7 @@ func TestDeleteChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 404, resp.StatusCode)
 	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -476,7 +476,7 @@ func TestDeleteChannel(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)

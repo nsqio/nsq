@@ -53,7 +53,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		d := t.Sub(time.Now())
+		d := time.Until(t)
 		log.Printf("sleeping until %s (%s)", t, d)
 		time.Sleep(d)
 	}

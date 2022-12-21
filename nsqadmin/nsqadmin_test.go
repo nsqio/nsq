@@ -2,7 +2,6 @@ package nsqadmin
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -83,7 +82,7 @@ func mustStartNSQD(opts *nsqd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqd.NSQD) 
 	opts.HTTPAddress = "127.0.0.1:0"
 	opts.HTTPSAddress = "127.0.0.1:0"
 	if opts.DataPath == "" {
-		tmpDir, err := ioutil.TempDir("", "nsq-test-")
+		tmpDir, err := os.MkdirTemp("", "nsq-test-")
 		if err != nil {
 			panic(err)
 		}

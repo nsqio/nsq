@@ -26,6 +26,7 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 			lp.Close()
 			return
 		}
+
 		resp, err := lp.Command(cmd)
 		if err != nil {
 			n.logf(LOG_ERROR, "LOOKUPD(%s): %s - %s", lp, cmd, err)
@@ -34,18 +35,17 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 			n.logf(LOG_INFO, "LOOKUPD(%s): lookupd returned %s", lp, resp)
 			lp.Close()
 			return
-		} else {
-			err = json.Unmarshal(resp, &lp.Info)
-			if err != nil {
-				n.logf(LOG_ERROR, "LOOKUPD(%s): parsing response - %s", lp, resp)
-				lp.Close()
-				return
-			} else {
-				n.logf(LOG_INFO, "LOOKUPD(%s): peer info %+v", lp, lp.Info)
-				if lp.Info.BroadcastAddress == "" {
-					n.logf(LOG_ERROR, "LOOKUPD(%s): no broadcast address", lp)
-				}
-			}
+		}
+
+		err = json.Unmarshal(resp, &lp.Info)
+		if err != nil {
+			n.logf(LOG_ERROR, "LOOKUPD(%s): parsing response - %s", lp, resp)
+			lp.Close()
+			return
+		}
+		n.logf(LOG_INFO, "LOOKUPD(%s): peer info %+v", lp, lp.Info)
+		if lp.Info.BroadcastAddress == "" {
+			n.logf(LOG_ERROR, "LOOKUPD(%s): no broadcast address", lp)
 		}
 
 		// build all the commands first so we exit the lock(s) as fast as possible
@@ -87,7 +87,8 @@ func (n *NSQD) lookupLoop() {
 	}
 
 	// for announcements, lookupd determines the host automatically
-	ticker := time.Tick(15 * time.Second)
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
 	for {
 		if connect {
 			for _, host := range n.getOpts().NSQLookupdTCPAddresses {
@@ -106,7 +107,7 @@ func (n *NSQD) lookupLoop() {
 		}
 
 		select {
-		case <-ticker:
+		case <-ticker.C:
 			// send a heartbeat and read a response (read detects closed conns)
 			for _, lookupPeer := range lookupPeers {
 				n.logf(LOG_DEBUG, "LOOKUPD(%s): sending heartbeat", lookupPeer)
@@ -120,12 +121,12 @@ func (n *NSQD) lookupLoop() {
 			var cmd *nsq.Command
 			var branch string
 
-			switch val.(type) {
+			switch val := val.(type) {
 			case *Channel:
 				// notify all nsqlookupds that a new channel exists, or that it's removed
 				branch = "channel"
-				channel := val.(*Channel)
-				if channel.Exiting() == true {
+				channel := val
+				if channel.Exiting() {
 					cmd = nsq.UnRegister(channel.topicName, channel.name)
 				} else {
 					cmd = nsq.Register(channel.topicName, channel.name)
@@ -133,8 +134,8 @@ func (n *NSQD) lookupLoop() {
 			case *Topic:
 				// notify all nsqlookupds that a new topic exists, or that it's removed
 				branch = "topic"
-				topic := val.(*Topic)
-				if topic.Exiting() == true {
+				topic := val
+				if topic.Exiting() {
 					cmd = nsq.UnRegister(topic.name, "")
 				} else {
 					cmd = nsq.Register(topic.name, "")

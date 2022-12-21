@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
@@ -300,7 +299,7 @@ func newMetadataFile(opts *Options) string {
 }
 
 func readOrEmpty(fn string) ([]byte, error) {
-	data, err := ioutil.ReadFile(fn)
+	data, err := os.ReadFile(fn)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("failed to read metadata from %s - %s", fn, err)
@@ -598,8 +597,7 @@ func (n *NSQD) channels() []*Channel {
 
 // resizePool adjusts the size of the pool of queueScanWorker goroutines
 //
-// 	1 <= pool <= min(num * 0.25, QueueScanWorkerPoolMax)
-//
+//	1 <= pool <= min(num * 0.25, QueueScanWorkerPoolMax)
 func (n *NSQD) resizePool(num int, workCh chan *Channel, responseCh chan bool, closeCh chan int) {
 	idealPoolSize := int(float64(num) * 0.25)
 	if idealPoolSize < 1 {
@@ -742,7 +740,7 @@ func buildTLSConfig(opts *Options) (*tls.Config, error) {
 
 	if opts.TLSRootCAFile != "" {
 		tlsCertPool := x509.NewCertPool()
-		caCertFile, err := ioutil.ReadFile(opts.TLSRootCAFile)
+		caCertFile, err := os.ReadFile(opts.TLSRootCAFile)
 		if err != nil {
 			return nil, err
 		}
@@ -751,8 +749,6 @@ func buildTLSConfig(opts *Options) (*tls.Config, error) {
 		}
 		tlsConfig.ClientCAs = tlsCertPool
 	}
-
-	tlsConfig.BuildNameToCertificate()
 
 	return tlsConfig, nil
 }

@@ -228,12 +228,12 @@ func (s *ClientStats) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (c *ClientStats) HasUserAgent() bool {
-	return c.UserAgent != ""
+func (s *ClientStats) HasUserAgent() bool {
+	return s.UserAgent != ""
 }
 
-func (c *ClientStats) HasSampleRate() bool {
-	return c.SampleRate > 0
+func (s *ClientStats) HasSampleRate() bool {
+	return s.SampleRate > 0
 }
 
 type ChannelStatsList []*ChannelStats

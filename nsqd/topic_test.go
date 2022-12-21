@@ -3,7 +3,7 @@ package nsqd
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"runtime"
@@ -96,7 +96,7 @@ func TestHealth(t *testing.T) {
 	resp, err := http.Get(url)
 	test.Nil(t, err)
 	test.Equal(t, 500, resp.StatusCode)
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "NOK - never gonna happen", string(body))
 
@@ -109,7 +109,7 @@ func TestHealth(t *testing.T) {
 	resp, err = http.Get(url)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "OK", string(body))
 }

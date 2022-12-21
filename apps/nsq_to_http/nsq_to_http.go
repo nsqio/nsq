@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
@@ -130,7 +129,7 @@ func (p *PostPublisher) Publish(addr string, msg []byte) error {
 	if err != nil {
 		return err
 	}
-	io.Copy(ioutil.Discard, resp.Body)
+	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -147,23 +146,13 @@ func (p *GetPublisher) Publish(addr string, msg []byte) error {
 	if err != nil {
 		return err
 	}
-	io.Copy(ioutil.Discard, resp.Body)
+	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("got status code %d", resp.StatusCode)
 	}
 	return nil
-}
-
-func hasArg(s string) bool {
-	argExist := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == s {
-			argExist = true
-		}
-	})
-	return argExist
 }
 
 func main() {
@@ -306,12 +295,12 @@ func parseCustomHeaders(strs []string) (map[string]string, error) {
 	for _, s := range strs {
 		sp := strings.SplitN(s, ":", 2)
 		if len(sp) != 2 {
-			return nil, fmt.Errorf("Invalid headers: %q", s)
+			return nil, fmt.Errorf("invalid header: %q", s)
 		}
 		key := strings.TrimSpace(sp[0])
 		val := strings.TrimSpace(sp[1])
 		if key == "" || val == "" {
-			return nil, fmt.Errorf("Invalid headers: %q", s)
+			return nil, fmt.Errorf("invalid header: %q", s)
 		}
 		parsedHeaders[key] = val
 

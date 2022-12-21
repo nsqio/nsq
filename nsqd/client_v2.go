@@ -376,14 +376,14 @@ func (p *prettyConnectionState) GetCipherSuite() string {
 
 func (p *prettyConnectionState) GetVersion() string {
 	switch p.Version {
-	case tls.VersionSSL30:
-		return "SSL30"
 	case tls.VersionTLS10:
 		return "TLS1.0"
 	case tls.VersionTLS11:
 		return "TLS1.1"
 	case tls.VersionTLS12:
 		return "TLS1.2"
+	case tls.VersionTLS13:
+		return "TLS1.3"
 	default:
 		return fmt.Sprintf("Unknown %d", p.Version)
 	}
@@ -608,6 +608,7 @@ func (c *clientV2) UpgradeSnappy() error {
 	}
 
 	c.Reader = bufio.NewReaderSize(snappy.NewReader(conn), defaultBufferSize)
+	//lint:ignore SA1019 NewWriter is deprecated by NewBufferedWriter, but we're doing our own buffering
 	c.Writer = bufio.NewWriterSize(snappy.NewWriter(conn), c.OutputBufferSize)
 
 	atomic.StoreInt32(&c.Snappy, 1)

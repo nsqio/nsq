@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"net"
@@ -35,7 +34,7 @@ func mustStartNSQD(opts *Options) (*net.TCPAddr, *net.TCPAddr, *NSQD) {
 	opts.HTTPAddress = "127.0.0.1:0"
 	opts.HTTPSAddress = "127.0.0.1:0"
 	if opts.DataPath == "" {
-		tmpDir, err := ioutil.TempDir("", "nsq-test-")
+		tmpDir, err := os.MkdirTemp("", "nsq-test-")
 		if err != nil {
 			panic(err)
 		}
@@ -67,10 +66,8 @@ func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f 
 	ci := make(map[string]interface{})
 	ci["client_id"] = "test"
 	ci["feature_negotiation"] = true
-	if extra != nil {
-		for k, v := range extra {
-			ci[k] = v
-		}
+	for k, v := range extra {
+		ci[k] = v
 	}
 	cmd, _ := nsq.Identify(ci)
 	_, err := cmd.WriteTo(conn)
@@ -101,8 +98,8 @@ func authCmd(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess 
 func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
 	test.Nil(t, err)
-	resp, err := nsq.ReadResponse(conn)
-	frameType, _, err := nsq.UnpackResponse(resp)
+	resp, _ := nsq.ReadResponse(conn)
+	frameType, _, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, frameTypeError, frameType)
 }
 
@@ -153,7 +150,7 @@ func TestBasicV2(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -390,7 +387,7 @@ func TestPausing(t *testing.T) {
 	// receive the first message via the client, finish it, and send new RDY
 	resp, _ := nsq.ReadResponse(conn)
 	_, data, _ := nsq.UnpackResponse(resp)
-	msg, err = decodeMessage(data)
+	msg, _ = decodeMessage(data)
 	test.Equal(t, []byte("test body"), msg.Body)
 
 	_, err = nsq.Finish(nsq.MessageID(msg.ID)).WriteTo(conn)
@@ -425,7 +422,7 @@ func TestPausing(t *testing.T) {
 
 	resp, _ = nsq.ReadResponse(conn)
 	_, data, _ = nsq.UnpackResponse(resp)
-	msg, err = decodeMessage(data)
+	msg, _ = decodeMessage(data)
 	test.Equal(t, []byte("test body3"), msg.Body)
 }
 
@@ -479,7 +476,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_MESSAGE PUB message too big 105 > 100"), string(data))
+	test.Equal(t, "E_BAD_MESSAGE PUB message too big 105 > 100", string(data))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -492,7 +489,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_MESSAGE PUB invalid message body size 0"), string(data))
+	test.Equal(t, "E_BAD_MESSAGE PUB invalid message body size 0", string(data))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -523,7 +520,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_BODY MPUB body too big 1148 > 1000"), string(data))
+	test.Equal(t, "E_BAD_BODY MPUB body too big 1148 > 1000", string(data))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -542,7 +539,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_MESSAGE MPUB invalid message(5) body size 0"), string(data))
+	test.Equal(t, "E_BAD_MESSAGE MPUB invalid message(5) body size 0", string(data))
 
 	// need to reconnect
 	conn, err = mustConnectNSQD(tcpAddr)
@@ -560,7 +557,7 @@ func TestSizeLimits(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_BAD_MESSAGE MPUB message too big 101 > 100"), string(data))
+	test.Equal(t, "E_BAD_MESSAGE MPUB message too big 101 > 100", string(data))
 }
 
 func TestDPUB(t *testing.T) {
@@ -603,7 +600,7 @@ func TestDPUB(t *testing.T) {
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, fmt.Sprintf("E_INVALID DPUB timeout 3600100 out of range 0-3600000"), string(data))
+	test.Equal(t, "E_INVALID DPUB timeout 3600100 out of range 0-3600000", string(data))
 }
 
 func TestTouch(t *testing.T) {
@@ -634,7 +631,7 @@ func TestTouch(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -685,7 +682,7 @@ func TestMaxRdyCount(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -695,7 +692,7 @@ func TestMaxRdyCount(t *testing.T) {
 
 	resp, err = nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err = nsq.UnpackResponse(resp)
+	frameType, data, _ = nsq.UnpackResponse(resp)
 	test.Equal(t, int32(1), frameType)
 	test.Equal(t, "E_INVALID RDY count 51 out of range 0-50", string(data))
 }
@@ -716,7 +713,7 @@ func TestFatalError(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, int32(1), frameType)
 	test.Equal(t, "E_INVALID invalid command ASDF", string(data))
 
@@ -757,7 +754,7 @@ func TestOutputBuffering(t *testing.T) {
 	v, ok := decoded["output_buffer_size"]
 	test.Equal(t, true, ok)
 	test.Equal(t, outputBufferSize, int(v.(float64)))
-	v, ok = decoded["output_buffer_timeout"]
+	v = decoded["output_buffer_timeout"]
 	test.Equal(t, outputBufferTimeout, int(v.(float64)))
 	sub(t, conn, topicName, "ch")
 
@@ -770,7 +767,7 @@ func TestOutputBuffering(t *testing.T) {
 
 	test.Equal(t, true, int(end.Sub(start)/time.Millisecond) >= outputBufferTimeout)
 
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -1129,6 +1126,7 @@ func TestSnappy(t *testing.T) {
 	test.Equal(t, []byte("OK"), data)
 
 	msgBody := make([]byte, 128000)
+	//lint:ignore SA1019 NewWriter is deprecated by NewBufferedWriter, but we don't want to buffer
 	w := snappy.NewWriter(conn)
 
 	rw := readWriter{compressConn, w}
@@ -1363,7 +1361,7 @@ func TestClientMsgTimeout(t *testing.T) {
 
 	resp, _ := nsq.ReadResponse(conn)
 	_, data, _ := nsq.UnpackResponse(resp)
-	msgOut, err := decodeMessage(data)
+	msgOut, _ := decodeMessage(data)
 	test.Equal(t, msg.ID, msgOut.ID)
 	test.Equal(t, msg.Body, msgOut.Body)
 
@@ -1408,7 +1406,7 @@ func TestBadFin(t *testing.T) {
 	resp, _ := nsq.ReadResponse(conn)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, frameTypeError, frameType)
-	test.Equal(t, "E_INVALID Invalid Message ID", string(data))
+	test.Equal(t, "E_INVALID invalid message ID", string(data))
 }
 
 func TestReqTimeoutRange(t *testing.T) {
@@ -1439,7 +1437,7 @@ func TestReqTimeoutRange(t *testing.T) {
 
 	resp, err := nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
+	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -1450,7 +1448,7 @@ func TestReqTimeoutRange(t *testing.T) {
 	// It should be immediately available for another attempt
 	resp, err = nsq.ReadResponse(conn)
 	test.Nil(t, err)
-	frameType, data, err = nsq.UnpackResponse(resp)
+	frameType, data, _ = nsq.UnpackResponse(resp)
 	msgOut, _ = decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
 	test.Equal(t, msg.ID, msgOut.ID)

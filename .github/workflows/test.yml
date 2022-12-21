@@ -11,55 +11,44 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        imgtag:
-          - "golang:1.14-buster"
-          - "golang:1.15-buster"
-          - "golang:1.16-bullseye"
-          - "golang:1.17-bullseye"
-        goarch:
-          - "amd64"
-          - "386"
+        go:   ["1.17.x", "1.18.x", "1.19.x"]
+        arch: ["amd64", "386"]
 
-    container: "${{matrix.imgtag}}"
     env:
-      GOPATH: "${{github.workspace}}/go"
-      GOARCH: "${{matrix.goarch}}"
-      SRCDIR: "go/src/github.com/nsqio/nsq"
+      GOARCH: "${{matrix.arch}}"
 
     steps:
       - uses: actions/checkout@v2
+
+      - uses: WillAbides/setup-go-faster@v1.7.0
         with:
-          path: ${{env.SRCDIR}}
+          go-version: ${{matrix.go}}
 
       - name: build
-        run: |
-          cd $SRCDIR
-          make all
+        run: make all
 
       - name: test
-        run: |
-          cd $SRCDIR
-          ./test.sh
+        run: ./test.sh
 
-  send-coverage:
+  staticcheck:
     runs-on: ubuntu-20.04
-    timeout-minutes: 30
-    container: "golang:1.16-bullseye"
-    env:
-      GOPATH: "${{github.workspace}}/go"
-      SRCDIR: "go/src/github.com/nsqio/nsq"
-
     steps:
       - uses: actions/checkout@v2
-        with:
-          path: ${{env.SRCDIR}}
 
-      - name: Install goveralls
+      - uses: dominikh/staticcheck-action@v1.2.0
+        with:
+          version: "2022.1.3"
+          install-go: false
+
+  code-coverage:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: install goveralls
         run: go install github.com/mattn/goveralls@latest
 
-      - name: Send coverage
+      - name: send coverage
         env:
           COVERALLS_TOKEN: ${{secrets.GITHUB_TOKEN}}
-        run: |
-          cd $SRCDIR
-          ./coverage.sh --coveralls
+        run: ./coverage.sh --coveralls

@@ -2,7 +2,7 @@ package http_api
 
 import (
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 )
@@ -18,7 +18,7 @@ func NewReqParams(req *http.Request) (*ReqParams, error) {
 		return nil, err
 	}
 
-	data, err := ioutil.ReadAll(req.Body)
+	data, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
 	}

@@ -292,7 +292,7 @@ func TestInactiveNodes(t *testing.T) {
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
-	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
+	lookupdHTTPAddrs := []string{httpAddr.String()}
 
 	topicName := "inactive_nodes"
 
@@ -325,7 +325,7 @@ func TestTombstonedNodes(t *testing.T) {
 	tcpAddr, httpAddr, nsqlookupd := mustStartLookupd(opts)
 	defer nsqlookupd.Exit()
 
-	lookupdHTTPAddrs := []string{fmt.Sprintf("%s", httpAddr)}
+	lookupdHTTPAddrs := []string{httpAddr.String()}
 
 	topicName := "inactive_nodes"
 

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
@@ -24,7 +23,7 @@ const (
 
 func getMetadata(n *NSQD) (*Metadata, error) {
 	fn := newMetadataFile(n.getOpts())
-	data, err := ioutil.ReadFile(fn)
+	data, err := os.ReadFile(fn)
 	if err != nil {
 		return nil, err
 	}

@@ -17,8 +17,6 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
-const maxTimeout = time.Hour
-
 const (
 	frameTypeResponse int32 = 0
 	frameTypeError    int32 = 1
@@ -1004,7 +1002,7 @@ func readMPUB(r io.Reader, tmp []byte, topic *Topic, maxMessageSize int64, maxBo
 // validate and cast the bytes on the wire to a message ID
 func getMessageID(p []byte) (*MessageID, error) {
 	if len(p) != MsgIDLength {
-		return nil, errors.New("Invalid Message ID")
+		return nil, errors.New("invalid message ID")
 	}
 	return (*MessageID)(unsafe.Pointer(&p[0])), nil
 }

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -208,7 +207,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
 	readMax := s.nsqd.getOpts().MaxMsgSize + 1
-	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
+	body, err := io.ReadAll(io.LimitReader(req.Body, readMax))
 	if err != nil {
 		return nil, http_api.Err{500, "INTERNAL_ERROR"}
 	}
@@ -619,7 +618,7 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 		// add 1 so that it's greater than our max when we test for it
 		// (LimitReader returns a "fake" EOF)
 		readMax := s.nsqd.getOpts().MaxMsgSize + 1
-		body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
+		body, err := io.ReadAll(io.LimitReader(req.Body, readMax))
 		if err != nil {
 			return nil, http_api.Err{500, "INTERNAL_ERROR"}
 		}

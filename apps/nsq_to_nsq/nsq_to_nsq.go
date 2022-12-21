@@ -254,16 +254,6 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message, destinationTopic string)
 	return nil
 }
 
-func hasArg(s string) bool {
-	argExist := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == s {
-			argExist = true
-		}
-	})
-	return argExist
-}
-
 func main() {
 	var selectedMode int
 

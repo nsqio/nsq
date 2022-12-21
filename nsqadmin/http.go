@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path"
 	"reflect"
 	"strings"
@@ -130,7 +130,7 @@ func (s *httpServer) pingHandler(w http.ResponseWriter, req *http.Request, ps ht
 }
 
 func (s *httpServer) indexHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	asset, _ := Asset("index.html")
+	asset, _ := staticAsset("index.html")
 	t, _ := template.New("index").Funcs(template.FuncMap{
 		"basePath": func(p string) string {
 			return path.Join(s.basePath, p)
@@ -175,7 +175,7 @@ func (s *httpServer) staticAssetHandler(w http.ResponseWriter, req *http.Request
 	if s.devStaticDir != "" {
 		s.nsqadmin.logf(LOG_DEBUG, "using dev dir %q for static asset %q", s.devStaticDir, assetName)
 		fsPath := path.Join(s.devStaticDir, assetName)
-		asset, err = ioutil.ReadFile(fsPath)
+		asset, err = os.ReadFile(fsPath)
 	} else {
 		asset, err = staticAsset(assetName)
 	}
@@ -764,7 +764,7 @@ func (s *httpServer) doConfig(w http.ResponseWriter, req *http.Request, ps httpr
 		// add 1 so that it's greater than our max when we test for it
 		// (LimitReader returns a "fake" EOF)
 		readMax := int64(1024*1024 + 1)
-		body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
+		body, err := io.ReadAll(io.LimitReader(req.Body, readMax))
 		if err != nil {
 			return nil, http_api.Err{500, "INTERNAL_ERROR"}
 		}
@@ -805,8 +805,8 @@ func (s *httpServer) isAuthorizedAdminRequest(req *http.Request) bool {
 	if len(adminUsers) == 0 {
 		return true
 	}
-	aclHttpHeader := s.nsqadmin.getOpts().AclHttpHeader
-	user := req.Header.Get(aclHttpHeader)
+	aclHTTPHeader := s.nsqadmin.getOpts().ACLHTTPHeader
+	user := req.Header.Get(aclHTTPHeader)
 	for _, v := range adminUsers {
 		if v == user {
 			return true

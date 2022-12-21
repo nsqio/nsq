@@ -5,17 +5,16 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	"strings"
 
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/http_api"
@@ -52,7 +51,7 @@ func TestHTTPpub(t *testing.T) {
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
 
 	time.Sleep(5 * time.Millisecond)
@@ -75,7 +74,7 @@ func TestHTTPpubEmpty(t *testing.T) {
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, `{"message":"MSG_EMPTY"}`, string(body))
 
@@ -105,7 +104,7 @@ func TestHTTPmpub(t *testing.T) {
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
 
 	time.Sleep(5 * time.Millisecond)
@@ -136,7 +135,7 @@ func TestHTTPmpubEmpty(t *testing.T) {
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
 
 	time.Sleep(5 * time.Millisecond)
@@ -165,7 +164,7 @@ func TestHTTPmpubBinary(t *testing.T) {
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
 
 	time.Sleep(5 * time.Millisecond)
@@ -194,7 +193,7 @@ func TestHTTPmpubForNonNormalizedBinaryParam(t *testing.T) {
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
 
 	time.Sleep(5 * time.Millisecond)
@@ -218,7 +217,7 @@ func TestHTTPpubDefer(t *testing.T) {
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
 
 	time.Sleep(5 * time.Millisecond)
@@ -245,7 +244,7 @@ func TestHTTPSRequire(t *testing.T) {
 
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
-	resp, err := http.Post(url, "application/octet-stream", buf)
+	resp, _ := http.Post(url, "application/octet-stream", buf)
 	test.Equal(t, 403, resp.StatusCode)
 
 	httpsAddr := nsqd.httpsListener.Addr().(*net.TCPAddr)
@@ -266,7 +265,7 @@ func TestHTTPSRequire(t *testing.T) {
 	resp, err = client.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
 
 	time.Sleep(5 * time.Millisecond)
@@ -293,7 +292,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	// no cert
 	buf := bytes.NewBuffer([]byte("test message"))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
-	resp, err := http.Post(url, "application/octet-stream", buf)
+	resp, _ := http.Post(url, "application/octet-stream", buf)
 	test.Equal(t, 403, resp.StatusCode)
 
 	// unsigned cert
@@ -310,7 +309,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 
 	buf = bytes.NewBuffer([]byte("test message"))
 	url = fmt.Sprintf("https://%s/pub?topic=%s", httpsAddr, topicName)
-	resp, err = client.Post(url, "application/octet-stream", buf)
+	_, err = client.Post(url, "application/octet-stream", buf)
 	test.NotNil(t, err)
 
 	// signed cert
@@ -330,7 +329,7 @@ func TestHTTPSRequireVerify(t *testing.T) {
 	resp, err = client.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
 
 	time.Sleep(5 * time.Millisecond)
@@ -360,7 +359,7 @@ func TestTLSRequireVerifyExceptHTTP(t *testing.T) {
 	resp, err := http.Post(url, "application/octet-stream", buf)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, "OK", string(body))
 
 	time.Sleep(5 * time.Millisecond)
@@ -382,7 +381,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	resp, err := http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "", string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
@@ -391,7 +390,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "", string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
@@ -411,7 +410,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -424,7 +423,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 404, resp.StatusCode)
 	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -436,7 +435,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "", string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
@@ -447,7 +446,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "", string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
@@ -458,7 +457,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "", string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
@@ -469,7 +468,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "", string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
@@ -480,7 +479,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "", string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
@@ -492,7 +491,7 @@ func TestHTTPV1TopicChannel(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "", string(body))
 	test.Equal(t, "nsq; version=1.0", resp.Header.Get("X-NSQ-Content-Type"))
@@ -579,7 +578,7 @@ func TestHTTPgetStatusJSON(t *testing.T) {
 	resp, err := http.Get(url)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	test.Equal(t, true, strings.HasPrefix(string(body), expectedJSON))
 }
@@ -598,7 +597,7 @@ func TestHTTPgetStatusText(t *testing.T) {
 	resp, err := http.Get(url)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	test.NotNil(t, body)
 }
@@ -624,7 +623,7 @@ func TestHTTPconfig(t *testing.T) {
 	resp, err := http.Get(url)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	test.Equal(t, "[]", string(body))
 
@@ -636,7 +635,7 @@ func TestHTTPconfig(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	test.Equal(t, addrs, string(body))
 
@@ -646,7 +645,7 @@ func TestHTTPconfig(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ = ioutil.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 200, resp.StatusCode)
 	test.Equal(t, LOG_FATAL, nsqd.getOpts().LogLevel)
 
@@ -656,7 +655,7 @@ func TestHTTPconfig(t *testing.T) {
 	resp, err = client.Do(req)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ = ioutil.ReadAll(resp.Body)
+	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 400, resp.StatusCode)
 }
 
@@ -671,7 +670,7 @@ func TestHTTPerrors(t *testing.T) {
 	resp, err := http.Post(url, "text/plain", nil)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	test.Equal(t, 405, resp.StatusCode)
 	test.Equal(t, `{"message":"METHOD_NOT_ALLOWED"}`, string(body))
 
@@ -679,7 +678,7 @@ func TestHTTPerrors(t *testing.T) {
 	resp, err = http.Get(url)
 	test.Nil(t, err)
 	defer resp.Body.Close()
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 404, resp.StatusCode)
 	test.Equal(t, `{"message":"NOT_FOUND"}`, string(body))
 }
@@ -698,7 +697,7 @@ func TestDeleteTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -713,7 +712,7 @@ func TestDeleteTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 404, resp.StatusCode)
 	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -726,7 +725,7 @@ func TestDeleteTopic(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -747,7 +746,7 @@ func TestEmptyTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -762,7 +761,7 @@ func TestEmptyTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -775,7 +774,7 @@ func TestEmptyTopic(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 404, resp.StatusCode)
 	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -788,7 +787,7 @@ func TestEmptyTopic(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -809,7 +808,7 @@ func TestEmptyChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -824,7 +823,7 @@ func TestEmptyChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 400, resp.StatusCode)
 	test.Equal(t, "Bad Request", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -839,7 +838,7 @@ func TestEmptyChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 404, resp.StatusCode)
 	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -854,7 +853,7 @@ func TestEmptyChannel(t *testing.T) {
 	test.Nil(t, err)
 	test.Equal(t, 404, resp.StatusCode)
 	test.Equal(t, "Not Found", http.StatusText(resp.StatusCode))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -867,7 +866,7 @@ func TestEmptyChannel(t *testing.T) {
 	resp, err = http.Post(url, "application/json", nil)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -887,7 +886,7 @@ func TestInfo(t *testing.T) {
 	resp, err := http.Get(url)
 	test.Nil(t, err)
 	test.Equal(t, 200, resp.StatusCode)
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	t.Logf("%s", body)
@@ -922,7 +921,7 @@ func BenchmarkHTTPpub(b *testing.B) {
 				if err != nil {
 					panic(err.Error())
 				}
-				body, _ := ioutil.ReadAll(resp.Body)
+				body, _ := io.ReadAll(resp.Body)
 				if !bytes.Equal(body, []byte("OK")) {
 					panic("bad response")
 				}
