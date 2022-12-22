@@ -111,7 +111,7 @@ func TestClientAttributes(t *testing.T) {
 		} `json:"topics"`
 	}
 
-	endpoint := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)
+	endpoint := fmt.Sprintf("http://%s/stats?format=json", httpAddr)
 	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
 	test.Nil(t, err)
 

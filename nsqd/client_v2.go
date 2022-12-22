@@ -637,9 +637,13 @@ func (c *clientV2) Flush() error {
 }
 
 func (c *clientV2) QueryAuthd() error {
-	remoteIP, _, err := net.SplitHostPort(c.String())
-	if err != nil {
-		return err
+	remoteIP := ""
+	if c.RemoteAddr().Network() == "tcp" {
+		ip, _, err := net.SplitHostPort(c.String())
+		if err != nil {
+			return err
+		}
+		remoteIP = ip
 	}
 
 	tlsEnabled := atomic.LoadInt32(&c.TLS) == 1

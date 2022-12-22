@@ -34,3 +34,18 @@ func TestUniqRands(t *testing.T) {
 	x = UniqRands(10, 20)
 	test.Equal(t, 10, len(x))
 }
+
+func TestTypeOfAddr(t *testing.T) {
+	var x string
+	x = TypeOfAddr("127.0.0.1:80")
+	test.Equal(t, "tcp", x)
+
+	x = TypeOfAddr("test:80")
+	test.Equal(t, "tcp", x)
+
+	x = TypeOfAddr("/var/run/nsqd.sock")
+	test.Equal(t, "unix", x)
+
+	x = TypeOfAddr("[::1%lo0]:80")
+	test.Equal(t, "tcp", x)
+}

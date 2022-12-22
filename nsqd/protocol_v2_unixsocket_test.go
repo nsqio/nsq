@@ -8,14 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"net"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 	"sync"
@@ -29,10 +26,11 @@ import (
 	"github.com/nsqio/nsq/internal/test"
 )
 
-func mustStartNSQD(opts *Options) (net.Addr, net.Addr, *NSQD) {
-	opts.TCPAddress = "127.0.0.1:0"
-	opts.HTTPAddress = "127.0.0.1:0"
-	opts.HTTPSAddress = "127.0.0.1:0"
+func mustUnixSocketStartNSQD(opts *Options) (net.Addr, net.Addr, *NSQD) {
+	tmpDir := os.TempDir()
+	opts.TCPAddress = path.Join(tmpDir, fmt.Sprintf("nsqd-%d.sock", rand.Int()))
+	opts.HTTPAddress = path.Join(tmpDir, fmt.Sprintf("nsqd-%d.sock", rand.Int()))
+
 	if opts.DataPath == "" {
 		tmpDir, err := os.MkdirTemp("", "nsq-test-")
 		if err != nil {
@@ -53,8 +51,8 @@ func mustStartNSQD(opts *Options) (net.Addr, net.Addr, *NSQD) {
 	return nsqd.RealTCPAddr(), nsqd.RealHTTPAddr(), nsqd
 }
 
-func mustConnectNSQD(tcpAddr net.Addr) (net.Conn, error) {
-	conn, err := net.DialTimeout("tcp", tcpAddr.String(), time.Second)
+func mustUnixSocketConnectNSQD(addr net.Addr) (net.Conn, error) {
+	conn, err := net.DialTimeout("unix", addr.String(), time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -62,74 +60,12 @@ func mustConnectNSQD(tcpAddr net.Addr) (net.Conn, error) {
 	return conn, nil
 }
 
-func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f int32) []byte {
-	ci := make(map[string]interface{})
-	ci["client_id"] = "test"
-	ci["feature_negotiation"] = true
-	for k, v := range extra {
-		ci[k] = v
-	}
-	cmd, _ := nsq.Identify(ci)
-	_, err := cmd.WriteTo(conn)
-	test.Nil(t, err)
-	resp, err := nsq.ReadResponse(conn)
-	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
-	test.Nil(t, err)
-	test.Equal(t, frameType, f)
-	return data
-}
-
-func sub(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
-	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
-	test.Nil(t, err)
-	readValidate(t, conn, frameTypeResponse, "OK")
-}
-
-func authCmd(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess string) {
-	auth, _ := nsq.Auth(authSecret)
-	_, err := auth.WriteTo(conn)
-	test.Nil(t, err)
-	if expectSuccess != "" {
-		readValidate(t, conn, nsq.FrameTypeResponse, expectSuccess)
-	}
-}
-
-func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
-	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
-	test.Nil(t, err)
-	resp, _ := nsq.ReadResponse(conn)
-	frameType, _, _ := nsq.UnpackResponse(resp)
-	test.Equal(t, frameTypeError, frameType)
-}
-
-func readValidate(t *testing.T, conn io.Reader, f int32, d string) []byte {
-	resp, err := nsq.ReadResponse(conn)
-	test.Nil(t, err)
-	frameType, data, err := nsq.UnpackResponse(resp)
-	test.Nil(t, err)
-	test.Equal(t, f, frameType)
-	test.Equal(t, d, string(data))
-	return data
-}
-
-// test channel/topic names
-func TestChannelTopicNames(t *testing.T) {
-	test.Equal(t, true, protocol.IsValidChannelName("test"))
-	test.Equal(t, true, protocol.IsValidChannelName("test-with_period."))
-	test.Equal(t, true, protocol.IsValidChannelName("test#ephemeral"))
-	test.Equal(t, true, protocol.IsValidTopicName("test"))
-	test.Equal(t, true, protocol.IsValidTopicName("test-with_period."))
-	test.Equal(t, true, protocol.IsValidTopicName("test#ephemeral"))
-	test.Equal(t, false, protocol.IsValidTopicName("test:ephemeral"))
-}
-
 // exercise the basic operations of the V2 protocol
-func TestBasicV2(t *testing.T) {
+func TestUnixSocketBasicV2(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.ClientTimeout = 60 * time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
@@ -138,7 +74,7 @@ func TestBasicV2(t *testing.T) {
 	msg := NewMessage(topic.GenerateID(), []byte("test body"))
 	topic.PutMessage(msg)
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -158,13 +94,13 @@ func TestBasicV2(t *testing.T) {
 	test.Equal(t, uint16(1), msgOut.Attempts)
 }
 
-func TestMultipleConsumerV2(t *testing.T) {
+func TestUnixSocketMultipleConsumerV2(t *testing.T) {
 	msgChan := make(chan *Message)
 
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.ClientTimeout = 60 * time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
@@ -176,7 +112,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 	topic.PutMessage(msg)
 
 	for _, i := range []string{"1", "2"} {
-		conn, err := mustConnectNSQD(tcpAddr)
+		conn, err := mustUnixSocketConnectNSQD(addr)
 		test.Nil(t, err)
 		defer conn.Close()
 
@@ -207,18 +143,18 @@ func TestMultipleConsumerV2(t *testing.T) {
 	test.Equal(t, uint16(1), msgOut.Attempts)
 }
 
-func TestClientTimeout(t *testing.T) {
+func TestUnixSocketClientTimeout(t *testing.T) {
 	topicName := "test_client_timeout_v2" + strconv.Itoa(int(time.Now().Unix()))
 
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.ClientTimeout = 150 * time.Millisecond
 	opts.LogLevel = LOG_DEBUG
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -244,17 +180,17 @@ func TestClientTimeout(t *testing.T) {
 done:
 }
 
-func TestClientHeartbeat(t *testing.T) {
+func TestUnixSocketClientHeartbeat(t *testing.T) {
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.ClientTimeout = 200 * time.Millisecond
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -280,18 +216,18 @@ func TestClientHeartbeat(t *testing.T) {
 	test.Nil(t, err)
 }
 
-func TestClientHeartbeatDisableSUB(t *testing.T) {
+func TestUnixSocketClientHeartbeatDisableSUB(t *testing.T) {
 	topicName := "test_hb_v2" + strconv.Itoa(int(time.Now().Unix()))
 
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.ClientTimeout = 200 * time.Millisecond
 	opts.LogLevel = LOG_DEBUG
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -301,15 +237,15 @@ func TestClientHeartbeatDisableSUB(t *testing.T) {
 	subFail(t, conn, topicName, "ch")
 }
 
-func TestClientHeartbeatDisable(t *testing.T) {
+func TestUnixSocketClientHeartbeatDisable(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.ClientTimeout = 100 * time.Millisecond
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -323,15 +259,15 @@ func TestClientHeartbeatDisable(t *testing.T) {
 	test.Nil(t, err)
 }
 
-func TestMaxHeartbeatIntervalValid(t *testing.T) {
+func TestUnixSocketMaxHeartbeatIntervalValid(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.MaxHeartbeatInterval = 300 * time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -341,15 +277,15 @@ func TestMaxHeartbeatIntervalValid(t *testing.T) {
 	}, frameTypeResponse)
 }
 
-func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
+func TestUnixSocketMaxHeartbeatIntervalInvalid(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.MaxHeartbeatInterval = 300 * time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -360,16 +296,16 @@ func TestMaxHeartbeatIntervalInvalid(t *testing.T) {
 	test.Equal(t, "E_BAD_BODY IDENTIFY heartbeat interval (300001) is invalid", string(data))
 }
 
-func TestPausing(t *testing.T) {
+func TestUnixSocketPausing(t *testing.T) {
 	topicName := "test_pause_v2" + strconv.Itoa(int(time.Now().Unix()))
 
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -426,14 +362,14 @@ func TestPausing(t *testing.T) {
 	test.Equal(t, []byte("test body3"), msg.Body)
 }
 
-func TestEmptyCommand(t *testing.T) {
+func TestUnixSocketEmptyCommand(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -443,17 +379,17 @@ func TestEmptyCommand(t *testing.T) {
 	// if we didn't panic here we're good, see issue #120
 }
 
-func TestSizeLimits(t *testing.T) {
+func TestUnixSocketSizeLimits(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.MaxMsgSize = 100
 	opts.MaxBodySize = 1000
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -479,7 +415,7 @@ func TestSizeLimits(t *testing.T) {
 	test.Equal(t, "E_BAD_MESSAGE PUB message too big 105 > 100", string(data))
 
 	// need to reconnect
-	conn, err = mustConnectNSQD(tcpAddr)
+	conn, err = mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -492,7 +428,7 @@ func TestSizeLimits(t *testing.T) {
 	test.Equal(t, "E_BAD_MESSAGE PUB invalid message body size 0", string(data))
 
 	// need to reconnect
-	conn, err = mustConnectNSQD(tcpAddr)
+	conn, err = mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -523,7 +459,7 @@ func TestSizeLimits(t *testing.T) {
 	test.Equal(t, "E_BAD_BODY MPUB body too big 1148 > 1000", string(data))
 
 	// need to reconnect
-	conn, err = mustConnectNSQD(tcpAddr)
+	conn, err = mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -542,7 +478,7 @@ func TestSizeLimits(t *testing.T) {
 	test.Equal(t, "E_BAD_MESSAGE MPUB invalid message(5) body size 0", string(data))
 
 	// need to reconnect
-	conn, err = mustConnectNSQD(tcpAddr)
+	conn, err = mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -560,15 +496,15 @@ func TestSizeLimits(t *testing.T) {
 	test.Equal(t, "E_BAD_MESSAGE MPUB message too big 101 > 100", string(data))
 }
 
-func TestDPUB(t *testing.T) {
+func TestUnixSocketDPUB(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -603,18 +539,18 @@ func TestDPUB(t *testing.T) {
 	test.Equal(t, "E_INVALID DPUB timeout 3600100 out of range 0-3600000", string(data))
 }
 
-func TestTouch(t *testing.T) {
+func TestUnixSocketTouch(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.MsgTimeout = 150 * time.Millisecond
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_touch" + strconv.Itoa(int(time.Now().Unix()))
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -649,18 +585,18 @@ func TestTouch(t *testing.T) {
 	test.Equal(t, uint64(0), channel.timeoutCount)
 }
 
-func TestMaxRdyCount(t *testing.T) {
+func TestUnixSocketMaxRdyCount(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.MaxRdyCount = 50
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_max_rdy_count" + strconv.Itoa(int(time.Now().Unix()))
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -697,14 +633,14 @@ func TestMaxRdyCount(t *testing.T) {
 	test.Equal(t, "E_INVALID RDY count 51 out of range 0-50", string(data))
 }
 
-func TestFatalError(t *testing.T) {
+func TestUnixSocketFatalError(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -721,19 +657,19 @@ func TestFatalError(t *testing.T) {
 	test.NotNil(t, err)
 }
 
-func TestOutputBuffering(t *testing.T) {
+func TestUnixSocketOutputBuffering(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.MaxOutputBufferSize = 512 * 1024
 	opts.MaxOutputBufferTimeout = time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_output_buffering" + strconv.Itoa(int(time.Now().Unix()))
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -773,17 +709,17 @@ func TestOutputBuffering(t *testing.T) {
 	test.Equal(t, msg.ID, msgOut.ID)
 }
 
-func TestOutputBufferingValidity(t *testing.T) {
+func TestUnixSocketOutputBufferingValidity(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.MaxOutputBufferSize = 512 * 1024
 	opts.MaxOutputBufferTimeout = time.Second
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -805,7 +741,7 @@ func TestOutputBufferingValidity(t *testing.T) {
 	}, frameTypeError)
 	test.Equal(t, fmt.Sprintf("E_BAD_BODY IDENTIFY output buffer size (%d) is invalid", 512*1024+1), string(data))
 
-	conn, err = mustConnectNSQD(tcpAddr)
+	conn, err = mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -816,17 +752,17 @@ func TestOutputBufferingValidity(t *testing.T) {
 	test.Equal(t, "E_BAD_BODY IDENTIFY output buffer timeout (1001) is invalid", string(data))
 }
 
-func TestTLS(t *testing.T) {
+func TestUnixSocketTLS(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -855,7 +791,7 @@ func TestTLS(t *testing.T) {
 	test.Equal(t, []byte("OK"), data)
 }
 
-func TestTLSRequired(t *testing.T) {
+func TestUnixSocketTLSRequired(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
@@ -863,19 +799,19 @@ func TestTLSRequired(t *testing.T) {
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRequired = TLSRequiredExceptHTTP
 
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_tls_required" + strconv.Itoa(int(time.Now().Unix()))
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
 	subFail(t, conn, topicName, "ch")
 
-	conn, err = mustConnectNSQD(tcpAddr)
+	conn, err = mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -904,7 +840,7 @@ func TestTLSRequired(t *testing.T) {
 	test.Equal(t, []byte("OK"), data)
 }
 
-func TestTLSAuthRequire(t *testing.T) {
+func TestUnixSocketTLSAuthRequire(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
@@ -912,12 +848,12 @@ func TestTLSAuthRequire(t *testing.T) {
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSClientAuthPolicy = "require"
 
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	// No Certs
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -938,7 +874,7 @@ func TestTLSAuthRequire(t *testing.T) {
 	test.NotNil(t, err)
 
 	// With Unsigned Cert
-	conn, err = mustConnectNSQD(tcpAddr)
+	conn, err = mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -970,7 +906,7 @@ func TestTLSAuthRequire(t *testing.T) {
 
 }
 
-func TestTLSAuthRequireVerify(t *testing.T) {
+func TestUnixSocketTLSAuthRequireVerify(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
@@ -979,12 +915,12 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 	opts.TLSRootCAFile = "./test/certs/ca.pem"
 	opts.TLSClientAuthPolicy = "require-verify"
 
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	// with no cert
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1005,7 +941,7 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 	test.NotNil(t, err)
 
 	// with invalid cert
-	conn, err = mustConnectNSQD(tcpAddr)
+	conn, err = mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1029,7 +965,7 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 	test.NotNil(t, err)
 
 	// with valid cert
-	conn, err = mustConnectNSQD(tcpAddr)
+	conn, err = mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1059,16 +995,16 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 	test.Equal(t, []byte("OK"), data)
 }
 
-func TestDeflate(t *testing.T) {
+func TestUnixSocketDeflate(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.DeflateEnabled = true
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1090,21 +1026,16 @@ func TestDeflate(t *testing.T) {
 	test.Equal(t, []byte("OK"), data)
 }
 
-type readWriter struct {
-	io.Reader
-	io.Writer
-}
-
-func TestSnappy(t *testing.T) {
+func TestUnixSocketSnappy(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.SnappyEnabled = true
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1149,18 +1080,18 @@ func TestSnappy(t *testing.T) {
 	test.Equal(t, msg.Body, msgOut.Body)
 }
 
-func TestTLSDeflate(t *testing.T) {
+func TestUnixSocketTLSDeflate(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.DeflateEnabled = true
 	opts.TLSCert = "./test/certs/cert.pem"
 	opts.TLSKey = "./test/certs/key.pem"
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1200,7 +1131,7 @@ func TestTLSDeflate(t *testing.T) {
 	test.Equal(t, []byte("OK"), data)
 }
 
-func TestSampling(t *testing.T) {
+func TestUnixSocketSampling(t *testing.T) {
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	num := 10000
@@ -1211,11 +1142,11 @@ func TestSampling(t *testing.T) {
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.MaxRdyCount = int64(num)
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1273,18 +1204,18 @@ func TestSampling(t *testing.T) {
 	test.Equal(t, true, numInFlight >= int(float64(num)*float64(sampleRate-slack)/100.0))
 }
 
-func TestTLSSnappy(t *testing.T) {
+func TestUnixSocketTLSSnappy(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.SnappyEnabled = true
 	opts.TLSCert = "./test/certs/cert.pem"
 	opts.TLSKey = "./test/certs/key.pem"
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1324,12 +1255,12 @@ func TestTLSSnappy(t *testing.T) {
 	test.Equal(t, []byte("OK"), data)
 }
 
-func TestClientMsgTimeout(t *testing.T) {
+func TestUnixSocketClientMsgTimeout(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.QueueScanRefreshInterval = 100 * time.Millisecond
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
@@ -1344,7 +1275,7 @@ func TestClientMsgTimeout(t *testing.T) {
 	// it does not reflect a realistically possible condition
 	topic.PutMessage(NewMessage(topic.GenerateID(), make([]byte, 100)))
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1383,15 +1314,15 @@ func TestClientMsgTimeout(t *testing.T) {
 		string(data))
 }
 
-func TestBadFin(t *testing.T) {
+func TestUnixSocketBadFin(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1409,18 +1340,18 @@ func TestBadFin(t *testing.T) {
 	test.Equal(t, "E_INVALID invalid message ID", string(data))
 }
 
-func TestReqTimeoutRange(t *testing.T) {
+func TestUnixSocketReqTimeoutRange(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.MaxReqTimeout = 1 * time.Minute
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	defer nsqd.Exit()
 
 	topicName := "test_req" + strconv.Itoa(int(time.Now().Unix()))
 
-	conn, err := mustConnectNSQD(tcpAddr)
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	test.Nil(t, err)
 	defer conn.Close()
 
@@ -1469,130 +1400,25 @@ func TestReqTimeoutRange(t *testing.T) {
 	test.Equal(t, true, pqItem.Priority >= minTs)
 }
 
-func TestClientAuth(t *testing.T) {
-	authResponse := `{"ttl":1, "authorizations":[]}`
-	authSecret := "testsecret"
-	authError := "E_UNAUTHORIZED AUTH no authorizations found"
-	authSuccess := ""
-	tlsEnabled := false
-	commonName := ""
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
-
-	// now one that will succeed
-	authResponse = `{"ttl":10, "authorizations":
-		[{"topic":"test", "channels":[".*"], "permissions":["subscribe","publish"]}]
-	}`
-	authError = ""
-	authSuccess = `{"identity":"","identity_url":"","permission_count":1}`
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
-
-	// one with TLS enabled
-	tlsEnabled = true
-	commonName = "test.local"
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
-}
-
-func runAuthTest(t *testing.T, authResponse string, authSecret string, authError string,
-	authSuccess string, tlsEnabled bool, commonName string) {
-	var err error
-	var expectedRemoteIP string
-	expectedTLS := "false"
-	if tlsEnabled {
-		expectedTLS = "true"
-	}
-
-	authd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Logf("in test auth handler %s", r.RequestURI)
-		r.ParseForm()
-		test.Equal(t, expectedRemoteIP, r.Form.Get("remote_ip"))
-		test.Equal(t, expectedTLS, r.Form.Get("tls"))
-		test.Equal(t, commonName, r.Form.Get("common_name"))
-		test.Equal(t, authSecret, r.Form.Get("secret"))
-		fmt.Fprint(w, authResponse)
-	}))
-	defer authd.Close()
-
-	addr, err := url.Parse(authd.URL)
-	test.Nil(t, err)
-
-	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(t)
-	opts.LogLevel = LOG_DEBUG
-	opts.AuthHTTPAddresses = []string{addr.Host}
-	if tlsEnabled {
-		opts.TLSCert = "./test/certs/server.pem"
-		opts.TLSKey = "./test/certs/server.key"
-		opts.TLSClientAuthPolicy = "require"
-	}
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
-	defer os.RemoveAll(opts.DataPath)
-	defer nsqd.Exit()
-
-	conn, err := mustConnectNSQD(tcpAddr)
-	test.Nil(t, err)
-	defer conn.Close()
-
-	data := identify(t, conn, map[string]interface{}{
-		"tls_v1": tlsEnabled,
-	}, frameTypeResponse)
-	r := struct {
-		TLSv1 bool `json:"tls_v1"`
-	}{}
-	err = json.Unmarshal(data, &r)
-	test.Nil(t, err)
-	test.Equal(t, tlsEnabled, r.TLSv1)
-
-	var c io.ReadWriter
-	var tlsConn *tls.Conn
-	c = conn
-	if tlsEnabled {
-		cert, err := tls.LoadX509KeyPair("./test/certs/cert.pem", "./test/certs/key.pem")
-		test.Nil(t, err)
-		tlsConfig := &tls.Config{
-			Certificates:       []tls.Certificate{cert},
-			InsecureSkipVerify: true,
-		}
-		tlsConn = tls.Client(conn, tlsConfig)
-		err = tlsConn.Handshake()
-		test.Nil(t, err)
-		c = tlsConn
-
-		resp, _ := nsq.ReadResponse(tlsConn)
-		frameType, data, _ := nsq.UnpackResponse(resp)
-		t.Logf("frameType: %d, data: %s", frameType, data)
-		test.Equal(t, frameTypeResponse, frameType)
-		test.Equal(t, []byte("OK"), data)
-	}
-
-	expectedRemoteIP, _, _ = net.SplitHostPort(conn.LocalAddr().String())
-
-	authCmd(t, c, authSecret, authSuccess)
-	if authError != "" {
-		readValidate(t, c, frameTypeError, authError)
-	} else {
-		sub(t, c, "test", "ch")
-	}
-}
-
-func TestIOLoopReturnsClientErrWhenSendFails(t *testing.T) {
+func TestUnixSocketIOLoopReturnsClientErrWhenSendFails(t *testing.T) {
 	fakeConn := test.NewFakeNetConn()
 	fakeConn.WriteFunc = func(b []byte) (int, error) {
 		return 0, errors.New("write error")
 	}
 
-	testIOLoopReturnsClientErr(t, fakeConn)
+	testUnixSocketIOLoopReturnsClientErr(t, fakeConn)
 }
 
-func TestIOLoopReturnsClientErrWhenSendSucceeds(t *testing.T) {
+func TestUnixSocketIOLoopReturnsClientErrWhenSendSucceeds(t *testing.T) {
 	fakeConn := test.NewFakeNetConn()
 	fakeConn.WriteFunc = func(b []byte) (int, error) {
 		return len(b), nil
 	}
 
-	testIOLoopReturnsClientErr(t, fakeConn)
+	testUnixSocketIOLoopReturnsClientErr(t, fakeConn)
 }
 
-func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
+func testUnixSocketIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	fakeConn.ReadFunc = func(b []byte) (int, error) {
 		return copy(b, []byte("INVALID_COMMAND\n")), nil
 	}
@@ -1613,7 +1439,7 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	test.NotNil(t, err.(*protocol.FatalClientErr))
 }
 
-func BenchmarkProtocolV2Exec(b *testing.B) {
+func BenchmarkUnixSocketProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(b)
@@ -1628,7 +1454,7 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 	}
 }
 
-func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
+func benchmarkUnixSocketProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewOptions()
@@ -1636,7 +1462,7 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 	batchSize := int(opts.MaxBodySize) / (size + 4)
 	opts.Logger = test.NewTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, size)
 	batch := make([][]byte, batchSize)
@@ -1650,7 +1476,7 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 		topicName := fmt.Sprintf("bench_v2_pub_multi_topic_%d_%d", j, time.Now().Unix())
 		wg.Add(1)
 		go func() {
-			conn, err := mustConnectNSQD(tcpAddr)
+			conn, err := mustUnixSocketConnectNSQD(addr)
 			if err != nil {
 				panic(err.Error())
 			}
@@ -1696,21 +1522,33 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 	nsqd.Exit()
 }
 
-func BenchmarkProtocolV2PubMultiTopic1(b *testing.B)  { benchmarkProtocolV2PubMultiTopic(b, 1) }
-func BenchmarkProtocolV2PubMultiTopic2(b *testing.B)  { benchmarkProtocolV2PubMultiTopic(b, 2) }
-func BenchmarkProtocolV2PubMultiTopic4(b *testing.B)  { benchmarkProtocolV2PubMultiTopic(b, 4) }
-func BenchmarkProtocolV2PubMultiTopic8(b *testing.B)  { benchmarkProtocolV2PubMultiTopic(b, 8) }
-func BenchmarkProtocolV2PubMultiTopic16(b *testing.B) { benchmarkProtocolV2PubMultiTopic(b, 16) }
-func BenchmarkProtocolV2PubMultiTopic32(b *testing.B) { benchmarkProtocolV2PubMultiTopic(b, 32) }
+func BenchmarkUnixSocketProtocolV2PubMultiTopic1(b *testing.B) {
+	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 1)
+}
+func BenchmarkUnixSocketkProtocolV2PubMultiTopic2(b *testing.B) {
+	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 2)
+}
+func BenchmarkUnixSocketProtocolV2PubMultiTopic4(b *testing.B) {
+	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 4)
+}
+func BenchmarkUnixSocketProtocolV2PubMultiTopic8(b *testing.B) {
+	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 8)
+}
+func BenchmarkUnixSocketProtocolV2PubMultiTopic16(b *testing.B) {
+	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 16)
+}
+func BenchmarkUnixSocketProtocolV2PubMultiTopic32(b *testing.B) {
+	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 32)
+}
 
-func benchmarkProtocolV2Pub(b *testing.B, size int) {
+func benchmarkUnixSocketProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewOptions()
 	batchSize := int(opts.MaxBodySize) / (size + 4)
 	opts.Logger = test.NewTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, size)
 	batch := make([][]byte, batchSize)
@@ -1724,7 +1562,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	for j := 0; j < runtime.GOMAXPROCS(0); j++ {
 		wg.Add(1)
 		go func() {
-			conn, err := mustConnectNSQD(tcpAddr)
+			conn, err := mustUnixSocketConnectNSQD(addr)
 			if err != nil {
 				panic(err.Error())
 			}
@@ -1770,27 +1608,33 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	nsqd.Exit()
 }
 
-func BenchmarkProtocolV2Pub256(b *testing.B)  { benchmarkProtocolV2Pub(b, 256) }
-func BenchmarkProtocolV2Pub512(b *testing.B)  { benchmarkProtocolV2Pub(b, 512) }
-func BenchmarkProtocolV2Pub1k(b *testing.B)   { benchmarkProtocolV2Pub(b, 1024) }
-func BenchmarkProtocolV2Pub2k(b *testing.B)   { benchmarkProtocolV2Pub(b, 2*1024) }
-func BenchmarkProtocolV2Pub4k(b *testing.B)   { benchmarkProtocolV2Pub(b, 4*1024) }
-func BenchmarkProtocolV2Pub8k(b *testing.B)   { benchmarkProtocolV2Pub(b, 8*1024) }
-func BenchmarkProtocolV2Pub16k(b *testing.B)  { benchmarkProtocolV2Pub(b, 16*1024) }
-func BenchmarkProtocolV2Pub32k(b *testing.B)  { benchmarkProtocolV2Pub(b, 32*1024) }
-func BenchmarkProtocolV2Pub64k(b *testing.B)  { benchmarkProtocolV2Pub(b, 64*1024) }
-func BenchmarkProtocolV2Pub128k(b *testing.B) { benchmarkProtocolV2Pub(b, 128*1024) }
-func BenchmarkProtocolV2Pub256k(b *testing.B) { benchmarkProtocolV2Pub(b, 256*1024) }
-func BenchmarkProtocolV2Pub512k(b *testing.B) { benchmarkProtocolV2Pub(b, 512*1024) }
-func BenchmarkProtocolV2Pub1m(b *testing.B)   { benchmarkProtocolV2Pub(b, 1024*1024) }
+func BenchmarkUnixSocketProtocolV2Pub256(b *testing.B) { benchmarkUnixSocketProtocolV2Pub(b, 256) }
+func BenchmarkUnixSocketProtocolV2Pub512(b *testing.B) { benchmarkUnixSocketProtocolV2Pub(b, 512) }
+func BenchmarkUnixSocketProtocolV2Pub1k(b *testing.B)  { benchmarkUnixSocketProtocolV2Pub(b, 1024) }
+func BenchmarkUnixSocketProtocolV2Pub2k(b *testing.B)  { benchmarkUnixSocketProtocolV2Pub(b, 2*1024) }
+func BenchmarkUnixSocketProtocolV2Pub4k(b *testing.B)  { benchmarkUnixSocketProtocolV2Pub(b, 4*1024) }
+func BenchmarkUnixSocketProtocolV2Pub8k(b *testing.B)  { benchmarkUnixSocketProtocolV2Pub(b, 8*1024) }
+func BenchmarkUnixSocketProtocolV2Pub16k(b *testing.B) { benchmarkUnixSocketProtocolV2Pub(b, 16*1024) }
+func BenchmarkUnixSocketProtocolV2Pub32k(b *testing.B) { benchmarkUnixSocketProtocolV2Pub(b, 32*1024) }
+func BenchmarkUnixSocketProtocolV2Pub64k(b *testing.B) { benchmarkUnixSocketProtocolV2Pub(b, 64*1024) }
+func BenchmarkUnixSocketProtocolV2Pub128k(b *testing.B) {
+	benchmarkUnixSocketProtocolV2Pub(b, 128*1024)
+}
+func BenchmarkUnixSocketProtocolV2Pub256k(b *testing.B) {
+	benchmarkUnixSocketProtocolV2Pub(b, 256*1024)
+}
+func BenchmarkUnixSocketProtocolV2Pub512k(b *testing.B) {
+	benchmarkUnixSocketProtocolV2Pub(b, 512*1024)
+}
+func BenchmarkUnixSocketProtocolV2Pub1m(b *testing.B) { benchmarkUnixSocketProtocolV2Pub(b, 1024*1024) }
 
-func benchmarkProtocolV2Sub(b *testing.B, size int) {
+func benchmarkUnixSocketProtocolV2Sub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, size)
 	topicName := "bench_v2_sub" + strconv.Itoa(b.N) + strconv.Itoa(int(time.Now().Unix()))
@@ -1807,7 +1651,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	for j := 0; j < workers; j++ {
 		wg.Add(1)
 		go func() {
-			subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan)
+			subWorker(b.N, workers, addr, topicName, rdyChan, goChan)
 			wg.Done()
 		}()
 		<-rdyChan
@@ -1821,8 +1665,8 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	nsqd.Exit()
 }
 
-func subWorker(n int, workers int, tcpAddr net.Addr, topicName string, rdyChan chan int, goChan chan int) {
-	conn, err := mustConnectNSQD(tcpAddr)
+func subUnixSocketWorker(n int, workers int, addr net.Addr, topicName string, rdyChan chan int, goChan chan int) {
+	conn, err := mustUnixSocketConnectNSQD(addr)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -1863,28 +1707,34 @@ func subWorker(n int, workers int, tcpAddr net.Addr, topicName string, rdyChan c
 	}
 }
 
-func BenchmarkProtocolV2Sub256(b *testing.B)  { benchmarkProtocolV2Sub(b, 256) }
-func BenchmarkProtocolV2Sub512(b *testing.B)  { benchmarkProtocolV2Sub(b, 512) }
-func BenchmarkProtocolV2Sub1k(b *testing.B)   { benchmarkProtocolV2Sub(b, 1024) }
-func BenchmarkProtocolV2Sub2k(b *testing.B)   { benchmarkProtocolV2Sub(b, 2*1024) }
-func BenchmarkProtocolV2Sub4k(b *testing.B)   { benchmarkProtocolV2Sub(b, 4*1024) }
-func BenchmarkProtocolV2Sub8k(b *testing.B)   { benchmarkProtocolV2Sub(b, 8*1024) }
-func BenchmarkProtocolV2Sub16k(b *testing.B)  { benchmarkProtocolV2Sub(b, 16*1024) }
-func BenchmarkProtocolV2Sub32k(b *testing.B)  { benchmarkProtocolV2Sub(b, 32*1024) }
-func BenchmarkProtocolV2Sub64k(b *testing.B)  { benchmarkProtocolV2Sub(b, 64*1024) }
-func BenchmarkProtocolV2Sub128k(b *testing.B) { benchmarkProtocolV2Sub(b, 128*1024) }
-func BenchmarkProtocolV2Sub256k(b *testing.B) { benchmarkProtocolV2Sub(b, 256*1024) }
-func BenchmarkProtocolV2Sub512k(b *testing.B) { benchmarkProtocolV2Sub(b, 512*1024) }
-func BenchmarkProtocolV2Sub1m(b *testing.B)   { benchmarkProtocolV2Sub(b, 1024*1024) }
+func BenchmarkUnixSocketProtocolV2Sub256(b *testing.B) { benchmarkUnixSocketProtocolV2Sub(b, 256) }
+func BenchmarkUnixSocketProtocolV2Sub512(b *testing.B) { benchmarkUnixSocketProtocolV2Sub(b, 512) }
+func BenchmarkUnixSocketProtocolV2Sub1k(b *testing.B)  { benchmarkUnixSocketProtocolV2Sub(b, 1024) }
+func BenchmarkUnixSocketProtocolV2Sub2k(b *testing.B)  { benchmarkUnixSocketProtocolV2Sub(b, 2*1024) }
+func BenchmarkUnixSocketProtocolV2Sub4k(b *testing.B)  { benchmarkUnixSocketProtocolV2Sub(b, 4*1024) }
+func BenchmarkUnixSocketProtocolV2Sub8k(b *testing.B)  { benchmarkUnixSocketProtocolV2Sub(b, 8*1024) }
+func BenchmarkUnixSocketProtocolV2Sub16k(b *testing.B) { benchmarkUnixSocketProtocolV2Sub(b, 16*1024) }
+func BenchmarkUnixSocketProtocolV2Sub32k(b *testing.B) { benchmarkUnixSocketProtocolV2Sub(b, 32*1024) }
+func BenchmarkUnixSocketProtocolV2Sub64k(b *testing.B) { benchmarkUnixSocketProtocolV2Sub(b, 64*1024) }
+func BenchmarkUnixSocketProtocolV2Sub128k(b *testing.B) {
+	benchmarkUnixSocketProtocolV2Sub(b, 128*1024)
+}
+func BenchmarkUnixSocketProtocolV2Sub256k(b *testing.B) {
+	benchmarkUnixSocketProtocolV2Sub(b, 256*1024)
+}
+func BenchmarkUnixSocketProtocolV2Sub512k(b *testing.B) {
+	benchmarkUnixSocketProtocolV2Sub(b, 512*1024)
+}
+func BenchmarkUnixSocketProtocolV2Sub1m(b *testing.B) { benchmarkUnixSocketProtocolV2Sub(b, 1024*1024) }
 
-func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
+func benchmarkUnixSocketProtocolV2MultiSub(b *testing.B, num int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(b)
 	opts.MemQueueSize = int64(b.N)
-	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
 	msg := make([]byte, 256)
 	b.SetBytes(int64(len(msg) * num))
@@ -1904,7 +1754,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 		for j := 0; j < workers; j++ {
 			wg.Add(1)
 			go func() {
-				subWorker(b.N, workers, tcpAddr, topicName, rdyChan, goChan)
+				subUnixSocketWorker(b.N, workers, addr, topicName, rdyChan, goChan)
 				wg.Done()
 			}()
 			<-rdyChan
@@ -1919,8 +1769,18 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	nsqd.Exit()
 }
 
-func BenchmarkProtocolV2MultiSub1(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 1) }
-func BenchmarkProtocolV2MultiSub2(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 2) }
-func BenchmarkProtocolV2MultiSub4(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 4) }
-func BenchmarkProtocolV2MultiSub8(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 8) }
-func BenchmarkProtocolV2MultiSub16(b *testing.B) { benchmarkProtocolV2MultiSub(b, 16) }
+func BenchmarkUnixSocketProtocolV2MultiSub2(b *testing.B) {
+	benchmarkUnixSocketProtocolV2MultiSub(b, 2)
+}
+func BenchmarkUnixSocketProtocolV2MultiSub1(b *testing.B) {
+	benchmarkUnixSocketProtocolV2MultiSub(b, 1)
+}
+func BenchmarkUnixSocketProtocolV2MultiSub4(b *testing.B) {
+	benchmarkUnixSocketProtocolV2MultiSub(b, 4)
+}
+func BenchmarkUnixSocketProtocolV2MultiSub8(b *testing.B) {
+	benchmarkUnixSocketProtocolV2MultiSub(b, 8)
+}
+func BenchmarkUnixSocketProtocolV2MultiSub16(b *testing.B) {
+	benchmarkUnixSocketProtocolV2MultiSub(b, 16)
+}

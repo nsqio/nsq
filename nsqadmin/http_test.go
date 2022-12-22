@@ -239,8 +239,8 @@ func TestHTTPNodesGET(t *testing.T) {
 	testNode := ns.Nodes[0]
 	test.Equal(t, hostname, testNode.Hostname)
 	test.Equal(t, "127.0.0.1", testNode.BroadcastAddress)
-	test.Equal(t, nsqds[0].RealTCPAddr().Port, testNode.TCPPort)
-	test.Equal(t, nsqds[0].RealHTTPAddr().Port, testNode.HTTPPort)
+	test.Equal(t, nsqds[0].RealTCPAddr().(*net.TCPAddr).Port, testNode.TCPPort)
+	test.Equal(t, nsqds[0].RealHTTPAddr().(*net.TCPAddr).Port, testNode.HTTPPort)
 	test.Equal(t, version.Binary, testNode.Version)
 	test.Equal(t, 0, len(testNode.Topics))
 }
