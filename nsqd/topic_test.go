@@ -239,3 +239,38 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 		runtime.Gosched()
 	}
 }
+
+func BenchmarkTopicToMultiChannelPut(b *testing.B) {
+	b.StopTimer()
+	topicName := "bench_topic_to_multi_channel_put" + strconv.Itoa(b.N)
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(b)
+	opts.MemQueueSize = int64(b.N)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+	numOfChannels := 10
+	channels := make([]*Channel, 0, numOfChannels)
+	for i := 0; i < numOfChannels; i++ {
+		channels = append(channels, nsqd.GetTopic(topicName).GetChannel(fmt.Sprintf("bench%d", i)))
+	}
+	b.StartTimer()
+
+	for i := 0; i <= b.N; i++ {
+		topic := nsqd.GetTopic(topicName)
+		msg := NewMessage(topic.GenerateID(), []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+		topic.PutMessage(msg)
+	}
+
+loop:
+	for {
+		for i, channel := range channels {
+			if len(channel.memoryMsgChan) < b.N {
+				channels = channels[i:]
+				runtime.Gosched()
+				continue loop
+			}
+		}
+		break
+	}
+}
