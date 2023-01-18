@@ -527,7 +527,7 @@ func TestHTTPClientStats(t *testing.T) {
 		Memory *struct{} `json:"memory,omitempty"`
 	}
 
-	endpoint := fmt.Sprintf("http://127.0.0.1:%d/stats?format=json", httpAddr.Port)
+	endpoint := fmt.Sprintf("http://%s/stats?format=json", httpAddr)
 	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
 	test.Nil(t, err)
 
@@ -535,28 +535,28 @@ func TestHTTPClientStats(t *testing.T) {
 	test.Equal(t, 1, d.Topics[0].Channels[0].ClientCount)
 	test.NotNil(t, d.Memory)
 
-	endpoint = fmt.Sprintf("http://127.0.0.1:%d/stats?format=json&include_clients=true", httpAddr.Port)
+	endpoint = fmt.Sprintf("http://%s/stats?format=json&include_clients=true", httpAddr)
 	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
 	test.Nil(t, err)
 
 	test.Equal(t, 1, len(d.Topics[0].Channels[0].Clients))
 	test.Equal(t, 1, d.Topics[0].Channels[0].ClientCount)
 
-	endpoint = fmt.Sprintf("http://127.0.0.1:%d/stats?format=json&include_clients=false", httpAddr.Port)
+	endpoint = fmt.Sprintf("http://%s/stats?format=json&include_clients=false", httpAddr)
 	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
 	test.Nil(t, err)
 
 	test.Equal(t, 0, len(d.Topics[0].Channels[0].Clients))
 	test.Equal(t, 1, d.Topics[0].Channels[0].ClientCount)
 
-	endpoint = fmt.Sprintf("http://127.0.0.1:%d/stats?format=json&include_mem=true", httpAddr.Port)
+	endpoint = fmt.Sprintf("http://%s/stats?format=json&include_mem=true", httpAddr)
 	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
 	test.Nil(t, err)
 
 	test.NotNil(t, d.Memory)
 
 	d.Memory = nil
-	endpoint = fmt.Sprintf("http://127.0.0.1:%d/stats?format=json&include_mem=false", httpAddr.Port)
+	endpoint = fmt.Sprintf("http://%s/stats?format=json&include_mem=false", httpAddr)
 	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
 	test.Nil(t, err)
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -131,6 +132,15 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 	if err != nil {
 		return nil, http_api.Err{500, err.Error()}
 	}
+	tcpPort := -1 // in case of unix socket
+	if s.nsqd.RealTCPAddr().Network() == "tcp" {
+		tcpPort = s.nsqd.RealTCPAddr().(*net.TCPAddr).Port
+	}
+	httpPort := -1 // in case of unix socket
+	if s.nsqd.RealHTTPAddr().Network() == "tcp" {
+		httpPort = s.nsqd.RealHTTPAddr().(*net.TCPAddr).Port
+	}
+
 	return struct {
 		Version              string        `json:"version"`
 		BroadcastAddress     string        `json:"broadcast_address"`
@@ -146,8 +156,8 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 		Version:              version.Binary,
 		BroadcastAddress:     s.nsqd.getOpts().BroadcastAddress,
 		Hostname:             hostname,
-		TCPPort:              s.nsqd.RealTCPAddr().Port,
-		HTTPPort:             s.nsqd.RealHTTPAddr().Port,
+		TCPPort:              tcpPort,
+		HTTPPort:             httpPort,
 		StartTime:            s.nsqd.GetStartTime().Unix(),
 		MaxHeartBeatInterval: s.nsqd.getOpts().MaxHeartbeatInterval,
 		MaxOutBufferSize:     s.nsqd.getOpts().MaxOutputBufferSize,

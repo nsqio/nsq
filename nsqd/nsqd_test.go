@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"strconv"
@@ -239,7 +240,7 @@ func TestPauseMetadata(t *testing.T) {
 	test.Equal(t, false, isPaused(nsqd, 0, 0))
 }
 
-func mustStartNSQLookupd(opts *nsqlookupd.Options) (*net.TCPAddr, *net.TCPAddr, *nsqlookupd.NSQLookupd) {
+func mustStartNSQLookupd(opts *nsqlookupd.Options) (net.Addr, net.Addr, *nsqlookupd.NSQLookupd) {
 	opts.TCPAddress = "127.0.0.1:0"
 	opts.HTTPAddress = "127.0.0.1:0"
 	lookupd, err := nsqlookupd.New(opts)
@@ -361,7 +362,7 @@ func TestCluster(t *testing.T) {
 
 	test.Equal(t, hostname, topicData[0].Hostname)
 	test.Equal(t, "127.0.0.1", topicData[0].BroadcastAddress)
-	test.Equal(t, nsqd.RealTCPAddr().Port, topicData[0].TCPPort)
+	test.Equal(t, nsqd.RealTCPAddr().(*net.TCPAddr).Port, topicData[0].TCPPort)
 	test.Equal(t, false, topicData[0].Tombstoned)
 
 	channelData := d["channel:"+topicName+":ch"]
@@ -369,7 +370,7 @@ func TestCluster(t *testing.T) {
 
 	test.Equal(t, hostname, channelData[0].Hostname)
 	test.Equal(t, "127.0.0.1", channelData[0].BroadcastAddress)
-	test.Equal(t, nsqd.RealTCPAddr().Port, channelData[0].TCPPort)
+	test.Equal(t, nsqd.RealTCPAddr().(*net.TCPAddr).Port, channelData[0].TCPPort)
 	test.Equal(t, false, channelData[0].Tombstoned)
 
 	var lr struct {
@@ -388,7 +389,7 @@ func TestCluster(t *testing.T) {
 	test.Equal(t, 1, len(lr.Producers))
 	test.Equal(t, hostname, lr.Producers[0].Hostname)
 	test.Equal(t, "127.0.0.1", lr.Producers[0].BroadcastAddress)
-	test.Equal(t, nsqd.RealTCPAddr().Port, lr.Producers[0].TCPPort)
+	test.Equal(t, nsqd.RealTCPAddr().(*net.TCPAddr).Port, lr.Producers[0].TCPPort)
 	test.Equal(t, 1, len(lr.Channels))
 	test.Equal(t, "ch", lr.Channels[0])
 
@@ -437,4 +438,24 @@ func TestSetHealth(t *testing.T) {
 	test.Nil(t, nsqd.GetError())
 	test.Equal(t, "OK", nsqd.GetHealth())
 	test.Equal(t, true, nsqd.IsHealthy())
+}
+
+func TestUnixSocketStartup(t *testing.T) {
+	isSocket := func(path string) bool {
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			return false
+		}
+		return fileInfo.Mode().Type() == fs.ModeSocket
+	}
+
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+
+	_, _, nsqd := mustUnixSocketStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	test.Equal(t, isSocket(opts.TCPAddress), true)
+	test.Equal(t, isSocket(opts.HTTPAddress), true)
 }

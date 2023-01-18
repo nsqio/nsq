@@ -138,12 +138,12 @@ func New(opts *Options) (*NSQD, error) {
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
 	n.tcpServer = &tcpServer{nsqd: n}
-	n.tcpListener, err = net.Listen("tcp", opts.TCPAddress)
+	n.tcpListener, err = net.Listen(util.TypeOfAddr(opts.TCPAddress), opts.TCPAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
 	}
 	if opts.HTTPAddress != "" {
-		n.httpListener, err = net.Listen("tcp", opts.HTTPAddress)
+		n.httpListener, err = net.Listen(util.TypeOfAddr(opts.HTTPAddress), opts.HTTPAddress)
 		if err != nil {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPAddress, err)
 		}
@@ -155,11 +155,17 @@ func New(opts *Options) (*NSQD, error) {
 		}
 	}
 	if opts.BroadcastHTTPPort == 0 {
-		opts.BroadcastHTTPPort = n.RealHTTPAddr().Port
+		tcpAddr, ok := n.RealHTTPAddr().(*net.TCPAddr)
+		if ok {
+			opts.BroadcastHTTPPort = tcpAddr.Port
+		}
 	}
 
 	if opts.BroadcastTCPPort == 0 {
-		opts.BroadcastTCPPort = n.RealTCPAddr().Port
+		tcpAddr, ok := n.RealTCPAddr().(*net.TCPAddr)
+		if ok {
+			opts.BroadcastTCPPort = tcpAddr.Port
+		}
 	}
 
 	if opts.StatsdPrefix != "" {
@@ -190,19 +196,19 @@ func (n *NSQD) triggerOptsNotification() {
 	}
 }
 
-func (n *NSQD) RealTCPAddr() *net.TCPAddr {
+func (n *NSQD) RealTCPAddr() net.Addr {
 	if n.tcpListener == nil {
 		return &net.TCPAddr{}
 	}
-	return n.tcpListener.Addr().(*net.TCPAddr)
+	return n.tcpListener.Addr()
 
 }
 
-func (n *NSQD) RealHTTPAddr() *net.TCPAddr {
+func (n *NSQD) RealHTTPAddr() net.Addr {
 	if n.httpListener == nil {
 		return &net.TCPAddr{}
 	}
-	return n.httpListener.Addr().(*net.TCPAddr)
+	return n.httpListener.Addr()
 }
 
 func (n *NSQD) RealHTTPSAddr() *net.TCPAddr {
