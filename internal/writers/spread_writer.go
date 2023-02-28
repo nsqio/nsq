@@ -29,6 +29,14 @@ func (s *SpreadWriter) Write(p []byte) (int, error) {
 }
 
 func (s *SpreadWriter) Flush() {
+	if len(s.buf) == 0 {
+		// nothing to write, just wait
+		select {
+		case <-time.After(s.interval):
+		case <-s.exitCh:
+		}
+		return
+	}
 	sleep := s.interval / time.Duration(len(s.buf))
 	ticker := time.NewTicker(sleep)
 	for _, b := range s.buf {
