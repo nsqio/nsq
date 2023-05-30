@@ -69,7 +69,8 @@ NOTE: master is our *development* branch and may not be stable at all times.
 
 <a href="https://fandom.wikia.com/"><img src="https://nsq.io/static/img/fandom_logo.svg" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://gitee.com/"><img src="https://nsq.io/static/img/gitee_logo.svg" width="140" align="middle"/></a>&nbsp;&nbsp;
-<a href="https://bytedance.com/"><img src="https://nsq.io/static/img/bytedance_logo.png" width="140" align="middle"/></a><br/>
+<a href="https://bytedance.com/"><img src="https://nsq.io/static/img/bytedance_logo.png" width="140" align="middle"/></a>&nbsp;&nbsp;
+<a href="https://www.tokopedia.com/"><img src="https://nsq.io/static/img/tokopedia_logo.svg" width="145" align="middle"/></a><br/>
 
 ## Code of Conduct
 
