@@ -436,9 +436,10 @@ func (c *Channel) RemoveClient(clientID int64) {
 
 	c.Lock()
 	delete(c.clients, clientID)
+	numClients := len(c.clients)
 	c.Unlock()
 
-	if len(c.clients) == 0 && c.ephemeral {
+	if numClients == 0 && c.ephemeral {
 		go c.deleter.Do(func() { c.deleteCallback(c) })
 	}
 }
