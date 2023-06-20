@@ -127,7 +127,7 @@ func (p *protocolV2) SendMessage(client *clientV2, msg *Message) error {
 	buf := bufferPoolGet()
 	defer bufferPoolPut(buf)
 
-	_, err := msg.WriteTo(buf)
+	_, err := msg.WriteToTCP(buf)
 	if err != nil {
 		return err
 	}
@@ -310,6 +310,11 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 				p.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
 				continue
 			}
+			if msg.deferred != 0 {
+				subChannel.StartDeferredTimeout(msg, msg.deferred)
+				continue
+			}
+
 			msg.Attempts++
 
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
