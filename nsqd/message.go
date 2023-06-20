@@ -46,19 +46,19 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
 	binary.BigEndian.PutUint16(buf[8:10], uint16(m.Attempts))
 
-	n, err := w.Write(buf[:]) // 前8字节写入时间戳信息,8-10字节写入重试次数信息
+	n, err := w.Write(buf[:])
 	total += int64(n)
 	if err != nil {
 		return total, err
 	}
 
-	n, err = w.Write(m.ID[:]) // 10-26字节写入消息ID信息
+	n, err = w.Write(m.ID[:])
 	total += int64(n)
 	if err != nil {
 		return total, err
 	}
 
-	n, err = w.Write(m.Body) // 26字节后写入消息体信息
+	n, err = w.Write(m.Body)
 	total += int64(n)
 	if err != nil {
 		return total, err
