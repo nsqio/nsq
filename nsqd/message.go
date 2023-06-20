@@ -97,7 +97,6 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 //	                       attempts
 func decodeMessage(b []byte) (*Message, error) {
 	var msg Message
-	var expire int64
 
 	if len(b) < minValidMsgLength {
 		return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
@@ -108,7 +107,7 @@ func decodeMessage(b []byte) (*Message, error) {
 	copy(msg.ID[:], b[10:10+MsgIDLength])
 
 	if bytes.Equal(b[len(b)-8-len(deferMsgMagicFlag):len(b)-8], deferMsgMagicFlag) {
-		expire = int64(binary.BigEndian.Uint64(b[len(b)-8:]))
+		expire := int64(binary.BigEndian.Uint64(b[len(b)-8:]))
 		ts := time.Now().UnixNano()
 		if expire > ts {
 			msg.deferred = time.Duration(expire - ts)
