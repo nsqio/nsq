@@ -87,11 +87,11 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 
 // decodeMessage deserializes data (as []byte) and creates a new Message
 //
-//	[x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]...[x][x][x][x][x][x][x][x]
-//	|       (int64)        ||    ||      (hex string encoded in ASCII)           || (binary)    ||       (int64)
-//	|       8-byte         ||    ||                 16-byte                      || N-byte      ||       8-byte
-//	------------------------------------------------------------------------------------------------------------------...
-//	  nanosecond timestamp    ^^                   message ID                       message body    nanosecond expire
+//	[x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]... [x][x][x][x][x][x][x][x]
+//	|       (int64)        ||    ||      (hex string encoded in ASCII)           || (binary)     ||       (int64)
+//	|       8-byte         ||    ||                 16-byte                      || N-byte       ||       8-byte
+//	------------------------------------------------------------------------------------------... ------------------------
+//	  nanosecond timestamp    ^^                   message ID                       message body     nanosecond expire
 //	                       (uint16)
 //	                        2-byte
 //	                       attempts
