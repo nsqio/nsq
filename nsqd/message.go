@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -11,6 +12,8 @@ const (
 	MsgIDLength       = 16
 	minValidMsgLength = MsgIDLength + 8 + 2 // Timestamp + Attempts
 )
+
+var deferMsgMagicFlag = []byte("#DEFER_MSG#")
 
 type MessageID [MsgIDLength]byte
 
@@ -37,61 +40,46 @@ func NewMessage(id MessageID, body []byte) *Message {
 }
 
 func (m *Message) WriteTo(w io.Writer) (int64, error) {
-	var buf [18]byte
-	var total int64
-	var expire int64
-
-	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
-	binary.BigEndian.PutUint16(buf[8:10], uint16(m.Attempts))
-	if m.deferred != 0 {
-		expire = time.Now().Add(m.deferred).UnixNano()
-	}
-	binary.BigEndian.PutUint64(buf[10:18], uint64(expire))
-
-	n, err := w.Write(buf[:])
-	total += int64(n)
-	if err != nil {
-		return total, err
-	}
-
-	n, err = w.Write(m.ID[:])
-	total += int64(n)
-	if err != nil {
-		return total, err
-	}
-
-	n, err = w.Write(m.Body)
-	total += int64(n)
-	if err != nil {
-		return total, err
-	}
-
-	return total, nil
-}
-
-func (m *Message) WriteToTCP(w io.Writer) (int64, error) {
 	var buf [10]byte
 	var total int64
 
 	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
 	binary.BigEndian.PutUint16(buf[8:10], uint16(m.Attempts))
 
-	n, err := w.Write(buf[:])
+	n, err := w.Write(buf[:]) // 前8字节写入时间戳信息,8-10字节写入重试次数信息
 	total += int64(n)
 	if err != nil {
 		return total, err
 	}
 
-	n, err = w.Write(m.ID[:])
+	n, err = w.Write(m.ID[:]) // 10-26字节写入消息ID信息
 	total += int64(n)
 	if err != nil {
 		return total, err
 	}
 
-	n, err = w.Write(m.Body)
+	n, err = w.Write(m.Body) // 26字节后写入消息体信息
 	total += int64(n)
 	if err != nil {
 		return total, err
+	}
+
+	if m.deferred > 0 {
+		n, err = w.Write(deferMsgMagicFlag)
+		total += int64(n)
+		if err != nil {
+			return total, err
+		}
+
+		var deferBuf [8]byte
+		var expire = time.Now().Add(m.deferred).UnixNano()
+		binary.BigEndian.PutUint64(deferBuf[:8], uint64(expire))
+
+		n, err := w.Write(deferBuf[:])
+		total += int64(n)
+		if err != nil {
+			return total, err
+		}
 	}
 
 	return total, nil
@@ -99,11 +87,11 @@ func (m *Message) WriteToTCP(w io.Writer) (int64, error) {
 
 // decodeMessage deserializes data (as []byte) and creates a new Message
 //
-//	[x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]...
-//	|       (int64)        ||    ||       (int64)        ||      (hex string encoded in ASCII)           || (binary)
-//	|       8-byte         ||    ||       8-byte         ||                 16-byte                      || N-byte
+//	[x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]...[x][x][x][x][x][x][x][x]
+//	|       (int64)        ||    ||      (hex string encoded in ASCII)           || (binary)    ||       (int64)
+//	|       8-byte         ||    ||                 16-byte                      || N-byte      ||       8-byte
 //	------------------------------------------------------------------------------------------------------------------...
-//	  nanosecond timestamp    ^^    nanosecond expire                     message ID                       message body
+//	  nanosecond timestamp    ^^                   message ID                       message body    nanosecond expire
 //	                       (uint16)
 //	                        2-byte
 //	                       attempts
@@ -117,15 +105,18 @@ func decodeMessage(b []byte) (*Message, error) {
 
 	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
 	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
-	expire = int64(binary.BigEndian.Uint64(b[10:18]))
-	if expire > 0 {
+	copy(msg.ID[:], b[10:10+MsgIDLength])
+
+	if bytes.Equal(b[len(b)-8-len(deferMsgMagicFlag):len(b)-8], deferMsgMagicFlag) {
+		expire = int64(binary.BigEndian.Uint64(b[len(b)-8:]))
 		ts := time.Now().UnixNano()
 		if expire > ts {
 			msg.deferred = time.Duration(expire - ts)
 		}
+		msg.Body = b[10+MsgIDLength : len(b)-8-len(deferMsgMagicFlag)]
+	} else {
+		msg.Body = b[10+MsgIDLength:]
 	}
-	copy(msg.ID[:], b[18:18+MsgIDLength])
-	msg.Body = b[18+MsgIDLength:]
 
 	return &msg, nil
 }
