@@ -25,7 +25,7 @@ func TestConfigFlagParsing(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 	defer f.Close()
-	toml.DecodeReader(f, &cfg)
+	toml.NewDecoder(f).Decode(&cfg)
 	cfg["log_level"] = "debug"
 	cfg.Validate()
 
