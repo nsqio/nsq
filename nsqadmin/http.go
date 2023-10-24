@@ -408,6 +408,10 @@ func (s *httpServer) nodeHandler(w http.ResponseWriter, req *http.Request, ps ht
 func (s *httpServer) tombstoneNodeForTopicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	var messages []string
 
+	if !s.isAuthorizedAdminRequest(req) {
+		return nil, http_api.Err{403, "FORBIDDEN"}
+	}
+
 	node := ps.ByName("node")
 
 	var body struct {
