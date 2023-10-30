@@ -1,6 +1,7 @@
 {
   "env": {
-    "browser": true
+    "browser": true,
+    "es2020": true
   },
   // Rule docs: http://eslint.org/docs/rules/
   "rules": {
@@ -56,7 +57,7 @@
     "semi-spacing": [1],
     "keyword-spacing": [1, {"before": true, "after": true}],
     "space-before-blocks": [1, "always"],
-    "space-before-function-paren": [1, "never"],
+    "space-before-function-paren": [1, {"anonymous": "never", "named": "never", "asyncArrow": "always"}],
     "space-in-parens": [1, "never"],
     "space-infix-ops": [1],
     "space-unary-ops": [1],
