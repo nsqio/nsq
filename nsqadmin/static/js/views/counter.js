@@ -104,7 +104,7 @@ var CounterView = BaseView.extend({
     },
 
     displayFrame: function() {
-        this.currentNum = Math.min(this.currentNum + this.delta, this.lastNum)
+        this.currentNum = Math.min(this.currentNum + this.delta, this.lastNum);
         this.writeCounts(this.currentNum);
         if (this.currentNum < this.lastNum) {
             this.animator = setTimeout(this.displayFrame.bind(this), 1000 / 60);

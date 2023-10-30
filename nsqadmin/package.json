@@ -6,6 +6,9 @@
     "type": "git",
     "url": ""
   },
+  "scripts": {
+    "lint": "eslint static/js"
+  },
   "devDependencies": {
     "browserify": "^17.0.0",
     "gulp": "^4.0.2",

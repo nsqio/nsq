@@ -64,6 +64,17 @@
     "wrap-iife": [1]
   },
   "globals": {
+    "BASE_PATH": true,
+    "GRAPHITE_URL": true,
+    "GRAPH_ENABLED": true,
+    "IS_ADMIN": true,
+    "NSQLOOKUPD": true,
+    "STATSD_COUNTER_FORMAT": true,
+    "STATSD_GAUGE_FORMAT": true,
+    "STATSD_INTERVAL": true,
+    "STATSD_PREFIX": true,
+    "USER_AGENT": true,
+    "VERSION": true,
     "module": true,
     "require": true
   }
