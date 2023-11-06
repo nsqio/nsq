@@ -57,11 +57,12 @@ type NSQD struct {
 
 	lookupPeers atomic.Value
 
-	tcpServer     *tcpServer
-	tcpListener   net.Listener
-	httpListener  net.Listener
-	httpsListener net.Listener
-	tlsConfig     *tls.Config
+	tcpServer       *tcpServer
+	tcpListener     net.Listener
+	httpListener    net.Listener
+	httpsListener   net.Listener
+	tlsConfig       *tls.Config
+	clientTLSConfig *tls.Config
 
 	poolSize int
 
@@ -127,6 +128,12 @@ func New(opts *Options) (*NSQD, error) {
 		return nil, errors.New("cannot require TLS client connections without TLS key and cert")
 	}
 	n.tlsConfig = tlsConfig
+
+	clientTLSConfig, err := buildClientTLSConfig(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build client TLS config - %s", err)
+	}
+	n.clientTLSConfig = clientTLSConfig
 
 	for _, v := range opts.E2EProcessingLatencyPercentiles {
 		if v <= 0 || v > 1 {
@@ -754,6 +761,26 @@ func buildTLSConfig(opts *Options) (*tls.Config, error) {
 			return nil, errors.New("failed to append certificate to pool")
 		}
 		tlsConfig.ClientCAs = tlsCertPool
+	}
+
+	return tlsConfig, nil
+}
+
+func buildClientTLSConfig(opts *Options) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		MinVersion: opts.TLSMinVersion,
+	}
+
+	if opts.TLSRootCAFile != "" {
+		tlsCertPool := x509.NewCertPool()
+		caCertFile, err := os.ReadFile(opts.TLSRootCAFile)
+		if err != nil {
+			return nil, err
+		}
+		if !tlsCertPool.AppendCertsFromPEM(caCertFile) {
+			return nil, errors.New("failed to append certificate to pool")
+		}
+		tlsConfig.RootCAs = tlsCertPool
 	}
 
 	return tlsConfig, nil
