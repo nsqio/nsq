@@ -19,7 +19,7 @@ WORKDIR      /data
 
 # set up nsswitch.conf for Go's "netgo" implementation
 # https://github.com/golang/go/issues/35305
-RUN [ ! -e /etc/nsswitch.conf ] && echo 'hosts: files dns' > /etc/nsswitch.conf
+RUN if [ ! -e /etc/nsswitch.conf ]; then echo 'hosts: files dns' > /etc/nsswitch.conf; fi
 
 # Optional volumes (explicitly configure with "docker run -v ...")
 # /data          - used by nsqd for persistent storage across restarts
