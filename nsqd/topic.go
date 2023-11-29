@@ -330,11 +330,22 @@ func (t *Topic) messagePump() {
 				channel.PutMessageDeferred(chanMsg, chanMsg.deferred)
 				continue
 			}
-			err := channel.PutMessage(chanMsg)
-			if err != nil {
-				t.nsqd.logf(LOG_ERROR,
-					"TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s",
-					t.name, msg.ID, channel.name, err)
+			var attempts uint16
+			if msg.Attempts == 0 {
+				attempts = 2
+			} else {
+				attempts = msg.Attempts
+			}
+
+			for retry := uint16(0); retry < attempts; i++ {
+				err := channel.PutMessage(chanMsg)
+				if err != nil {
+					t.nsqd.logf(LOG_ERROR,
+						"TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s will retry[%d]",
+						t.name, msg.ID, channel.name, err, retry+1)
+					continue
+				}
+				break
 			}
 		}
 	}
