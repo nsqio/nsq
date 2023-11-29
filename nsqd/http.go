@@ -245,9 +245,17 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 			return nil, http_api.Err{400, "INVALID_DEFER"}
 		}
 	}
+	var maxRetryChannel int
+	if mrc, ok := reqParams["max_retry_channel"]; ok {
+		maxRetryChannel, err = strconv.Atoi(mrc[0])
+		if err != nil {
+			return nil, http_api.Err{400, "INVALID_DEFER_MAX_RETRY_CHANNEL"}
+		}
+	}
 
 	msg := NewMessage(topic.GenerateID(), body)
 	msg.deferred = deferred
+	msg.maxRetryChannel = maxRetryChannel
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
