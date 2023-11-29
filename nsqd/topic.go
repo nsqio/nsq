@@ -335,7 +335,7 @@ func (t *Topic) messagePump() {
 				err := channel.PutMessage(chanMsg)
 				if err != nil {
 					t.nsqd.logf(LOG_ERROR,
-						"TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s will retry[%d]",
+						"TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s",
 						t.name, msg.ID, channel.name, err)
 					if checkRetry >= msg.maxRetryChannel {
 						break
