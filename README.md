@@ -71,6 +71,7 @@ NOTE: master is our *development* branch and may not be stable at all times.
 <a href="https://gitee.com/"><img src="https://nsq.io/static/img/gitee_logo.svg" width="140" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://bytedance.com/"><img src="https://nsq.io/static/img/bytedance_logo.png" width="140" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://www.tokopedia.com/"><img src="https://nsq.io/static/img/tokopedia_logo.svg" width="145" align="middle"/></a><br/>
+<a href="https://www.kuafood.com/"><img src="https://file.51kuafu.com/f7/62/56472ddc156515e86318739ed6aadbcf8436b1cd76a0d28b27f1a5098863.png" width="145" align="middle"/></a><br/>
 
 ## Code of Conduct
 
