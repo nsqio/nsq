@@ -2,6 +2,39 @@
 
 ## Releases
 
+### 1.3.0 - 2023-12-26
+
+**Upgrading**
+
+ * #1427 / #1373 / #1371 - fix staticcheck warnings, remove support for gobindata / go 1.16
+
+Features:
+
+ * #1473 - `nsqd`: use --tls-root-ca-file in nsqauth request (thanks @intellitrend-team)
+ * #1470 / #1469 - `nsqadmin`: upgrade supported ECMA from ES5 to ES2020 (thanks @dudleycarr)
+ * #1468 - `nsqadmin`: add paused label to topic within the node view (thanks @dudleycarr)
+ * #1462 - `nsqadmin`: add admin check for topic/node thombstone endpoint (thanks @dudleycarr)
+ * #1434 - `nsqd`: add support of unix sockets for tcp, http, https listeners (thanks @telepenin)
+ * #1424 - `nsqd`: add /debug/freememory API (thanks @guozhao-coder)
+ * #1421 - `nsqd`: nicer tls-min-version help text default
+ * #1376 - `nsqd`: allow unbuffered memory chan if ephemeral or deferred
+ * #1380 - `nsqd`: use metadata struct for both marshal and unmarshal (thanks @karalabe)
+ * #1403 - `nsqd`: /info api returns more info (thanks @arshabbir)
+ * #1384 - `nsqd`: allow disabling both HTTP and HTTPS interfaces (thanks @karalabe)
+ * #1385 - `nsqd`: enable support for TLS1.3  (thanks @karalabe)
+ * #1372 - `nsqadmin`: new flag --dev-static-dir instead of debug build tag
+
+Bugs:
+
+ * #1478 - `Dockerfile`: remove nsswitch.conf check (thanks @dudleycarr)
+ * #1467 - `nsqadmin`: fix counter by bounding animation steps (thanks @dudleycarr)
+ * #1466 - `nsqadmin`: fix broken graph template in nsqadmin node view (thanks @dudleycarr)
+ * #1455 / #1387 - update dependencies
+ * #1445 - `nsqd`: fix unsafe concurrency read in RemoveClient (thanks @gueFDF)
+ * #1441 - `nsqd`: fix panic when statsd enabled and memstats disabled with no topics (thanks @carl-reverb)
+ * #1428 - delete `validTopicChannelNameRegex` useless escape characters (thanks @sjatsh)
+ * #1419 - contrib: update nsqadmin.cfg.example (thanks @StellarisW)
+
 ### 1.2.1 - 2021-08-15
 
 **Upgrading**
