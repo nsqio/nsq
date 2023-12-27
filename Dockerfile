@@ -6,9 +6,7 @@ RUN mkdir -p /go/src/github.com/nsqio/nsq
 COPY    .    /go/src/github.com/nsqio/nsq
 WORKDIR      /go/src/github.com/nsqio/nsq
 
-RUN ./test.sh
-RUN CGO_ENABLED=0 make PREFIX=/opt/nsq BLDFLAGS='-ldflags="-s -w"' install
-
+RUN CGO_ENABLED=0 make BLDDIR=/tmp/nsq PREFIX=/opt/nsq BLDFLAGS='-ldflags="-s -w"' install
 
 FROM alpine:latest
 
