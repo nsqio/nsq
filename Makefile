@@ -1,7 +1,7 @@
 PREFIX=/usr/local
 BINDIR=${PREFIX}/bin
 DESTDIR=
-BLDDIR = build
+BLDDIR=build
 BLDFLAGS=
 EXT=
 ifeq (${GOOS},windows)

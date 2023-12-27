@@ -3,7 +3,7 @@
 # 1. commit to bump the version and update the changelog/readme
 # 2. tag that commit
 # 3. use dist.sh to produce tar.gz for all platforms
-# 4. aws s3 cp dist s3://bitly-downloads/nsq/ --recursive --include "nsq-1.2.1*" --profile bitly --acl public-read
+# 4. aws s3 cp dist s3://bitly-downloads/nsq/ --recursive --exclude "*" --include "nsq-1.3.0*" --profile bitly --acl public-read
 # 5. docker manifest push nsqio/nsq:latest
 # 6. push to nsqio/master
 # 7. update the release metadata on github / upload the binaries
@@ -45,10 +45,13 @@ done
 
 rnd=$(LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c10)
 docker buildx create --use --name nsq-$rnd
-docker buildx build --tag nsqio/nsq:v$version --platform linux/amd64,linux/arm64 .
+docker buildx build .\
+    --tag nsqio/nsq:v$version \
+    --platform linux/amd64,linux/arm64 \
+    --output type=image,push=true
 if [[ ! $version == *"-"* ]]; then
     echo "Tagging nsqio/nsq:v$version as the latest release"
-    shas=$(docker manifest inspect nsqio/nsq:$version |\
+    shas=$(docker manifest inspect nsqio/nsq:v$version |\
         grep digest | awk '{print $2}' | sed 's/[",]//g' | sed 's/^/nsqio\/nsq@/')
-    docker manifest create nsqio/nsq:latest $shas
+    docker manifest create --amend nsqio/nsq:latest $shas
 fi
