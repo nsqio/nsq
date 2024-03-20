@@ -48,9 +48,12 @@ type Channel struct {
 
 	backend BackendQueue
 
-	memoryMsgChan chan *Message
-	exitFlag      int32
-	exitMutex     sync.RWMutex
+	topologyAwareConsumption bool
+	zoneLocalMsgChan         chan *Message
+	regionLocalMsgChan       chan *Message
+	memoryMsgChan            chan *Message
+	exitFlag                 int32
+	exitMutex                sync.RWMutex
 
 	// state tracking
 	clients        map[int64]Consumer
@@ -76,14 +79,23 @@ func NewChannel(topicName string, channelName string, nsqd *NSQD,
 	deleteCallback func(*Channel)) *Channel {
 
 	c := &Channel{
-		topicName:      topicName,
-		name:           channelName,
-		memoryMsgChan:  nil,
-		clients:        make(map[int64]Consumer),
-		deleteCallback: deleteCallback,
-		nsqd:           nsqd,
-		ephemeral:      strings.HasSuffix(channelName, "#ephemeral"),
+		topicName:                topicName,
+		name:                     channelName,
+		memoryMsgChan:            nil,
+		clients:                  make(map[int64]Consumer),
+		deleteCallback:           deleteCallback,
+		nsqd:                     nsqd,
+		ephemeral:                strings.HasSuffix(channelName, "#ephemeral"),
+		topologyAwareConsumption: nsqd.getOpts().HasExperiment(TopologyAwareConsumption),
 	}
+
+	if nsqd.getOpts().TopologyRegion != "" {
+		c.regionLocalMsgChan = make(chan *Message)
+	}
+	if nsqd.getOpts().TopologyZone != "" {
+		c.zoneLocalMsgChan = make(chan *Message)
+	}
+
 	// avoid mem-queue if size == 0 for more consistent ordering
 	if nsqd.getOpts().MemQueueSize > 0 || c.ephemeral {
 		c.memoryMsgChan = make(chan *Message, nsqd.getOpts().MemQueueSize)
@@ -303,16 +315,51 @@ func (c *Channel) PutMessage(m *Message) error {
 }
 
 func (c *Channel) put(m *Message) error {
-	select {
-	case c.memoryMsgChan <- m:
-	default:
-		err := writeMessageToBackend(m, c.backend)
-		c.nsqd.SetHealth(err)
-		if err != nil {
-			c.nsqd.logf(LOG_ERROR, "CHANNEL(%s): failed to write message to backend - %s",
-				c.name, err)
-			return err
+	if c.topologyAwareConsumption {
+		// Attempt zone local, region local and finally the memory channel
+		// we do this to ensure that we preferentially deliver messages based on toplogy
+		//
+		// Because messagePump is intermittently unavailable while writing a msg to a client
+		// we continue to have higher priority channels in the select loop, this means at each
+		// attempt a higher priority channel can still win
+		select {
+		case c.zoneLocalMsgChan <- m:
+			return nil
+		default:
 		}
+		select {
+		case c.zoneLocalMsgChan <- m:
+			return nil
+		case c.regionLocalMsgChan <- m:
+			return nil
+		default:
+		}
+
+		select {
+		case c.zoneLocalMsgChan <- m:
+			return nil
+		case c.regionLocalMsgChan <- m:
+			return nil
+		case c.memoryMsgChan <- m:
+			return nil
+		default:
+		}
+
+	} else {
+
+		select {
+		case c.memoryMsgChan <- m:
+			return nil
+		default:
+		}
+	}
+
+	err := writeMessageToBackend(m, c.backend)
+	c.nsqd.SetHealth(err)
+	if err != nil {
+		c.nsqd.logf(LOG_ERROR, "CHANNEL(%s): failed to write message to backend - %s",
+			c.name, err)
+		return err
 	}
 	return nil
 }
