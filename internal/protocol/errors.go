@@ -45,7 +45,7 @@ func (e *FatalClientErr) Parent() error {
 	return e.ParentErr
 }
 
-// NewClientErr creates a ClientErr with the supplied human and machine readable strings
+// NewFatalClientErr creates a ClientErr with the supplied human and machine readable strings
 func NewFatalClientErr(parent error, code string, description string) *FatalClientErr {
 	return &FatalClientErr{parent, code, description}
 }
