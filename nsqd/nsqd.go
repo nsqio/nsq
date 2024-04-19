@@ -135,6 +135,10 @@ func New(opts *Options) (*NSQD, error) {
 	}
 	n.clientTLSConfig = clientTLSConfig
 
+	if opts.AuthHTTPRequestMethod != "post" && opts.AuthHTTPRequestMethod != "get" {
+		return nil, errors.New("--auth-http-request-method must be post or get")
+	}
+
 	for _, v := range opts.E2EProcessingLatencyPercentiles {
 		if v <= 0 || v > 1 {
 			return nil, fmt.Errorf("invalid E2E processing latency percentile: %v", v)

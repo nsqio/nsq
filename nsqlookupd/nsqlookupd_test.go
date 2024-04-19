@@ -220,7 +220,7 @@ func TestTombstoneRecover(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s:%d",
 		httpAddr, topicName, HostAddr, HTTPPort)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(endpoint)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(endpoint, nil, nil)
 	test.Nil(t, err)
 
 	pr := ProducersDoc{}
@@ -263,7 +263,7 @@ func TestTombstoneUnregister(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s:%d",
 		httpAddr, topicName, HostAddr, HTTPPort)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(endpoint)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(endpoint, nil, nil)
 	test.Nil(t, err)
 
 	pr := ProducersDoc{}
@@ -348,7 +348,7 @@ func TestTombstonedNodes(t *testing.T) {
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s:%d",
 		httpAddr, topicName, HostAddr, HTTPPort)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(endpoint)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(endpoint, nil, nil)
 	test.Nil(t, err)
 
 	producers, _ = ci.GetLookupdProducers(lookupdHTTPAddrs)

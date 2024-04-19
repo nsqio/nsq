@@ -76,13 +76,13 @@ func (a *State) IsExpired() bool {
 }
 
 func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
-	clientTLSConfig *tls.Config, connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
+	clientTLSConfig *tls.Config, connectTimeout time.Duration, requestTimeout time.Duration, httpRequestMethod string) (*State, error) {
 	var retErr error
 	start := rand.Int()
 	n := len(authd)
 	for i := 0; i < n; i++ {
 		a := authd[(i+start)%n]
-		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, commonName, authSecret, clientTLSConfig, connectTimeout, requestTimeout)
+		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, commonName, authSecret, clientTLSConfig, connectTimeout, requestTimeout, httpRequestMethod)
 		if err != nil {
 			es := fmt.Sprintf("failed to auth against %s - %s", a, err)
 			if retErr != nil {
@@ -97,7 +97,8 @@ func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName 
 }
 
 func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
-	clientTLSConfig *tls.Config, connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
+	clientTLSConfig *tls.Config, connectTimeout time.Duration, requestTimeout time.Duration, httpRequestMethod string) (*State, error) {
+	var authState State
 	v := url.Values{}
 	v.Set("remote_ip", remoteIP)
 	if tlsEnabled {
@@ -110,15 +111,21 @@ func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName strin
 
 	var endpoint string
 	if strings.Contains(authd, "://") {
-		endpoint = fmt.Sprintf("%s?%s", authd, v.Encode())
+		endpoint = authd
 	} else {
-		endpoint = fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
+		endpoint = fmt.Sprintf("http://%s/auth", authd)
 	}
 
-	var authState State
 	client := http_api.NewClient(clientTLSConfig, connectTimeout, requestTimeout)
-	if err := client.GETV1(endpoint, &authState); err != nil {
-		return nil, err
+	if httpRequestMethod == "post" {
+		if err := client.POSTV1(endpoint, v, &authState); err != nil {
+			return nil, err
+		}
+	} else {
+		endpoint = fmt.Sprintf("%s?%s", endpoint, v.Encode())
+		if err := client.GETV1(endpoint, &authState); err != nil {
+			return nil, err
+		}
 	}
 
 	// validation on response

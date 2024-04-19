@@ -336,11 +336,11 @@ func TestCluster(t *testing.T) {
 	test.Nil(t, err)
 
 	url := fmt.Sprintf("http://%s/topic/create?topic=%s", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(url)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(url, nil, nil)
 	test.Nil(t, err)
 
 	url = fmt.Sprintf("http://%s/channel/create?topic=%s&channel=ch", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(url)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(url, nil, nil)
 	test.Nil(t, err)
 
 	// allow some time for nsqd to push info to nsqlookupd
@@ -394,7 +394,7 @@ func TestCluster(t *testing.T) {
 	test.Equal(t, "ch", lr.Channels[0])
 
 	url = fmt.Sprintf("http://%s/topic/delete?topic=%s", nsqd.RealHTTPAddr(), topicName)
-	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(url)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).POSTV1(url, nil, nil)
 	test.Nil(t, err)
 
 	// allow some time for nsqd to push info to nsqlookupd
