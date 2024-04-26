@@ -657,6 +657,7 @@ func (c *clientV2) QueryAuthd() error {
 
 	authState, err := auth.QueryAnyAuthd(c.nsqd.getOpts().AuthHTTPAddresses,
 		remoteIP, tlsEnabled, commonName, c.AuthSecret,
+		c.nsqd.clientTLSConfig,
 		c.nsqd.getOpts().HTTPClientConnectTimeout,
 		c.nsqd.getOpts().HTTPClientRequestTimeout)
 	if err != nil {

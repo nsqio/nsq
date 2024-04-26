@@ -1,7 +1,7 @@
 var AppState = require('../app_state');
 var Backbone = require('backbone');
 
-var Node = Backbone.Model.extend({ //eslint-disable-line no-undef
+var NodeModel = Backbone.Model.extend({
     idAttribute: 'name',
 
     constructor: function Node() {
@@ -20,4 +20,4 @@ var Node = Backbone.Model.extend({ //eslint-disable-line no-undef
     }
 });
 
-module.exports = Node;
+module.exports = NodeModel;

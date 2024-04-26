@@ -12,7 +12,12 @@ var CounterView = BaseView.extend({
 
     initialize: function() {
         BaseView.prototype.initialize.apply(this, arguments);
-        this.listenTo(AppState, 'change:graph_interval', this.render);
+        this.listenTo(AppState, 'change:graph_interval', function() {
+            clearTimeout(this.poller);
+            clearTimeout(this.animator);
+            this.render();
+            this.start();
+        });
         this.start();
     },
 
@@ -29,6 +34,7 @@ var CounterView = BaseView.extend({
         this.looping = false;
         this.targetPollInterval = 10000;
         this.currentNum = -1;
+        this.lastNum = 0;
         this.interval = 100;
         this.graphUrl = null;
         this.updateStats();
@@ -52,16 +58,17 @@ var CounterView = BaseView.extend({
             if (this.currentNum === -1) {
                 // seed the display
                 this.currentNum = num;
+                this.lastNum = num;
                 this.writeCounts(this.currentNum);
             } else if (num > this.lastNum) {
                 var delta = num - this.lastNum;
                 this.delta = (delta / (this.interval / 1000)) / 50;
+                this.lastNum = num;
+
                 if (!this.animator) {
                     this.displayFrame();
                 }
             }
-            this.currentNum = this.lastNum;
-            this.lastNum = num;
 
             var newInterval = this.interval;
             if (newInterval < this.targetPollInterval) {
@@ -97,9 +104,13 @@ var CounterView = BaseView.extend({
     },
 
     displayFrame: function() {
-        this.currentNum += this.delta;
+        this.currentNum = Math.min(this.currentNum + this.delta, this.lastNum);
         this.writeCounts(this.currentNum);
-        this.animator = setTimeout(this.displayFrame.bind(this), 1000 / 60);
+        if (this.currentNum < this.lastNum) {
+            this.animator = setTimeout(this.displayFrame.bind(this), 1000 / 60);
+        } else {
+            this.animator = null;
+        }
     },
 
     writeCounts: function(c) {

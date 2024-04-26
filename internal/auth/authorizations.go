@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -75,13 +76,13 @@ func (a *State) IsExpired() bool {
 }
 
 func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
-	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
+	clientTLSConfig *tls.Config, connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
 	var retErr error
 	start := rand.Int()
 	n := len(authd)
 	for i := 0; i < n; i++ {
 		a := authd[(i+start)%n]
-		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, commonName, authSecret, connectTimeout, requestTimeout)
+		authState, err := QueryAuthd(a, remoteIP, tlsEnabled, commonName, authSecret, clientTLSConfig, connectTimeout, requestTimeout)
 		if err != nil {
 			es := fmt.Sprintf("failed to auth against %s - %s", a, err)
 			if retErr != nil {
@@ -96,7 +97,7 @@ func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName 
 }
 
 func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
-	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
+	clientTLSConfig *tls.Config, connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
 	v := url.Values{}
 	v.Set("remote_ip", remoteIP)
 	if tlsEnabled {
@@ -115,7 +116,7 @@ func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName strin
 	}
 
 	var authState State
-	client := http_api.NewClient(nil, connectTimeout, requestTimeout)
+	client := http_api.NewClient(clientTLSConfig, connectTimeout, requestTimeout)
 	if err := client.GETV1(endpoint, &authState); err != nil {
 		return nil, err
 	}

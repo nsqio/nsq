@@ -59,9 +59,10 @@
         <tr class="info">
             <td colspan="3">
                 <button class="btn-link red tombstone-link" data-node="{{../name}}" data-topic="{{topic_name}}" style="padding: 0 6px; border: 0;">✘</button> {{topic_name}}
+                {{#if paused}}<span class="label label-primary">paused</span>{{/if}}
             </td>
             <td>
-                {{#if ../graph_active}}<a href="{{large_graph "topic" node name "" "depth"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "depth"}}"></a>{{/if}}
+                {{#if ../graph_active}}<a href="{{large_graph "topic" node topic_name "" "depth"}}"><img width="120" src="{{sparkline "topic" node topic_name "" "depth"}}"></a>{{/if}}
                 {{commafy depth}}
             </td>
             <td>{{commafy memory_depth}} + {{commafy backend_depth}}</td>

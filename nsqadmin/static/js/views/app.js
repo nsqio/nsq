@@ -18,9 +18,9 @@ var NodesView = require('./nodes');
 var NodeView = require('./node');
 var CounterView = require('./counter');
 
-var Node = require('../models/node'); //eslint-disable-line no-undef
-var Topic = require('../models/topic');
-var Channel = require('../models/channel');
+var NodeModel = require('../models/node');
+var TopicModel = require('../models/topic');
+var ChannelModel = require('../models/channel');
 
 var AppView = BaseView.extend({
     // not a fan of setting a view's el to an existing element on the page
@@ -96,14 +96,14 @@ var AppView = BaseView.extend({
 
     showTopic: function(topic) {
         this.showView(function() {
-            var model = new Topic({'name': topic, 'isAdmin': AppState.get('IS_ADMIN')});
+            var model = new TopicModel({'name': topic, 'isAdmin': AppState.get('IS_ADMIN')});
             return new TopicView({'model': model});
         });
     },
 
     showChannel: function(topic, channel) {
         this.showView(function() {
-            var model = new Channel({
+            var model = new ChannelModel({
                 'topic': topic,
                 'name': channel,
                 'isAdmin': AppState.get('IS_ADMIN')
@@ -126,7 +126,7 @@ var AppView = BaseView.extend({
 
     showNode: function(node) {
         this.showView(function() {
-            var model = new Node({'name': node});
+            var model = new NodeModel({'name': node});
             return new NodeView({'model': model});
         });
     },
@@ -157,7 +157,7 @@ var AppView = BaseView.extend({
             if (result !== true) {
                 return;
             }
-            var node = new Node({
+            var node = new NodeModel({
                 'name': nodeName
             });
             node.tombstoneTopic(topicName)
