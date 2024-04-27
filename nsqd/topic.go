@@ -315,14 +315,19 @@ func (t *Topic) messagePump() {
 			goto exit
 		}
 
-		ts := time.Now().UnixNano()
-		for _, channel := range chans {
+		deferred := time.Duration(msg.deadline - time.Now().UnixNano())
+		for i, channel := range chans {
+			chanMsg := msg
 			// copy the message because each channel
-			// needs a unique instance
-			chanMsg := NewMessage(msg.ID, msg.Body)
-			chanMsg.Timestamp = msg.Timestamp
-			chanMsg.deadline = msg.deadline
-			if deferred := time.Duration(chanMsg.deadline - ts); deferred > 0 {
+			// needs a unique instance but...
+			// fastpath to avoid copy if its the first channel
+			// (the topic already created the first copy)
+			if i > 0 {
+				chanMsg = NewMessage(msg.ID, msg.Body)
+				chanMsg.Timestamp = msg.Timestamp
+				chanMsg.deadline = msg.deadline
+			}
+			if deferred > 0 {
 				chanMsg.deferred = deferred
 				channel.PutMessageDeferred(chanMsg, chanMsg.deferred)
 				continue
