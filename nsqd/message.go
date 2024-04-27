@@ -29,6 +29,7 @@ type Message struct {
 	pri        int64
 	index      int
 	deferred   time.Duration
+	deadline   int64
 }
 
 func NewMessage(id MessageID, body []byte) *Message {
@@ -64,7 +65,7 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 		return total, err
 	}
 
-	if m.deferred > 0 {
+	if m.deadline > time.Now().UnixNano() {
 		n, err = w.Write(deferMsgMagicFlag)
 		total += int64(n)
 		if err != nil {
@@ -72,8 +73,7 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 		}
 
 		var deferBuf [8]byte
-		var expire = time.Now().Add(m.deferred).UnixNano()
-		binary.BigEndian.PutUint64(deferBuf[:8], uint64(expire))
+		binary.BigEndian.PutUint64(deferBuf[:8], uint64(m.deadline))
 
 		n, err := w.Write(deferBuf[:])
 		total += int64(n)
@@ -91,7 +91,7 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 //	|       (int64)        ||    ||      (hex string encoded in ASCII)           || (binary)     ||       (int64)
 //	|       8-byte         ||    ||                 16-byte                      || N-byte       ||       8-byte
 //	------------------------------------------------------------------------------------------... ------------------------
-//	  nanosecond timestamp    ^^                   message ID                       message body     nanosecond expire
+//	  nanosecond timestamp    ^^                   message ID                       message body     nanosecond deadline
 //	                       (uint16)
 //	                        2-byte
 //	                       attempts
@@ -107,10 +107,9 @@ func decodeMessage(b []byte) (*Message, error) {
 	copy(msg.ID[:], b[10:10+MsgIDLength])
 
 	if bytes.Equal(b[len(b)-8-len(deferMsgMagicFlag):len(b)-8], deferMsgMagicFlag) {
-		expire := int64(binary.BigEndian.Uint64(b[len(b)-8:]))
-		ts := time.Now().UnixNano()
-		if expire > ts {
-			msg.deferred = time.Duration(expire - ts)
+		msg.deadline = int64(binary.BigEndian.Uint64(b[len(b)-8:]))
+		if deferred := msg.deadline - time.Now().UnixNano(); deferred > 0 {
+			msg.deferred = time.Duration(deferred)
 		}
 		msg.Body = b[10+MsgIDLength : len(b)-8-len(deferMsgMagicFlag)]
 	} else {

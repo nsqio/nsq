@@ -240,14 +240,8 @@ finish:
 	c.inFlightMutex.Unlock()
 
 	c.deferredMutex.Lock()
-	ts := time.Now().UnixNano()
 	for _, item := range c.deferredMessages {
 		msg := item.Value.(*Message)
-		if item.Priority > ts {
-			msg.deferred = time.Duration(item.Priority - ts)
-		} else {
-			msg.deferred = 0
-		}
 		err := writeMessageToBackend(msg, c.backend)
 		if err != nil {
 			c.nsqd.logf(LOG_ERROR, "failed to write message to backend - %s", err)
@@ -578,7 +572,6 @@ func (c *Channel) processDeferredQueue(t int64) bool {
 		if err != nil {
 			goto exit
 		}
-		msg.deferred = 0
 		c.put(msg)
 	}
 

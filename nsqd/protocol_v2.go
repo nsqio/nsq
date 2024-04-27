@@ -127,7 +127,6 @@ func (p *protocolV2) SendMessage(client *clientV2, msg *Message) error {
 	buf := bufferPoolGet()
 	defer bufferPoolPut(buf)
 
-	msg.deferred = 0
 	_, err := msg.WriteTo(buf)
 	if err != nil {
 		return err
@@ -925,6 +924,7 @@ func (p *protocolV2) DPUB(client *clientV2, params [][]byte) ([]byte, error) {
 	topic := p.nsqd.GetTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), messageBody)
 	msg.deferred = timeoutDuration
+	msg.deadline = time.Now().UnixNano() + int64(timeoutDuration)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_DPUB_FAILED", "DPUB failed "+err.Error())
