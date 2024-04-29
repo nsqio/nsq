@@ -3,7 +3,6 @@ package nsqd
 import (
 	"bufio"
 	"bytes"
-	"compress/flate"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -21,6 +20,7 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/flate"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/test"
@@ -903,7 +903,6 @@ func TestUnixSocketTLSAuthRequire(t *testing.T) {
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
 	test.Equal(t, []byte("OK"), data)
-
 }
 
 func TestUnixSocketTLSAuthRequireVerify(t *testing.T) {
@@ -1527,18 +1526,23 @@ func benchmarkUnixSocketProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 func BenchmarkUnixSocketProtocolV2PubMultiTopic1(b *testing.B) {
 	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 1)
 }
+
 func BenchmarkUnixSocketkProtocolV2PubMultiTopic2(b *testing.B) {
 	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 2)
 }
+
 func BenchmarkUnixSocketProtocolV2PubMultiTopic4(b *testing.B) {
 	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 4)
 }
+
 func BenchmarkUnixSocketProtocolV2PubMultiTopic8(b *testing.B) {
 	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 8)
 }
+
 func BenchmarkUnixSocketProtocolV2PubMultiTopic16(b *testing.B) {
 	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 16)
 }
+
 func BenchmarkUnixSocketProtocolV2PubMultiTopic32(b *testing.B) {
 	benchmarkUnixSocketProtocolV2PubMultiTopic(b, 32)
 }
@@ -1624,9 +1628,11 @@ func BenchmarkUnixSocketProtocolV2Pub64k(b *testing.B) { benchmarkUnixSocketProt
 func BenchmarkUnixSocketProtocolV2Pub128k(b *testing.B) {
 	benchmarkUnixSocketProtocolV2Pub(b, 128*1024)
 }
+
 func BenchmarkUnixSocketProtocolV2Pub256k(b *testing.B) {
 	benchmarkUnixSocketProtocolV2Pub(b, 256*1024)
 }
+
 func BenchmarkUnixSocketProtocolV2Pub512k(b *testing.B) {
 	benchmarkUnixSocketProtocolV2Pub(b, 512*1024)
 }
@@ -1723,9 +1729,11 @@ func BenchmarkUnixSocketProtocolV2Sub64k(b *testing.B) { benchmarkUnixSocketProt
 func BenchmarkUnixSocketProtocolV2Sub128k(b *testing.B) {
 	benchmarkUnixSocketProtocolV2Sub(b, 128*1024)
 }
+
 func BenchmarkUnixSocketProtocolV2Sub256k(b *testing.B) {
 	benchmarkUnixSocketProtocolV2Sub(b, 256*1024)
 }
+
 func BenchmarkUnixSocketProtocolV2Sub512k(b *testing.B) {
 	benchmarkUnixSocketProtocolV2Sub(b, 512*1024)
 }
@@ -1775,15 +1783,19 @@ func benchmarkUnixSocketProtocolV2MultiSub(b *testing.B, num int) {
 func BenchmarkUnixSocketProtocolV2MultiSub2(b *testing.B) {
 	benchmarkUnixSocketProtocolV2MultiSub(b, 2)
 }
+
 func BenchmarkUnixSocketProtocolV2MultiSub1(b *testing.B) {
 	benchmarkUnixSocketProtocolV2MultiSub(b, 1)
 }
+
 func BenchmarkUnixSocketProtocolV2MultiSub4(b *testing.B) {
 	benchmarkUnixSocketProtocolV2MultiSub(b, 4)
 }
+
 func BenchmarkUnixSocketProtocolV2MultiSub8(b *testing.B) {
 	benchmarkUnixSocketProtocolV2MultiSub(b, 8)
 }
+
 func BenchmarkUnixSocketProtocolV2MultiSub16(b *testing.B) {
 	benchmarkUnixSocketProtocolV2MultiSub(b, 16)
 }

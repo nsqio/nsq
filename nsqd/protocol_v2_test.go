@@ -3,7 +3,6 @@ package nsqd
 import (
 	"bufio"
 	"bytes"
-	"compress/flate"
 	"crypto/tls"
 	_ "embed"
 	"encoding/json"
@@ -25,6 +24,7 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/flate"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/test"
@@ -968,7 +968,6 @@ func TestTLSAuthRequire(t *testing.T) {
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
 	test.Equal(t, []byte("OK"), data)
-
 }
 
 func TestTLSAuthRequireVerify(t *testing.T) {
@@ -1494,7 +1493,8 @@ func TestClientAuth(t *testing.T) {
 }
 
 func runAuthTest(t *testing.T, authResponse string, authSecret string, authError string,
-	authSuccess string, tlsEnabled bool, commonName string) {
+	authSuccess string, tlsEnabled bool, commonName string,
+) {
 	var err error
 	var expectedRemoteIP string
 	expectedTLS := "false"

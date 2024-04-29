@@ -7,11 +7,12 @@
 package http_api
 
 import (
-	"compress/flate"
-	"compress/gzip"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/klauspost/compress/flate"
+	"github.com/klauspost/compress/gzip"
 )
 
 type compressResponseWriter struct {

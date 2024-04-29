@@ -2,7 +2,6 @@ package nsqd
 
 import (
 	"bufio"
-	"compress/flate"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/flate"
 	"github.com/nsqio/nsq/internal/auth"
 )
 
