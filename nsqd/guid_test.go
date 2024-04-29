@@ -23,20 +23,30 @@ func BenchmarkGUIDUnsafe(b *testing.B) {
 }
 
 func BenchmarkGUID(b *testing.B) {
-	var okays, errors, fails int64
 	var previd guid
-	factory := &guidFactory{}
+	factory := NewGUIDFactory(37)
 	for i := 0; i < b.N; i++ {
 		id, err := factory.NewGUID()
 		if err != nil {
-			errors++
-		} else if id == previd {
-			fails++
-			b.Fail()
-		} else {
-			okays++
+			b.Fatal(err)
+		} else if id <= previd {
+			b.Fatal("repeated or descending id")
 		}
+		previd = id
 		id.Hex()
 	}
-	b.Logf("okays=%d errors=%d bads=%d", okays, errors, fails)
+}
+
+func TestGUID(t *testing.T) {
+	factory := NewGUIDFactory(1)
+	var previd guid
+	for i := 0; i < 1000; i++ {
+		id, err := factory.NewGUID()
+		if err != nil {
+			t.Fatal(err)
+		} else if id <= previd {
+			t.Fatal("repeated or descending id")
+		}
+		previd = id
+	}
 }

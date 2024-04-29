@@ -519,9 +519,8 @@ func TestHTTPClientStats(t *testing.T) {
 	var d struct {
 		Topics []struct {
 			Channels []struct {
-				ClientCount int `json:"client_count"`
-				Clients     []struct {
-				} `json:"clients"`
+				ClientCount int        `json:"client_count"`
+				Clients     []struct{} `json:"clients"`
 			} `json:"channels"`
 		} `json:"topics"`
 		Memory *struct{} `json:"memory,omitempty"`
@@ -899,7 +898,7 @@ func BenchmarkHTTPpub(b *testing.B) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	_, httpAddr, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

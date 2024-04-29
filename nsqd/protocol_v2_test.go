@@ -1616,7 +1616,7 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	nsqd, _ := New(opts)
 	p := &protocolV2{nsqd}
 	c := newClientV2(0, nil, nsqd)
@@ -1630,11 +1630,10 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 
 func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 	var wg sync.WaitGroup
-	b.StopTimer()
 	opts := NewOptions()
 	size := 200
 	batchSize := int(opts.MaxBodySize) / (size + 4)
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1644,7 +1643,7 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 		batch[i] = msg
 	}
 	b.SetBytes(int64(len(msg)))
-	b.StartTimer()
+	b.ResetTimer()
 
 	for j := 0; j < numTopics; j++ {
 		topicName := fmt.Sprintf("bench_v2_pub_multi_topic_%d_%d", j, time.Now().Unix())
@@ -1657,7 +1656,8 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / numTopics / batchSize
-			wg.Add(1)
+			var subWG sync.WaitGroup
+			subWG.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					cmd, _ := nsq.MultiPublish(topicName, batch)
@@ -1670,9 +1670,9 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 						panic(err.Error())
 					}
 				}
-				wg.Done()
+				subWG.Done()
 			}()
-			wg.Add(1)
+			subWG.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					resp, err := nsq.ReadResponse(rw)
@@ -1684,8 +1684,10 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 						panic("invalid response")
 					}
 				}
-				wg.Done()
+				subWG.Done()
 			}()
+			subWG.Wait()
+			conn.Close()
 			wg.Done()
 		}()
 	}
@@ -1693,6 +1695,8 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 	wg.Wait()
 
 	b.StopTimer()
+	// This benchmark does not drain the receive side of the connection, so
+	// exiting here can take some time as it persists the messages to disk.
 	nsqd.Exit()
 }
 
@@ -1705,10 +1709,9 @@ func BenchmarkProtocolV2PubMultiTopic32(b *testing.B) { benchmarkProtocolV2PubMu
 
 func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
-	b.StopTimer()
 	opts := NewOptions()
 	batchSize := int(opts.MaxBodySize) / (size + 4)
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1719,19 +1722,21 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	}
 	topicName := "bench_v2_pub" + strconv.Itoa(int(time.Now().Unix()))
 	b.SetBytes(int64(len(msg)))
-	b.StartTimer()
+	b.ResetTimer()
 
 	for j := 0; j < runtime.GOMAXPROCS(0); j++ {
 		wg.Add(1)
 		go func() {
+			var subWg sync.WaitGroup
 			conn, err := mustConnectNSQD(tcpAddr)
 			if err != nil {
 				panic(err.Error())
 			}
+			defer conn.Close()
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / runtime.GOMAXPROCS(0) / batchSize
-			wg.Add(1)
+			subWg.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					cmd, _ := nsq.MultiPublish(topicName, batch)
@@ -1744,9 +1749,9 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 						panic(err.Error())
 					}
 				}
-				wg.Done()
+				subWg.Done()
 			}()
-			wg.Add(1)
+			subWg.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					resp, err := nsq.ReadResponse(rw)
@@ -1758,8 +1763,9 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 						panic("invalid response")
 					}
 				}
-				wg.Done()
+				subWg.Done()
 			}()
+			subWg.Wait()
 			wg.Done()
 		}()
 	}
@@ -1788,7 +1794,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1824,8 +1830,9 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 func subWorker(n int, workers int, tcpAddr net.Addr, topicName string, rdyChan chan int, goChan chan int) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	if err != nil {
-		panic(err.Error())
+		panic(fmt.Sprintf("connecting to %s: %s", tcpAddr, err.Error()))
 	}
+	defer conn.Close()
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriterSize(conn, 65536))
 
 	identify(nil, conn, nil, frameTypeResponse)
@@ -1882,7 +1889,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	b.StopTimer()
 
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)

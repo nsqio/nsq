@@ -1442,7 +1442,7 @@ func testUnixSocketIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetCon
 func BenchmarkUnixSocketProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	nsqd, _ := New(opts)
 	p := &protocolV2{nsqd}
 	c := newClientV2(0, nil, nsqd)
@@ -1456,11 +1456,10 @@ func BenchmarkUnixSocketProtocolV2Exec(b *testing.B) {
 
 func benchmarkUnixSocketProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 	var wg sync.WaitGroup
-	b.StopTimer()
 	opts := NewOptions()
 	size := 200
 	batchSize := int(opts.MaxBodySize) / (size + 4)
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1470,20 +1469,22 @@ func benchmarkUnixSocketProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 		batch[i] = msg
 	}
 	b.SetBytes(int64(len(msg)))
-	b.StartTimer()
+	b.ResetTimer()
 
 	for j := 0; j < numTopics; j++ {
 		topicName := fmt.Sprintf("bench_v2_pub_multi_topic_%d_%d", j, time.Now().Unix())
 		wg.Add(1)
 		go func() {
+			var subWg sync.WaitGroup
 			conn, err := mustUnixSocketConnectNSQD(addr)
 			if err != nil {
 				panic(err.Error())
 			}
+			defer conn.Close()
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / numTopics / batchSize
-			wg.Add(1)
+			subWg.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					cmd, _ := nsq.MultiPublish(topicName, batch)
@@ -1496,9 +1497,9 @@ func benchmarkUnixSocketProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 						panic(err.Error())
 					}
 				}
-				wg.Done()
+				subWg.Done()
 			}()
-			wg.Add(1)
+			subWg.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					resp, err := nsq.ReadResponse(rw)
@@ -1510,8 +1511,9 @@ func benchmarkUnixSocketProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 						panic("invalid response")
 					}
 				}
-				wg.Done()
+				subWg.Done()
 			}()
+			subWg.Wait()
 			wg.Done()
 		}()
 	}
@@ -1543,10 +1545,9 @@ func BenchmarkUnixSocketProtocolV2PubMultiTopic32(b *testing.B) {
 
 func benchmarkUnixSocketProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
-	b.StopTimer()
 	opts := NewOptions()
 	batchSize := int(opts.MaxBodySize) / (size + 4)
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1557,19 +1558,21 @@ func benchmarkUnixSocketProtocolV2Pub(b *testing.B, size int) {
 	}
 	topicName := "bench_v2_pub" + strconv.Itoa(int(time.Now().Unix()))
 	b.SetBytes(int64(len(msg)))
-	b.StartTimer()
+	b.ResetTimer()
 
 	for j := 0; j < runtime.GOMAXPROCS(0); j++ {
 		wg.Add(1)
 		go func() {
+			var subWg sync.WaitGroup
 			conn, err := mustUnixSocketConnectNSQD(addr)
 			if err != nil {
 				panic(err.Error())
 			}
+			defer conn.Close()
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / runtime.GOMAXPROCS(0) / batchSize
-			wg.Add(1)
+			subWg.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					cmd, _ := nsq.MultiPublish(topicName, batch)
@@ -1582,9 +1585,9 @@ func benchmarkUnixSocketProtocolV2Pub(b *testing.B, size int) {
 						panic(err.Error())
 					}
 				}
-				wg.Done()
+				subWg.Done()
 			}()
-			wg.Add(1)
+			subWg.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					resp, err := nsq.ReadResponse(rw)
@@ -1596,8 +1599,9 @@ func benchmarkUnixSocketProtocolV2Pub(b *testing.B, size int) {
 						panic("invalid response")
 					}
 				}
-				wg.Done()
+				subWg.Done()
 			}()
+			subWg.Wait()
 			wg.Done()
 		}()
 	}
@@ -1630,9 +1634,8 @@ func BenchmarkUnixSocketProtocolV2Pub1m(b *testing.B) { benchmarkUnixSocketProto
 
 func benchmarkUnixSocketProtocolV2Sub(b *testing.B, size int) {
 	var wg sync.WaitGroup
-	b.StopTimer()
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1651,12 +1654,12 @@ func benchmarkUnixSocketProtocolV2Sub(b *testing.B, size int) {
 	for j := 0; j < workers; j++ {
 		wg.Add(1)
 		go func() {
-			subWorker(b.N, workers, addr, topicName, rdyChan, goChan)
+			subUnixSocketWorker(b.N, workers, addr, topicName, rdyChan, goChan)
 			wg.Done()
 		}()
 		<-rdyChan
 	}
-	b.StartTimer()
+	b.ResetTimer()
 
 	close(goChan)
 	wg.Wait()
@@ -1670,6 +1673,7 @@ func subUnixSocketWorker(n int, workers int, addr net.Addr, topicName string, rd
 	if err != nil {
 		panic(err.Error())
 	}
+	defer conn.Close()
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriterSize(conn, 65536))
 
 	identify(nil, conn, nil, frameTypeResponse)
@@ -1729,10 +1733,9 @@ func BenchmarkUnixSocketProtocolV2Sub1m(b *testing.B) { benchmarkUnixSocketProto
 
 func benchmarkUnixSocketProtocolV2MultiSub(b *testing.B, num int) {
 	var wg sync.WaitGroup
-	b.StopTimer()
 
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	addr, _, nsqd := mustUnixSocketStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1760,7 +1763,7 @@ func benchmarkUnixSocketProtocolV2MultiSub(b *testing.B, num int) {
 			<-rdyChan
 		}
 	}
-	b.StartTimer()
+	b.ResetTimer()
 
 	close(goChan)
 	wg.Wait()
