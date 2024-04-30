@@ -3,8 +3,8 @@ package nsqd
 import (
 	"bufio"
 	"bytes"
-	"compress/flate"
 	"crypto/tls"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/flate"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/test"
@@ -967,7 +968,6 @@ func TestTLSAuthRequire(t *testing.T) {
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
 	test.Equal(t, []byte("OK"), data)
-
 }
 
 func TestTLSAuthRequireVerify(t *testing.T) {
@@ -1493,7 +1493,8 @@ func TestClientAuth(t *testing.T) {
 }
 
 func runAuthTest(t *testing.T, authResponse string, authSecret string, authError string,
-	authSuccess string, tlsEnabled bool, commonName string) {
+	authSuccess string, tlsEnabled bool, commonName string,
+) {
 	var err error
 	var expectedRemoteIP string
 	expectedTLS := "false"
@@ -1616,7 +1617,7 @@ func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 func BenchmarkProtocolV2Exec(b *testing.B) {
 	b.StopTimer()
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	nsqd, _ := New(opts)
 	p := &protocolV2{nsqd}
 	c := newClientV2(0, nil, nsqd)
@@ -1630,11 +1631,10 @@ func BenchmarkProtocolV2Exec(b *testing.B) {
 
 func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 	var wg sync.WaitGroup
-	b.StopTimer()
 	opts := NewOptions()
 	size := 200
 	batchSize := int(opts.MaxBodySize) / (size + 4)
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1644,7 +1644,7 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 		batch[i] = msg
 	}
 	b.SetBytes(int64(len(msg)))
-	b.StartTimer()
+	b.ResetTimer()
 
 	for j := 0; j < numTopics; j++ {
 		topicName := fmt.Sprintf("bench_v2_pub_multi_topic_%d_%d", j, time.Now().Unix())
@@ -1657,7 +1657,8 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / numTopics / batchSize
-			wg.Add(1)
+			var subWG sync.WaitGroup
+			subWG.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					cmd, _ := nsq.MultiPublish(topicName, batch)
@@ -1670,9 +1671,9 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 						panic(err.Error())
 					}
 				}
-				wg.Done()
+				subWG.Done()
 			}()
-			wg.Add(1)
+			subWG.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					resp, err := nsq.ReadResponse(rw)
@@ -1684,8 +1685,10 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 						panic("invalid response")
 					}
 				}
-				wg.Done()
+				subWG.Done()
 			}()
+			subWG.Wait()
+			conn.Close()
 			wg.Done()
 		}()
 	}
@@ -1693,6 +1696,8 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 	wg.Wait()
 
 	b.StopTimer()
+	// This benchmark does not drain the receive side of the connection, so
+	// exiting here can take some time as it persists the messages to disk.
 	nsqd.Exit()
 }
 
@@ -1705,10 +1710,9 @@ func BenchmarkProtocolV2PubMultiTopic32(b *testing.B) { benchmarkProtocolV2PubMu
 
 func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	var wg sync.WaitGroup
-	b.StopTimer()
 	opts := NewOptions()
 	batchSize := int(opts.MaxBodySize) / (size + 4)
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1719,19 +1723,21 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 	}
 	topicName := "bench_v2_pub" + strconv.Itoa(int(time.Now().Unix()))
 	b.SetBytes(int64(len(msg)))
-	b.StartTimer()
+	b.ResetTimer()
 
 	for j := 0; j < runtime.GOMAXPROCS(0); j++ {
 		wg.Add(1)
 		go func() {
+			var subWg sync.WaitGroup
 			conn, err := mustConnectNSQD(tcpAddr)
 			if err != nil {
 				panic(err.Error())
 			}
+			defer conn.Close()
 			rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 			num := b.N / runtime.GOMAXPROCS(0) / batchSize
-			wg.Add(1)
+			subWg.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					cmd, _ := nsq.MultiPublish(topicName, batch)
@@ -1744,9 +1750,9 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 						panic(err.Error())
 					}
 				}
-				wg.Done()
+				subWg.Done()
 			}()
-			wg.Add(1)
+			subWg.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
 					resp, err := nsq.ReadResponse(rw)
@@ -1758,8 +1764,9 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 						panic("invalid response")
 					}
 				}
-				wg.Done()
+				subWg.Done()
 			}()
+			subWg.Wait()
 			wg.Done()
 		}()
 	}
@@ -1788,7 +1795,7 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 	var wg sync.WaitGroup
 	b.StopTimer()
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1824,8 +1831,9 @@ func benchmarkProtocolV2Sub(b *testing.B, size int) {
 func subWorker(n int, workers int, tcpAddr net.Addr, topicName string, rdyChan chan int, goChan chan int) {
 	conn, err := mustConnectNSQD(tcpAddr)
 	if err != nil {
-		panic(err.Error())
+		panic(fmt.Sprintf("connecting to %s: %s", tcpAddr, err.Error()))
 	}
+	defer conn.Close()
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriterSize(conn, 65536))
 
 	identify(nil, conn, nil, frameTypeResponse)
@@ -1882,7 +1890,7 @@ func benchmarkProtocolV2MultiSub(b *testing.B, num int) {
 	b.StopTimer()
 
 	opts := NewOptions()
-	opts.Logger = test.NewTestLogger(b)
+	opts.Logger = test.NilLogger{}
 	opts.MemQueueSize = int64(b.N)
 	tcpAddr, _, nsqd := mustStartNSQD(opts)
 	defer os.RemoveAll(opts.DataPath)
@@ -1924,3 +1932,90 @@ func BenchmarkProtocolV2MultiSub2(b *testing.B)  { benchmarkProtocolV2MultiSub(b
 func BenchmarkProtocolV2MultiSub4(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 4) }
 func BenchmarkProtocolV2MultiSub8(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 8) }
 func BenchmarkProtocolV2MultiSub16(b *testing.B) { benchmarkProtocolV2MultiSub(b, 16) }
+
+//go:embed protocol_v2_test.go
+var testData []byte
+
+func BenchmarkCompress(b *testing.B) {
+	// This benchmark uses the go-nsq library, so the benefits of the
+	// compression chosen are somewhat limited by the implementation in the
+	// library. At time of writing the library doesn't properly buffer Snappy,
+	// and is using a slower flate implemenation than that used by nsqd.
+	for _, compression := range []string{"none", "snappy", "deflate1", "deflate3", "deflate5", "deflate6", "deflate9"} {
+		b.Run(compression, func(b *testing.B) {
+			opts := NewOptions()
+			defer os.RemoveAll(opts.DataPath)
+			opts.Logger = test.NilLogger{}
+
+			tcpAddr, _, nsqd := mustStartNSQD(opts)
+			defer nsqd.Exit()
+
+			cfg := nsq.NewConfig()
+
+			switch compression {
+			case "none":
+			case "snappy":
+				cfg.Snappy = true
+			case "deflate1":
+				cfg.Deflate = true
+				cfg.DeflateLevel = 1
+			case "deflate3":
+				cfg.Deflate = true
+				cfg.DeflateLevel = 3
+			case "deflate5":
+				cfg.Deflate = true
+				cfg.DeflateLevel = 5
+			case "deflate6":
+				cfg.Deflate = true
+				cfg.DeflateLevel = 6
+			case "deflate9":
+				cfg.Deflate = true
+				cfg.DeflateLevel = 9
+			default:
+				b.Fatalf("unknown compression: %s", compression)
+			}
+
+			consumer, err := nsq.NewConsumer("test", "ch", cfg)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer consumer.Stop()
+			consumer.SetLogger(test.NilLogger{}, nsq.LogLevelInfo)
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+
+			var count int32
+
+			consumer.AddHandler(nsq.HandlerFunc(func(message *nsq.Message) error {
+				if atomic.AddInt32(&count, 1) == int32(b.N) {
+					wg.Done()
+				}
+				return nil
+			}))
+
+			if err := consumer.ConnectToNSQD(tcpAddr.String()); err != nil {
+				b.Fatal(err)
+			}
+
+			producer, err := nsq.NewProducer(tcpAddr.String(), cfg)
+			if err != nil {
+				b.Fatal(err)
+			}
+			producer.SetLogger(test.NilLogger{}, nsq.LogLevelInfo)
+			defer producer.Stop()
+
+			b.SetBytes(int64(len(testData)))
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				if err := producer.Publish("test", testData); err != nil {
+					b.Fatal(err)
+				}
+			}
+
+			wg.Wait()
+		})
+	}
+}

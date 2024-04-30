@@ -1,7 +1,6 @@
 package main
 
 import (
-	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/klauspost/compress/gzip"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/lg"
 )
@@ -331,7 +331,7 @@ func (f *FileLogger) updateFile() {
 		} else {
 			openFlag |= os.O_APPEND
 		}
-		f.out, err = os.OpenFile(absFilename, openFlag, 0666)
+		f.out, err = os.OpenFile(absFilename, openFlag, 0o666)
 		if err != nil {
 			if os.IsExist(err) {
 				f.logf(lg.WARN, "[%s/%s] working file already exists: %s", f.topic, f.opts.Channel, absFilename)
@@ -369,7 +369,7 @@ func (f *FileLogger) updateFile() {
 func makeDirFromPath(logf lg.AppLogFunc, path string) error {
 	dir, _ := filepath.Split(path)
 	if dir != "" {
-		return os.MkdirAll(dir, 0770)
+		return os.MkdirAll(dir, 0o770)
 	}
 	return nil
 }

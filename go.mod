@@ -11,6 +11,7 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/judwhite/go-svc v1.2.1
 	github.com/julienschmidt/httprouter v1.3.0
+	github.com/klauspost/compress v1.17.8
 	github.com/mreiferson/go-options v1.0.0
 	github.com/nsqio/go-diskqueue v1.1.0
 	github.com/nsqio/go-nsq v1.1.0
