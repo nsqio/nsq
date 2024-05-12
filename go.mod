@@ -14,7 +14,7 @@ require (
 	github.com/klauspost/compress v1.17.8
 	github.com/mreiferson/go-options v1.0.0
 	github.com/nsqio/go-diskqueue v1.1.0
-	github.com/nsqio/go-nsq v1.1.0
+	github.com/nsqio/go-nsq v1.1.1-0.20230918004844-c2c38427f295
 )
 
 require (
