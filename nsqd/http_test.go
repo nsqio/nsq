@@ -905,7 +905,12 @@ func BenchmarkHTTPpub(b *testing.B) {
 	msg := make([]byte, 256)
 	topicName := "bench_http_pub" + strconv.Itoa(int(time.Now().Unix()))
 	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
-	client := &http.Client{}
+	client := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 1000,
+			MaxIdleConns:        0,
+		},
+	}
 	b.SetBytes(int64(len(msg)))
 	b.StartTimer()
 
