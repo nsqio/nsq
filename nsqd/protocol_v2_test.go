@@ -30,6 +30,8 @@ import (
 	"github.com/nsqio/nsq/internal/test"
 )
 
+var maxMsgSize = int32(1024 * 1024)
+
 func mustStartNSQD(opts *Options) (net.Addr, net.Addr, *NSQD) {
 	opts.TCPAddress = "127.0.0.1:0"
 	opts.HTTPAddress = "127.0.0.1:0"
@@ -73,7 +75,7 @@ func identify(t *testing.T, conn io.ReadWriter, extra map[string]interface{}, f 
 	cmd, _ := nsq.Identify(ci)
 	_, err := cmd.WriteTo(conn)
 	test.Nil(t, err)
-	resp, err := nsq.ReadResponse(conn)
+	resp, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	frameType, data, err := nsq.UnpackResponse(resp)
 	test.Nil(t, err)
@@ -99,13 +101,13 @@ func authCmd(t *testing.T, conn io.ReadWriter, authSecret string, expectSuccess 
 func subFail(t *testing.T, conn io.ReadWriter, topicName string, channelName string) {
 	_, err := nsq.Subscribe(topicName, channelName).WriteTo(conn)
 	test.Nil(t, err)
-	resp, _ := nsq.ReadResponse(conn)
+	resp, _ := nsq.ReadResponse(conn, maxMsgSize)
 	frameType, _, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, frameTypeError, frameType)
 }
 
 func readValidate(t *testing.T, conn io.Reader, f int32, d string) []byte {
-	resp, err := nsq.ReadResponse(conn)
+	resp, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	frameType, data, err := nsq.UnpackResponse(resp)
 	test.Nil(t, err)
@@ -149,7 +151,7 @@ func TestBasicV2(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, err := nsq.ReadResponse(conn)
+	resp, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
@@ -188,7 +190,7 @@ func TestMultipleConsumerV2(t *testing.T) {
 		test.Nil(t, err)
 
 		go func(c net.Conn) {
-			resp, err := nsq.ReadResponse(c)
+			resp, err := nsq.ReadResponse(c, maxMsgSize)
 			test.Nil(t, err)
 			_, data, err := nsq.UnpackResponse(resp)
 			test.Nil(t, err)
@@ -236,7 +238,7 @@ func TestClientTimeout(t *testing.T) {
 		case <-timer:
 			t.Fatalf("test timed out")
 		default:
-			_, err := nsq.ReadResponse(conn)
+			_, err := nsq.ReadResponse(conn, maxMsgSize)
 			if err != nil {
 				goto done
 			}
@@ -265,7 +267,7 @@ func TestClientHeartbeat(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, _ := nsq.ReadResponse(conn)
+	resp, _ := nsq.ReadResponse(conn, maxMsgSize)
 	_, data, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, []byte("_heartbeat_"), data)
 
@@ -386,7 +388,7 @@ func TestPausing(t *testing.T) {
 	topic.PutMessage(msg)
 
 	// receive the first message via the client, finish it, and send new RDY
-	resp, _ := nsq.ReadResponse(conn)
+	resp, _ := nsq.ReadResponse(conn, maxMsgSize)
 	_, data, _ := nsq.UnpackResponse(resp)
 	msg, _ = decodeMessage(data)
 	test.Equal(t, []byte("test body"), msg.Body)
@@ -421,7 +423,7 @@ func TestPausing(t *testing.T) {
 	msg = NewMessage(topic.GenerateID(), []byte("test body3"))
 	topic.PutMessage(msg)
 
-	resp, _ = nsq.ReadResponse(conn)
+	resp, _ = nsq.ReadResponse(conn, maxMsgSize)
 	_, data, _ = nsq.UnpackResponse(resp)
 	msg, _ = decodeMessage(data)
 	test.Equal(t, []byte("test body3"), msg.Body)
@@ -465,7 +467,7 @@ func TestSizeLimits(t *testing.T) {
 
 	// PUB that's valid
 	nsq.Publish(topicName, make([]byte, 95)).WriteTo(conn)
-	resp, _ := nsq.ReadResponse(conn)
+	resp, _ := nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -473,7 +475,7 @@ func TestSizeLimits(t *testing.T) {
 
 	// PUB that's invalid (too big)
 	nsq.Publish(topicName, make([]byte, 105)).WriteTo(conn)
-	resp, _ = nsq.ReadResponse(conn)
+	resp, _ = nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
@@ -486,7 +488,7 @@ func TestSizeLimits(t *testing.T) {
 
 	// PUB thats empty
 	nsq.Publish(topicName, []byte{}).WriteTo(conn)
-	resp, _ = nsq.ReadResponse(conn)
+	resp, _ = nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
@@ -504,7 +506,7 @@ func TestSizeLimits(t *testing.T) {
 	}
 	cmd, _ := nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
-	resp, _ = nsq.ReadResponse(conn)
+	resp, _ = nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -517,7 +519,7 @@ func TestSizeLimits(t *testing.T) {
 	}
 	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
-	resp, _ = nsq.ReadResponse(conn)
+	resp, _ = nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
@@ -536,7 +538,7 @@ func TestSizeLimits(t *testing.T) {
 	mpub = append(mpub, []byte{})
 	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
-	resp, _ = nsq.ReadResponse(conn)
+	resp, _ = nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
@@ -554,7 +556,7 @@ func TestSizeLimits(t *testing.T) {
 	}
 	cmd, _ = nsq.MultiPublish(topicName, mpub)
 	cmd.WriteTo(conn)
-	resp, _ = nsq.ReadResponse(conn)
+	resp, _ = nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
@@ -580,7 +582,7 @@ func TestDPUB(t *testing.T) {
 
 	// valid
 	nsq.DeferredPublish(topicName, time.Second, make([]byte, 100)).WriteTo(conn)
-	resp, _ := nsq.ReadResponse(conn)
+	resp, _ := nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -597,7 +599,7 @@ func TestDPUB(t *testing.T) {
 
 	// duration out of range
 	nsq.DeferredPublish(topicName, opts.MaxReqTimeout+100*time.Millisecond, make([]byte, 100)).WriteTo(conn)
-	resp, _ = nsq.ReadResponse(conn)
+	resp, _ = nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeError, frameType)
@@ -630,7 +632,7 @@ func TestTouch(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, err := nsq.ReadResponse(conn)
+	resp, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
@@ -681,7 +683,7 @@ func TestMaxRdyCount(t *testing.T) {
 	_, err = nsq.Ready(int(opts.MaxRdyCount)).WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, err := nsq.ReadResponse(conn)
+	resp, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
@@ -691,7 +693,7 @@ func TestMaxRdyCount(t *testing.T) {
 	_, err = nsq.Ready(int(opts.MaxRdyCount) + 1).WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, err = nsq.ReadResponse(conn)
+	resp, err = nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	test.Equal(t, int32(1), frameType)
@@ -712,13 +714,13 @@ func TestFatalError(t *testing.T) {
 	_, err = conn.Write([]byte("ASDF\n"))
 	test.Nil(t, err)
 
-	resp, err := nsq.ReadResponse(conn)
+	resp, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, int32(1), frameType)
 	test.Equal(t, "E_INVALID invalid command ASDF", string(data))
 
-	_, err = nsq.ReadResponse(conn)
+	_, err = nsq.ReadResponse(conn, maxMsgSize)
 	test.NotNil(t, err)
 }
 
@@ -762,7 +764,7 @@ func TestOutputBuffering(t *testing.T) {
 	_, err = nsq.Ready(10).WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, err := nsq.ReadResponse(conn)
+	resp, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	end := time.Now()
 
@@ -849,7 +851,7 @@ func TestTLS(t *testing.T) {
 	err = tlsConn.Handshake()
 	test.Nil(t, err)
 
-	resp, _ := nsq.ReadResponse(tlsConn)
+	resp, _ := nsq.ReadResponse(tlsConn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -898,7 +900,7 @@ func TestTLSRequired(t *testing.T) {
 	err = tlsConn.Handshake()
 	test.Nil(t, err)
 
-	resp, _ := nsq.ReadResponse(tlsConn)
+	resp, _ := nsq.ReadResponse(tlsConn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -935,7 +937,7 @@ func TestTLSAuthRequire(t *testing.T) {
 		InsecureSkipVerify: true,
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
-	_, err = nsq.ReadResponse(tlsConn)
+	_, err = nsq.ReadResponse(tlsConn, maxMsgSize)
 	test.NotNil(t, err)
 
 	// With Unsigned Cert
@@ -963,7 +965,7 @@ func TestTLSAuthRequire(t *testing.T) {
 	err = tlsConn.Handshake()
 	test.Nil(t, err)
 
-	resp, _ := nsq.ReadResponse(tlsConn)
+	resp, _ := nsq.ReadResponse(tlsConn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -1001,7 +1003,7 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 		InsecureSkipVerify: true,
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
-	_, err = nsq.ReadResponse(tlsConn)
+	_, err = nsq.ReadResponse(tlsConn, maxMsgSize)
 	test.NotNil(t, err)
 
 	// with invalid cert
@@ -1025,7 +1027,7 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 		InsecureSkipVerify: true,
 	}
 	tlsConn = tls.Client(conn, tlsConfig)
-	_, err = nsq.ReadResponse(tlsConn)
+	_, err = nsq.ReadResponse(tlsConn, maxMsgSize)
 	test.NotNil(t, err)
 
 	// with valid cert
@@ -1052,7 +1054,7 @@ func TestTLSAuthRequireVerify(t *testing.T) {
 	err = tlsConn.Handshake()
 	test.Nil(t, err)
 
-	resp, _ := nsq.ReadResponse(tlsConn)
+	resp, _ := nsq.ReadResponse(tlsConn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -1083,7 +1085,7 @@ func TestDeflate(t *testing.T) {
 	test.Equal(t, true, r.Deflate)
 
 	compressConn := flate.NewReader(conn)
-	resp, _ := nsq.ReadResponse(compressConn)
+	resp, _ := nsq.ReadResponse(compressConn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -1119,7 +1121,7 @@ func TestSnappy(t *testing.T) {
 	test.Equal(t, true, r.Snappy)
 
 	compressConn := snappy.NewReader(conn)
-	resp, _ := nsq.ReadResponse(compressConn)
+	resp, _ := nsq.ReadResponse(compressConn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -1141,7 +1143,7 @@ func TestSnappy(t *testing.T) {
 	msg := NewMessage(topic.GenerateID(), msgBody)
 	topic.PutMessage(msg)
 
-	resp, _ = nsq.ReadResponse(compressConn)
+	resp, _ = nsq.ReadResponse(compressConn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, frameTypeMessage, frameType)
@@ -1185,7 +1187,7 @@ func TestTLSDeflate(t *testing.T) {
 	err = tlsConn.Handshake()
 	test.Nil(t, err)
 
-	resp, _ := nsq.ReadResponse(tlsConn)
+	resp, _ := nsq.ReadResponse(tlsConn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -1193,7 +1195,7 @@ func TestTLSDeflate(t *testing.T) {
 
 	compressConn := flate.NewReader(tlsConn)
 
-	resp, _ = nsq.ReadResponse(compressConn)
+	resp, _ = nsq.ReadResponse(compressConn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -1246,7 +1248,7 @@ func TestSampling(t *testing.T) {
 
 	go func() {
 		for {
-			_, err := nsq.ReadResponse(conn)
+			_, err := nsq.ReadResponse(conn, maxMsgSize)
 			if err != nil {
 				return
 			}
@@ -1309,7 +1311,7 @@ func TestTLSSnappy(t *testing.T) {
 	err = tlsConn.Handshake()
 	test.Nil(t, err)
 
-	resp, _ := nsq.ReadResponse(tlsConn)
+	resp, _ := nsq.ReadResponse(tlsConn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -1317,7 +1319,7 @@ func TestTLSSnappy(t *testing.T) {
 
 	compressConn := snappy.NewReader(tlsConn)
 
-	resp, _ = nsq.ReadResponse(compressConn)
+	resp, _ = nsq.ReadResponse(compressConn, maxMsgSize)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	t.Logf("frameType: %d, data: %s", frameType, data)
 	test.Equal(t, frameTypeResponse, frameType)
@@ -1359,7 +1361,7 @@ func TestClientMsgTimeout(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, _ := nsq.ReadResponse(conn)
+	resp, _ := nsq.ReadResponse(conn, maxMsgSize)
 	_, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
 	test.Equal(t, msg.ID, msgOut.ID)
@@ -1376,7 +1378,7 @@ func TestClientMsgTimeout(t *testing.T) {
 	_, err = nsq.Finish(nsq.MessageID(msgOut.ID)).WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, _ = nsq.ReadResponse(conn)
+	resp, _ = nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, frameTypeError, frameType)
 	test.Equal(t, fmt.Sprintf("E_FIN_FAILED FIN %s failed ID not in flight", msgOut.ID),
@@ -1403,7 +1405,7 @@ func TestBadFin(t *testing.T) {
 	_, err = fin.WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, _ := nsq.ReadResponse(conn)
+	resp, _ := nsq.ReadResponse(conn, maxMsgSize)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	test.Equal(t, frameTypeError, frameType)
 	test.Equal(t, "E_INVALID invalid message ID", string(data))
@@ -1435,7 +1437,7 @@ func TestReqTimeoutRange(t *testing.T) {
 	_, err = nsq.Ready(1).WriteTo(conn)
 	test.Nil(t, err)
 
-	resp, err := nsq.ReadResponse(conn)
+	resp, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	frameType, data, _ := nsq.UnpackResponse(resp)
 	msgOut, _ := decodeMessage(data)
@@ -1446,7 +1448,7 @@ func TestReqTimeoutRange(t *testing.T) {
 	test.Nil(t, err)
 
 	// It should be immediately available for another attempt
-	resp, err = nsq.ReadResponse(conn)
+	resp, err = nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	frameType, data, _ = nsq.UnpackResponse(resp)
 	msgOut, _ = decodeMessage(data)
@@ -1558,7 +1560,7 @@ func runAuthTest(t *testing.T, authResponse string, authSecret string, authError
 		test.Nil(t, err)
 		c = tlsConn
 
-		resp, _ := nsq.ReadResponse(tlsConn)
+		resp, _ := nsq.ReadResponse(tlsConn, maxMsgSize)
 		frameType, data, _ := nsq.UnpackResponse(resp)
 		t.Logf("frameType: %d, data: %s", frameType, data)
 		test.Equal(t, frameTypeResponse, frameType)
@@ -1676,7 +1678,7 @@ func benchmarkProtocolV2PubMultiTopic(b *testing.B, numTopics int) {
 			subWG.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
-					resp, err := nsq.ReadResponse(rw)
+					resp, err := nsq.ReadResponse(rw, maxMsgSize)
 					if err != nil {
 						panic(err.Error())
 					}
@@ -1755,7 +1757,7 @@ func benchmarkProtocolV2Pub(b *testing.B, size int) {
 			subWg.Add(1)
 			go func() {
 				for i := 0; i < num; i++ {
-					resp, err := nsq.ReadResponse(rw)
+					resp, err := nsq.ReadResponse(rw, maxMsgSize)
 					if err != nil {
 						panic(err.Error())
 					}
@@ -1846,7 +1848,7 @@ func subWorker(n int, workers int, tcpAddr net.Addr, topicName string, rdyChan c
 	rw.Flush()
 	num := n / workers
 	for i := 0; i < num; i++ {
-		resp, err := nsq.ReadResponse(rw)
+		resp, err := nsq.ReadResponse(rw, maxMsgSize)
 		if err != nil {
 			panic(err.Error())
 		}

@@ -21,6 +21,7 @@ var (
 	size       = flag.Int("size", 200, "size of messages")
 	batchSize  = flag.Int("batch-size", 200, "batch size of messages")
 	deadline   = flag.String("deadline", "", "deadline to start the benchmark run")
+	maxMsgSize = int32(1024 * 1024)
 )
 
 var totalMsgCount int64
@@ -87,7 +88,7 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 	rdyChan <- 1
 	<-goChan
 	rw.Flush()
-	nsq.ReadResponse(rw)
+	nsq.ReadResponse(rw, maxMsgSize)
 	var msgCount int64
 	endTime := time.Now().Add(td)
 	for {
@@ -100,7 +101,7 @@ func pubWorker(td time.Duration, tcpAddr string, batchSize int, batch [][]byte, 
 		if err != nil {
 			panic(err.Error())
 		}
-		resp, err := nsq.ReadResponse(rw)
+		resp, err := nsq.ReadResponse(rw, maxMsgSize)
 		if err != nil {
 			panic(err.Error())
 		}

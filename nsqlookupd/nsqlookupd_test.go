@@ -69,7 +69,7 @@ func identify(t *testing.T, conn net.Conn) {
 	cmd, _ := nsq.Identify(ci)
 	_, err := cmd.WriteTo(conn)
 	test.Nil(t, err)
-	_, err = nsq.ReadResponse(conn)
+	_, err = nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 }
 
@@ -89,7 +89,7 @@ func TestBasicLookupd(t *testing.T) {
 	identify(t, conn)
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
-	v, err := nsq.ReadResponse(conn)
+	v, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	test.Equal(t, []byte("OK"), v)
 
@@ -164,7 +164,7 @@ func TestChannelUnregister(t *testing.T) {
 	identify(t, conn)
 
 	nsq.Register(topicName, "ch1").WriteTo(conn)
-	v, err := nsq.ReadResponse(conn)
+	v, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	test.Equal(t, []byte("OK"), v)
 
@@ -175,7 +175,7 @@ func TestChannelUnregister(t *testing.T) {
 	test.Equal(t, 1, len(channels))
 
 	nsq.UnRegister(topicName, "ch1").WriteTo(conn)
-	v, err = nsq.ReadResponse(conn)
+	v, err = nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 	test.Equal(t, []byte("OK"), v)
 
@@ -211,11 +211,11 @@ func TestTombstoneRecover(t *testing.T) {
 	identify(t, conn)
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
-	_, err := nsq.ReadResponse(conn)
+	_, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 
 	nsq.Register(topicName2, "channel2").WriteTo(conn)
-	_, err = nsq.ReadResponse(conn)
+	_, err = nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s:%d",
@@ -258,7 +258,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	identify(t, conn)
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
-	_, err := nsq.ReadResponse(conn)
+	_, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 
 	endpoint := fmt.Sprintf("http://%s/topic/tombstone?topic=%s&node=%s:%d",
@@ -274,7 +274,7 @@ func TestTombstoneUnregister(t *testing.T) {
 	test.Equal(t, 0, len(pr.Producers))
 
 	nsq.UnRegister(topicName, "").WriteTo(conn)
-	_, err = nsq.ReadResponse(conn)
+	_, err = nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 
 	time.Sleep(55 * time.Millisecond)
@@ -302,7 +302,7 @@ func TestInactiveNodes(t *testing.T) {
 	identify(t, conn)
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
-	_, err := nsq.ReadResponse(conn)
+	_, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 
 	ci := clusterinfo.New(nil, http_api.NewClient(nil, ConnectTimeout, RequestTimeout))
@@ -335,7 +335,7 @@ func TestTombstonedNodes(t *testing.T) {
 	identify(t, conn)
 
 	nsq.Register(topicName, "channel1").WriteTo(conn)
-	_, err := nsq.ReadResponse(conn)
+	_, err := nsq.ReadResponse(conn, maxMsgSize)
 	test.Nil(t, err)
 
 	ci := clusterinfo.New(nil, http_api.NewClient(nil, ConnectTimeout, RequestTimeout))

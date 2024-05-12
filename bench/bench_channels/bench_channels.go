@@ -14,6 +14,7 @@ import (
 var (
 	num        = flag.Int("num", 10000, "num channels")
 	tcpAddress = flag.String("nsqd-tcp-address", "127.0.0.1:4150", "<addr>:<port> to connect to nsqd")
+	maxMsgSize = int32(1024 * 1024)
 )
 
 func main() {
@@ -56,10 +57,10 @@ func subWorker(n int, tcpAddr string,
 	<-goChan
 	nsq.Ready(rdyCount).WriteTo(rw)
 	rw.Flush()
-	nsq.ReadResponse(rw)
-	nsq.ReadResponse(rw)
+	nsq.ReadResponse(rw, maxMsgSize)
+	nsq.ReadResponse(rw, maxMsgSize)
 	for {
-		resp, err := nsq.ReadResponse(rw)
+		resp, err := nsq.ReadResponse(rw, maxMsgSize)
 		if err != nil {
 			panic(err.Error())
 		}

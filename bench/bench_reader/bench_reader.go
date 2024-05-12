@@ -23,6 +23,7 @@ var (
 	channel    = flag.String("channel", "ch", "channel to receive messages on")
 	deadline   = flag.String("deadline", "", "deadline to start the benchmark run")
 	rdy        = flag.Int("rdy", 2500, "RDY count to use")
+	maxMsgSize = int32(1024 * 1024)
 )
 
 var totalMsgCount int64
@@ -86,15 +87,15 @@ func subWorker(td time.Duration, workers int, tcpAddr string, topic string, chan
 	<-goChan
 	nsq.Ready(*rdy).WriteTo(rw)
 	rw.Flush()
-	nsq.ReadResponse(rw)
-	nsq.ReadResponse(rw)
+	nsq.ReadResponse(rw, maxMsgSize)
+	nsq.ReadResponse(rw, maxMsgSize)
 	var msgCount int64
 	go func() {
 		time.Sleep(td)
 		conn.Close()
 	}()
 	for {
-		resp, err := nsq.ReadResponse(rw)
+		resp, err := nsq.ReadResponse(rw, maxMsgSize)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				break
