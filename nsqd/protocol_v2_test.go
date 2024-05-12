@@ -18,6 +18,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1476,7 +1477,8 @@ func TestClientAuth(t *testing.T) {
 	authSuccess := ""
 	tlsEnabled := false
 	commonName := ""
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
+	httpAuthRequestMethod := "get"
+	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName, httpAuthRequestMethod)
 
 	// now one that will succeed
 	authResponse = `{"ttl":10, "authorizations":
@@ -1484,16 +1486,21 @@ func TestClientAuth(t *testing.T) {
 	}`
 	authError = ""
 	authSuccess = `{"identity":"","identity_url":"","permission_count":1}`
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
+	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName, httpAuthRequestMethod)
 
 	// one with TLS enabled
 	tlsEnabled = true
 	commonName = "test.local"
-	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName)
+	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName, httpAuthRequestMethod)
+
+	// test POST based authentication
+	httpAuthRequestMethod = "post"
+	runAuthTest(t, authResponse, authSecret, authError, authSuccess, tlsEnabled, commonName, httpAuthRequestMethod)
+
 }
 
 func runAuthTest(t *testing.T, authResponse string, authSecret string, authError string,
-	authSuccess string, tlsEnabled bool, commonName string) {
+	authSuccess string, tlsEnabled bool, commonName string, httpAuthRequestMethod string) {
 	var err error
 	var expectedRemoteIP string
 	expectedTLS := "false"
@@ -1503,11 +1510,23 @@ func runAuthTest(t *testing.T, authResponse string, authSecret string, authError
 
 	authd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Logf("in test auth handler %s", r.RequestURI)
-		r.ParseForm()
-		test.Equal(t, expectedRemoteIP, r.Form.Get("remote_ip"))
-		test.Equal(t, expectedTLS, r.Form.Get("tls"))
-		test.Equal(t, commonName, r.Form.Get("common_name"))
-		test.Equal(t, authSecret, r.Form.Get("secret"))
+		test.Equal(t, httpAuthRequestMethod, strings.ToLower(r.Method))
+
+		var values url.Values
+
+		if r.Method == "POST" {
+			err = json.NewDecoder(r.Body).Decode(&values)
+			if err != nil {
+				t.Error(err)
+			}
+		} else {
+			r.ParseForm()
+			values = r.Form
+		}
+		test.Equal(t, expectedRemoteIP, values.Get("remote_ip"))
+		test.Equal(t, expectedTLS, values.Get("tls"))
+		test.Equal(t, commonName, values.Get("common_name"))
+		test.Equal(t, authSecret, values.Get("secret"))
 		fmt.Fprint(w, authResponse)
 	}))
 	defer authd.Close()
@@ -1519,6 +1538,7 @@ func runAuthTest(t *testing.T, authResponse string, authSecret string, authError
 	opts.Logger = test.NewTestLogger(t)
 	opts.LogLevel = LOG_DEBUG
 	opts.AuthHTTPAddresses = []string{addr.Host}
+	opts.AuthHTTPRequestMethod = httpAuthRequestMethod
 	if tlsEnabled {
 		opts.TLSCert = "./test/certs/server.pem"
 		opts.TLSKey = "./test/certs/server.key"

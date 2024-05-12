@@ -1,6 +1,7 @@
 package http_api
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -86,14 +87,26 @@ retry:
 
 // PostV1 is a helper function to perform a V1 HTTP request
 // and parse our NSQ daemon's expected response format, with deadlines.
-func (c *Client) POSTV1(endpoint string) error {
+func (c *Client) POSTV1(endpoint string, data url.Values, v interface{}) error {
 retry:
-	req, err := http.NewRequest("POST", endpoint, nil)
+	var reqBody io.Reader
+	if data != nil {
+		js, err := json.Marshal(data)
+		if err != nil {
+			return fmt.Errorf("failed to marshal POST data to endpoint: %v", endpoint)
+		}
+		reqBody = bytes.NewBuffer(js)
+	}
+
+	req, err := http.NewRequest("POST", endpoint, reqBody)
 	if err != nil {
 		return err
 	}
 
 	req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
+	if reqBody != nil {
+		req.Header.Add("Content-Type", "application/json")
+	}
 
 	resp, err := c.c.Do(req)
 	if err != nil {
@@ -114,6 +127,10 @@ retry:
 			goto retry
 		}
 		return fmt.Errorf("got response %s %q", resp.Status, body)
+	}
+
+	if v != nil {
+		return json.Unmarshal(body, &v)
 	}
 
 	return nil

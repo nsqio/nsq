@@ -659,7 +659,9 @@ func (c *clientV2) QueryAuthd() error {
 		remoteIP, tlsEnabled, commonName, c.AuthSecret,
 		c.nsqd.clientTLSConfig,
 		c.nsqd.getOpts().HTTPClientConnectTimeout,
-		c.nsqd.getOpts().HTTPClientRequestTimeout)
+		c.nsqd.getOpts().HTTPClientRequestTimeout,
+		c.nsqd.getOpts().AuthHTTPRequestMethod,
+	)
 	if err != nil {
 		return err
 	}

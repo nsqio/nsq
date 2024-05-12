@@ -878,7 +878,7 @@ func (c *ClusterInfo) nsqlookupdPOST(addrs []string, uri string, qs string) erro
 	for _, addr := range addrs {
 		endpoint := fmt.Sprintf("http://%s/%s?%s", addr, uri, qs)
 		c.logf("CI: querying nsqlookupd %s", endpoint)
-		err := c.client.POSTV1(endpoint)
+		err := c.client.POSTV1(endpoint, nil, nil)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -894,7 +894,7 @@ func (c *ClusterInfo) producersPOST(pl Producers, uri string, qs string) error {
 	for _, p := range pl {
 		endpoint := fmt.Sprintf("http://%s/%s?%s", p.HTTPAddress(), uri, qs)
 		c.logf("CI: querying nsqd %s", endpoint)
-		err := c.client.POSTV1(endpoint)
+		err := c.client.POSTV1(endpoint, nil, nil)
 		if err != nil {
 			errs = append(errs, err)
 		}
