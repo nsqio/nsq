@@ -21,6 +21,7 @@ const (
 	frameTypeResponse int32 = 0
 	frameTypeError    int32 = 1
 	frameTypeMessage  int32 = 2
+	frameTypeStats    int32 = 3
 )
 
 var separatorBytes = []byte(" ")
@@ -743,7 +744,7 @@ func (p *protocolV2) STATS(client *clientV2, params [][]byte) ([]byte, error) {
 		return nil, protocol.NewFatalClientErr(err, "E_STATS_ERROR", "STATS error "+err.Error())
 	}
 
-	if err = p.Send(client, frameTypeResponse, resp); err != nil {
+	if err = p.Send(client, frameTypeStats, resp); err != nil {
 		return nil, protocol.NewFatalClientErr(err, "E_STATS_FAILED", "STATS failed "+err.Error())
 	}
 	return nil, nil
