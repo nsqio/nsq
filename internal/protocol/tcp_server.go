@@ -1,10 +1,10 @@
 package protocol
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"runtime"
-	"strings"
 	"sync"
 
 	"github.com/nsqio/nsq/internal/lg"
@@ -30,7 +30,7 @@ func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) er
 				continue
 			}
 			// theres no direct way to detect this error because it is not exposed
-			if !strings.Contains(err.Error(), "use of closed network connection") {
+			if !errors.Is(err, net.ErrClosed) {
 				return fmt.Errorf("listener.Accept() error - %s", err)
 			}
 			break
