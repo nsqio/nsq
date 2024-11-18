@@ -257,7 +257,7 @@ Handlebars.registerHelper('sparkline', function(typ, node, ns1, ns2, key) {
         return 'summarize(' + t + ',"' + interval + '","avg")';
     });
 
-    return AppState.get('GRAPHITE_URL') + '/render?' + $.param(q);
+    return AppState.get('GRAPHITE_URL') + '/render?' + $.param(q, true);
 });
 
 Handlebars.registerHelper('large_graph', function(typ, node, ns1, ns2, key) {
@@ -283,7 +283,7 @@ Handlebars.registerHelper('large_graph', function(typ, node, ns1, ns2, key) {
         return 'summarize(' + t + ',"' + interval + '","avg")';
     });
 
-    return AppState.get('GRAPHITE_URL') + '/render?' + $.param(q);
+    return AppState.get('GRAPHITE_URL') + '/render?' + $.param(q, true);
 });
 
 Handlebars.registerHelper('rate', function(typ, node, ns1, ns2) {
