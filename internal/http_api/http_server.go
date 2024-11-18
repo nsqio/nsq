@@ -1,11 +1,11 @@
 package http_api
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/nsqio/nsq/internal/lg"
 )
@@ -28,7 +28,7 @@ func Serve(listener net.Listener, handler http.Handler, proto string, logf lg.Ap
 	}
 	err := server.Serve(listener)
 	// theres no direct way to detect this error because it is not exposed
-	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
+	if err != nil && !errors.Is(err, net.ErrClosed) {
 		return fmt.Errorf("http.Serve() error - %s", err)
 	}
 
