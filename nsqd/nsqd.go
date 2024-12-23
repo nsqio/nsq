@@ -61,6 +61,7 @@ type NSQD struct {
 	tcpListener     net.Listener
 	httpListener    net.Listener
 	httpsListener   net.Listener
+	udsListener     net.Listener
 	tlsConfig       *tls.Config
 	clientTLSConfig *tls.Config
 
@@ -163,6 +164,12 @@ func New(opts *Options) (*NSQD, error) {
 		n.httpsListener, err = tls.Listen("tcp", opts.HTTPSAddress, n.tlsConfig)
 		if err != nil {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPSAddress, err)
+		}
+	}
+	if opts.UnixSocketPath != "" {
+		n.udsListener, err = net.Listen("unix", opts.UnixSocketPath)
+		if err != nil {
+			return nil, fmt.Errorf("listen (%s) failed - %s", opts.UnixSocketPath, err)
 		}
 	}
 	if opts.BroadcastHTTPPort == 0 {
@@ -279,6 +286,12 @@ func (n *NSQD) Main() error {
 		httpsServer := newHTTPServer(n, true, true)
 		n.waitGroup.Wrap(func() {
 			exitFunc(http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf))
+		})
+	}
+	if n.udsListener != nil {
+		udsHttpServer := newHTTPServer(n, false, false)
+		n.waitGroup.Wrap(func() {
+			exitFunc(http_api.Serve(n.udsListener, udsHttpServer, "HTTP", n.logf))
 		})
 	}
 
@@ -458,6 +471,10 @@ func (n *NSQD) Exit() {
 
 	if n.httpsListener != nil {
 		n.httpsListener.Close()
+	}
+
+	if n.udsListener != nil {
+		n.udsListener.Close()
 	}
 
 	n.Lock()
