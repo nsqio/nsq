@@ -248,6 +248,7 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 
 	msg := NewMessage(topic.GenerateID(), body)
 	msg.deferred = deferred
+	msg.deadline = time.Now().UnixNano() + int64(deferred)
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}

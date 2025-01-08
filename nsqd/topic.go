@@ -315,6 +315,7 @@ func (t *Topic) messagePump() {
 			goto exit
 		}
 
+		deferred := time.Duration(msg.deadline - time.Now().UnixNano())
 		for i, channel := range chans {
 			chanMsg := msg
 			// copy the message because each channel
@@ -324,9 +325,10 @@ func (t *Topic) messagePump() {
 			if i > 0 {
 				chanMsg = NewMessage(msg.ID, msg.Body)
 				chanMsg.Timestamp = msg.Timestamp
-				chanMsg.deferred = msg.deferred
+				chanMsg.deadline = msg.deadline
 			}
-			if chanMsg.deferred != 0 {
+			if deferred > 0 {
+				chanMsg.deferred = deferred
 				channel.PutMessageDeferred(chanMsg, chanMsg.deferred)
 				continue
 			}
