@@ -23,6 +23,7 @@ type Options struct {
 	HTTPAddress              string        `flag:"http-address"`
 	HTTPSAddress             string        `flag:"https-address"`
 	UnixSocketPath           string        `flag:"unix-socket-path"`
+	UnixSocketPermission     int           `flag:"unix-socket-permission"`
 	BroadcastAddress         string        `flag:"broadcast-address"`
 	BroadcastTCPPort         int           `flag:"broadcast-tcp-port"`
 	BroadcastHTTPPort        int           `flag:"broadcast-http-port"`

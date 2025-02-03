@@ -171,6 +171,12 @@ func New(opts *Options) (*NSQD, error) {
 		if err != nil {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.UnixSocketPath, err)
 		}
+		if opts.UnixSocketPermission != 0 {
+			err = os.Chmod(opts.UnixSocketPath, os.FileMode(opts.UnixSocketPermission))
+			if err != nil {
+				return nil, fmt.Errorf("failed to set unix socket permission - %s", err)
+			}
+		}
 	}
 	if opts.BroadcastHTTPPort == 0 {
 		tcpAddr, ok := n.RealHTTPAddr().(*net.TCPAddr)
