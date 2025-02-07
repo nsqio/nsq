@@ -150,3 +150,21 @@ func TestRun_TermChanSignal(t *testing.T) {
     }
 }
 
+// Test generated using Keploy
+func TestUpdateTopics_SkipDisallowedTopic(t *testing.T) {
+    logf := func(lvl lg.LogLevel, f string, args ...interface{}) {}
+    opts := &Options{TopicPattern: "^allowed.*"}
+    cfg := nsq.NewConfig()
+    hupChan := make(chan os.Signal, 1)
+    termChan := make(chan os.Signal, 1)
+
+    td := newTopicDiscoverer(logf, opts, cfg, hupChan, termChan)
+
+    td.updateTopics([]string{"disallowed_topic"})
+
+    if _, exists := td.topics["disallowed_topic"]; exists {
+        t.Errorf("Expected topic 'disallowed_topic' to not be added to topics map")
+    }
+}
+
+
