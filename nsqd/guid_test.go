@@ -1,8 +1,9 @@
 package nsqd
 
 import (
-	"testing"
-	"unsafe"
+    "testing"
+    "unsafe"
+    "time"
 )
 
 func BenchmarkGUIDCopy(b *testing.B) {
@@ -40,3 +41,39 @@ func BenchmarkGUID(b *testing.B) {
 	}
 	b.Logf("okays=%d errors=%d bads=%d", okays, errors, fails)
 }
+
+// Test generated using Keploy
+func TestNewGUIDFactoryInitialization(t *testing.T) {
+    nodeID := int64(123)
+    factory := NewGUIDFactory(nodeID)
+    if factory.nodeID != nodeID {
+        t.Errorf("Expected nodeID %d, got %d", nodeID, factory.nodeID)
+    }
+}
+
+
+// Test generated using Keploy
+func TestNewGUID_TimeBackwards(t *testing.T) {
+    factory := NewGUIDFactory(1)
+    factory.lastTimestamp = time.Now().UnixNano() >> 20
+    factory.lastTimestamp += 1 // Simulate a future timestamp
+
+    _, err := factory.NewGUID()
+    if err != ErrTimeBackwards {
+        t.Errorf("Expected error %v, got %v", ErrTimeBackwards, err)
+    }
+}
+
+
+// Test generated using Keploy
+func TestNewGUID_SequenceExpired(t *testing.T) {
+    factory := NewGUIDFactory(1)
+    factory.lastTimestamp = time.Now().UnixNano() >> 20
+    factory.sequence = sequenceMask // Simulate sequence reaching its limit
+
+    _, err := factory.NewGUID()
+    if err != ErrSequenceExpired {
+        t.Errorf("Expected error %v, got %v", ErrSequenceExpired, err)
+    }
+}
+
