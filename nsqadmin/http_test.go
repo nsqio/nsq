@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"net/url"
+
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/test"
 	"github.com/nsqio/nsq/internal/version"
@@ -641,4 +643,36 @@ func TestHTTPconfigCIDR(t *testing.T) {
 	defer resp.Body.Close()
 	_, _ = io.ReadAll(resp.Body)
 	test.Equal(t, 403, resp.StatusCode)
+}
+
+// Test generated using Keploy
+func TestMaybeWarnMsgWithMessages(t *testing.T) {
+	msgs := []string{"message1", "message2"}
+	expected := "WARNING: message1; message2"
+	result := maybeWarnMsg(msgs)
+	if result != expected {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+// Test generated using Keploy
+func TestNewSingleHostReverseProxy(t *testing.T) {
+	target, _ := url.Parse("http://example.com")
+	proxy := NewSingleHostReverseProxy(target, 5*time.Second, 10*time.Second)
+
+	req := &http.Request{
+		URL:    &url.URL{},
+		Header: make(http.Header),
+	}
+	target.User = url.UserPassword("user", "pass")
+	proxy.Director(req)
+
+	if req.URL.Scheme != "http" || req.URL.Host != "example.com" {
+		t.Errorf("Expected scheme and host to be set, got %v and %v", req.URL.Scheme, req.URL.Host)
+	}
+
+	username, password, ok := req.BasicAuth()
+	if !ok || username != "user" || password != "pass" {
+		t.Errorf("Expected basic auth to be set, got %v:%v", username, password)
+	}
 }

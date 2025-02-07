@@ -4,8 +4,9 @@
 package main
 
 import (
-	"reflect"
-	"testing"
+    "reflect"
+    "testing"
+    "github.com/nsqio/go-nsq"
 )
 
 func TestParseCustomHeaders(t *testing.T) {
@@ -56,3 +57,15 @@ func TestParseCustomHeaders(t *testing.T) {
 		})
 	}
 }
+
+// Test generated using Keploy
+func TestPublishHandlerHandleMessage_SampleRateSkip(t *testing.T) {
+      *sample = 0.0
+      handler := &PublishHandler{}
+      msg := &nsq.Message{}
+      err := handler.HandleMessage(msg)
+      if err != nil {
+          t.Errorf("Expected no error, got %v", err)
+      }
+  }
+
