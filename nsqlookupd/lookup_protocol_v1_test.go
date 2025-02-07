@@ -27,6 +27,47 @@ func TestIOLoopReturnsClientErrWhenSendSucceeds(t *testing.T) {
 	testIOLoopReturnsClientErr(t, fakeConn)
 }
 
+// Test generated using Keploy
+func TestIOLoopSendResponseError(t *testing.T) {
+	fakeConn := test.NewFakeNetConn()
+
+	// Simulate a valid command that will cause a response
+	fakeConn.ReadFunc = func(b []byte) (int, error) {
+		return copy(b, []byte("PING\n")), nil
+	}
+
+	// Simulate an error on write to cause SendResponse to fail
+	firstWrite := true
+	fakeConn.WriteFunc = func(b []byte) (int, error) {
+		if firstWrite {
+			firstWrite = false
+			return len(b), nil
+		}
+		return 0, errors.New("write error")
+	}
+
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	nsqlookupd, err := New(opts)
+	test.Nil(t, err)
+	prot := &LookupProtocolV1{nsqlookupd: nsqlookupd}
+	client := prot.NewClient(fakeConn)
+
+	errChan := make(chan error)
+	go func() {
+		errChan <- prot.IOLoop(client)
+	}()
+
+	// Wait for IOLoop to exit
+	var ioLoopErr error
+	select {
+	case ioLoopErr = <-errChan:
+	case <-time.After(time.Second):
+		t.Fatal("IOLoop didn't exit")
+	}
+	test.NotNil(t, ioLoopErr)
+}
+
 func testIOLoopReturnsClientErr(t *testing.T, fakeConn test.FakeNetConn) {
 	fakeConn.ReadFunc = func(b []byte) (int, error) {
 		return copy(b, []byte("INVALID_COMMAND\n")), nil

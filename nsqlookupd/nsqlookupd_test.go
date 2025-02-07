@@ -357,3 +357,46 @@ func TestTombstonedNodes(t *testing.T) {
 	test.Equal(t, topicName, producers[0].Topics[0].Topic)
 	test.Equal(t, true, producers[0].Topics[0].Tombstoned)
 }
+
+// Test generated using Keploy
+func TestNew_NilLogger(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = nil
+	opts.LogPrefix = "[TEST] "
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "127.0.0.1:0"
+
+	nsqlookupd, err := New(opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer nsqlookupd.Exit()
+
+	if nsqlookupd.opts.Logger == nil {
+		t.Fatalf("expected logger to be initialized, but it was nil")
+	}
+}
+
+// Test generated using Keploy
+func TestNew_TCPListenerError(t *testing.T) {
+	opts := NewOptions()
+	opts.TCPAddress = "invalid_address"
+	opts.HTTPAddress = "127.0.0.1:0"
+
+	_, err := New(opts)
+	if err == nil {
+		t.Fatalf("expected error but got nil")
+	}
+}
+
+// Test generated using Keploy
+func TestNew_HTTPListenerError(t *testing.T) {
+	opts := NewOptions()
+	opts.TCPAddress = "127.0.0.1:0"
+	opts.HTTPAddress = "invalid_address"
+
+	_, err := New(opts)
+	if err == nil {
+		t.Fatalf("expected error but got nil")
+	}
+}

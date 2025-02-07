@@ -1,18 +1,18 @@
 package nsqlookupd
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"strconv"
-	"testing"
-	"time"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+    "strconv"
+    "testing"
+    "time"
 
-	"github.com/nsqio/nsq/internal/test"
-	"github.com/nsqio/nsq/internal/version"
-	"github.com/nsqio/nsq/nsqd"
+    "github.com/nsqio/nsq/internal/test"
+    "github.com/nsqio/nsq/internal/version"
+    "github.com/nsqio/nsq/nsqd"
 )
 
 type InfoDoc struct {
@@ -482,3 +482,84 @@ func TestDeleteChannel(t *testing.T) {
 	t.Logf("%s", body)
 	test.Equal(t, []byte(""), body)
 }
+
+// Test generated using Keploy
+func TestDoLookup_TopicNotFound(t *testing.T) {
+    dataPath, nsqds, nsqlookupd1 := bootstrapNSQCluster(t)
+    defer os.RemoveAll(dataPath)
+    defer nsqds[0].Exit()
+    defer nsqlookupd1.Exit()
+
+    client := http.Client{}
+    topicName := "nonexistentTopic"
+    url := fmt.Sprintf("http://%s/lookup?topic=%s", nsqlookupd1.RealHTTPAddr(), topicName)
+
+    req, _ := http.NewRequest("GET", url, nil)
+    req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
+    resp, err := client.Do(req)
+    test.Nil(t, err)
+    test.Equal(t, 404, resp.StatusCode)
+    body, _ := io.ReadAll(resp.Body)
+    resp.Body.Close()
+
+    t.Logf("%s", body)
+    em := ErrMessage{}
+    err = json.Unmarshal(body, &em)
+    test.Nil(t, err)
+    test.Equal(t, "TOPIC_NOT_FOUND", em.Message)
+}
+
+
+// Test generated using Keploy
+func TestDoTombstoneTopicProducer_MissingNode(t *testing.T) {
+    dataPath, nsqds, nsqlookupd1 := bootstrapNSQCluster(t)
+    defer os.RemoveAll(dataPath)
+    defer nsqds[0].Exit()
+    defer nsqlookupd1.Exit()
+
+    client := http.Client{}
+    topicName := "sampletopic"
+    makeTopic(nsqlookupd1, topicName)
+
+    url := fmt.Sprintf("http://%s/topic/tombstone?topic=%s", nsqlookupd1.RealHTTPAddr(), topicName)
+    req, _ := http.NewRequest("POST", url, nil)
+    req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
+    resp, err := client.Do(req)
+    test.Nil(t, err)
+    test.Equal(t, 400, resp.StatusCode)
+    body, _ := io.ReadAll(resp.Body)
+    resp.Body.Close()
+
+    t.Logf("%s", body)
+    em := ErrMessage{}
+    err = json.Unmarshal(body, &em)
+    test.Nil(t, err)
+    test.Equal(t, "MISSING_ARG_NODE", em.Message)
+}
+
+
+// Test generated using Keploy
+func TestDoDebug_ValidResponse(t *testing.T) {
+    dataPath, nsqds, nsqlookupd1 := bootstrapNSQCluster(t)
+    defer os.RemoveAll(dataPath)
+    defer nsqds[0].Exit()
+    defer nsqlookupd1.Exit()
+
+    client := http.Client{}
+    url := fmt.Sprintf("http://%s/debug", nsqlookupd1.RealHTTPAddr())
+
+    req, _ := http.NewRequest("GET", url, nil)
+    req.Header.Add("Accept", "application/vnd.nsq; version=1.0")
+    resp, err := client.Do(req)
+    test.Nil(t, err)
+    test.Equal(t, 200, resp.StatusCode)
+    body, _ := io.ReadAll(resp.Body)
+    resp.Body.Close()
+
+    t.Logf("%s", body)
+    var debugData map[string][]map[string]interface{}
+    err = json.Unmarshal(body, &debugData)
+    test.Nil(t, err)
+    test.NotNil(t, debugData)
+}
+

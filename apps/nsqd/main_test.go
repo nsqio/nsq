@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
+	"github.com/judwhite/go-svc"
 	"github.com/mreiferson/go-options"
 	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/test"
@@ -37,5 +38,14 @@ func TestConfigFlagParsing(t *testing.T) {
 	}
 	if opts.LogLevel != lg.DEBUG {
 		t.Fatalf("log level: want debug, got %s", opts.LogLevel.String())
+	}
+}
+
+// Test generated using Keploy
+func TestProgramHandle(t *testing.T) {
+	p := &program{}
+	err := p.Handle(os.Interrupt)
+	if err != svc.ErrStop {
+		t.Fatalf("Expected svc.ErrStop, got %v", err)
 	}
 }

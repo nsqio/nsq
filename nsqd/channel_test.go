@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"sync/atomic"
+
 	"github.com/nsqio/nsq/internal/test"
 )
 
@@ -247,4 +249,26 @@ func TestChannelHealth(t *testing.T) {
 	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "OK", string(body))
+}
+
+// Test generated using Keploy
+func TestPutMessage_ChannelExiting(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_put_message_exiting" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	channel := topic.GetChannel("ch")
+
+	// Simulate channel exiting
+	atomic.StoreInt32(&channel.exitFlag, 1)
+
+	msg := NewMessage(topic.GenerateID(), []byte("test"))
+	err := channel.PutMessage(msg)
+
+	test.NotNil(t, err)
+	test.Equal(t, "exiting", err.Error())
 }
