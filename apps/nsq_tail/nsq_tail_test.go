@@ -4,6 +4,7 @@ import (
     "os"
     "testing"
     "github.com/nsqio/go-nsq"
+    "bytes"
 )
 
 
@@ -47,6 +48,58 @@ func TestTailHandler_HandleMessage_Exit(t *testing.T) {
     
     if exitCode != 0 {
         t.Errorf("Expected exit code 0, got %d", exitCode)
+    }
+}
+
+
+// Test generated using Keploy
+func TestTailHandler_HandleMessage_PrintTopic(t *testing.T) {
+    // Set printTopic flag to true
+    originalPrintTopic := *printTopic
+    *printTopic = true
+    defer func() { *printTopic = originalPrintTopic }()
+
+    // Replace os.Stdout with a pipe
+    r, w, err := os.Pipe()
+    if err != nil {
+        t.Fatalf("Failed to create pipe: %v", err)
+    }
+    originalStdout := os.Stdout
+    os.Stdout = w
+    defer func() {
+        os.Stdout = originalStdout
+        w.Close()
+        r.Close()
+    }()
+
+    handler := &TailHandler{
+        topicName:     "test_topic",
+        totalMessages: 0,
+        messagesShown: 0,
+    }
+
+    message := &nsq.Message{
+        Body: []byte("test message"),
+    }
+
+    err = handler.HandleMessage(message)
+    if err != nil {
+        t.Errorf("Expected no error, got %v", err)
+    }
+
+    // Close writer to allow reading
+    w.Close()
+
+    // Read output
+    var buf bytes.Buffer
+    _, err = buf.ReadFrom(r)
+    if err != nil {
+        t.Fatalf("Failed to read from pipe: %v", err)
+    }
+
+    expectedOutput := "test_topic | test message\n"
+    if buf.String() != expectedOutput {
+        t.Errorf("Expected output %q, got %q", expectedOutput, buf.String())
     }
 }
 
