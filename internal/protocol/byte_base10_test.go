@@ -1,7 +1,7 @@
 package protocol
 
 import (
-	"testing"
+    "testing"
 )
 
 var result uint64
@@ -23,3 +23,31 @@ func BenchmarkByteToBase10Invalid(b *testing.B) {
 	}
 	result = n
 }
+
+// Test generated using Keploy
+func TestByteToBase10ValidInput(t *testing.T) {
+    input := []byte{'1', '2', '3', '4', '5'}
+    expected := uint64(12345)
+    result, err := ByteToBase10(input)
+    if err != nil {
+        t.Errorf("Expected no error, got %v", err)
+    }
+    if result != expected {
+        t.Errorf("Expected %v, got %v", expected, result)
+    }
+}
+
+
+// Test generated using Keploy
+func TestByteToBase10InvalidInput(t *testing.T) {
+    input := []byte{'1', '2', 'a', '4', '5'}
+    expected := uint64(0)
+    result, err := ByteToBase10(input)
+    if err == nil {
+        t.Errorf("Expected an error, got nil")
+    }
+    if result != expected {
+        t.Errorf("Expected %v, got %v", expected, result)
+    }
+}
+
