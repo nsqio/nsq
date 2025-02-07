@@ -2019,3 +2019,49 @@ func BenchmarkProtocolV2MultiSub2(b *testing.B)  { benchmarkProtocolV2MultiSub(b
 func BenchmarkProtocolV2MultiSub4(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 4) }
 func BenchmarkProtocolV2MultiSub8(b *testing.B)  { benchmarkProtocolV2MultiSub(b, 8) }
 func BenchmarkProtocolV2MultiSub16(b *testing.B) { benchmarkProtocolV2MultiSub(b, 16) }
+
+// Test generated using Keploy
+func TestIdentifyInvalidJSON(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Nil(t, err)
+	defer conn.Close()
+
+	// Send IDENTIFY command with invalid JSON data
+	_, err = conn.Write([]byte("IDENTIFY\n"))
+	test.Nil(t, err)
+	_, err = conn.Write([]byte{0, 0, 0, 5}) // Invalid JSON length
+	test.Nil(t, err)
+	_, err = conn.Write([]byte("abcde")) // Invalid JSON data
+	test.Nil(t, err)
+
+	resp, err := nsq.ReadResponse(conn)
+	test.Nil(t, err)
+	frameType, data, err := nsq.UnpackResponse(resp)
+	test.Nil(t, err)
+	test.Equal(t, frameTypeError, frameType)
+	test.Equal(t, "E_BAD_BODY IDENTIFY failed to decode JSON body", string(data))
+}
+
+// Test generated using Keploy
+func TestExecInvalidCommand(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	nsqd, err := New(opts)
+	test.Nil(t, err)
+	defer nsqd.Exit()
+
+	prot := &protocolV2{nsqd: nsqd}
+	client := &clientV2{ID: 1}
+
+	// Test invalid command
+	params := [][]byte{[]byte("INVALID_COMMAND")}
+	_, err = prot.Exec(client, params)
+	test.NotNil(t, err)
+	test.Equal(t, "E_INVALID invalid command INVALID_COMMAND", err.Error())
+}

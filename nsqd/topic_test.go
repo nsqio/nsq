@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"sync/atomic"
+
 	"github.com/nsqio/nsq/internal/test"
 )
 
@@ -238,4 +240,61 @@ func BenchmarkTopicToChannelPut(b *testing.B) {
 		}
 		runtime.Gosched()
 	}
+}
+
+// Test generated using Keploy
+func TestDeleteExistingChannel_NonExistentChannel_ReturnsError(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test")
+	err := topic.DeleteExistingChannel("nonexistent_channel")
+	test.NotNil(t, err)
+	test.Equal(t, "channel does not exist", err.Error())
+}
+
+// Test generated using Keploy
+func TestPutMessage_ExitingTopic_ReturnsError(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test")
+	atomic.StoreInt32(&topic.exitFlag, 1)
+
+	msg := NewMessage(topic.GenerateID(), []byte("test message"))
+	err := topic.PutMessage(msg)
+	test.NotNil(t, err)
+	test.Equal(t, "exiting", err.Error())
+}
+
+// Test generated using Keploy
+func TestPause_TopicPaused_PreventsMessageProcessing(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test")
+	err := topic.Pause()
+	test.Nil(t, err)
+	test.Equal(t, true, topic.IsPaused())
+
+	channel := topic.GetChannel("ch1")
+	test.NotNil(t, channel)
+
+	msg := NewMessage(topic.GenerateID(), []byte("test message"))
+	err = topic.PutMessage(msg)
+	test.Nil(t, err)
+
+	time.Sleep(15 * time.Millisecond)
+
+	test.Equal(t, int64(1), topic.Depth())
+	test.Equal(t, int64(0), channel.Depth())
 }

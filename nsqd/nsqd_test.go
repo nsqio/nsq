@@ -459,3 +459,43 @@ func TestUnixSocketStartup(t *testing.T) {
 	test.Equal(t, isSocket(opts.TCPAddress), true)
 	test.Equal(t, isSocket(opts.HTTPAddress), true)
 }
+
+// Test generated using Keploy
+func TestIsAuthEnabled_NoAuthAddresses(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	nsqd, err := New(opts)
+	test.Nil(t, err)
+	defer nsqd.Exit()
+
+	test.Equal(t, false, nsqd.IsAuthEnabled())
+}
+
+// Test generated using Keploy
+func TestLoadMetadata_MissingFile(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	err := nsqd.LoadMetadata()
+	test.Nil(t, err)
+}
+
+// Test generated using Keploy
+func TestDeleteExistingTopic_RemovesTopic(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_topic"
+	nsqd.GetTopic(topicName) // Create the topic
+	err := nsqd.DeleteExistingTopic(topicName)
+	test.Nil(t, err)
+
+	_, err = nsqd.GetExistingTopic(topicName)
+	test.NotNil(t, err) // Ensure the topic no longer exists
+}

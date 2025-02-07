@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"sort"
+
 	"github.com/golang/snappy"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/test"
@@ -157,4 +159,46 @@ func TestStatsChannelLocking(t *testing.T) {
 	test.Equal(t, 1, len(stats))
 	test.Equal(t, 1, len(stats[0].Channels))
 	test.Equal(t, 25, stats[0].Channels[0].InFlightCount)
+}
+
+// Test generated using Keploy
+func TestTopicsByNameSorting(t *testing.T) {
+	topic1 := &Topic{name: "topicA"}
+	topic2 := &Topic{name: "topicB"}
+	topic3 := &Topic{name: "topicC"}
+
+	topics := TopicsByName{Topics: []*Topic{topic3, topic1, topic2}}
+	sort.Sort(topics)
+
+	if topics.Topics[0].name != "topicA" || topics.Topics[1].name != "topicB" || topics.Topics[2].name != "topicC" {
+		t.Errorf("Expected topics to be sorted by name, got: %v", topics)
+	}
+}
+
+// Test generated using Keploy
+func TestChannelsByNameSorting(t *testing.T) {
+	channel1 := &Channel{name: "channelA"}
+	channel2 := &Channel{name: "channelB"}
+	channel3 := &Channel{name: "channelC"}
+
+	channels := ChannelsByName{Channels: []*Channel{channel3, channel1, channel2}}
+	sort.Sort(channels)
+
+	if channels.Channels[0].name != "channelA" || channels.Channels[1].name != "channelB" || channels.Channels[2].name != "channelC" {
+		t.Errorf("Expected channels to be sorted by name, got: %v", channels)
+	}
+}
+
+// Test generated using Keploy
+func TestGetStatsNoTopics(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	stats := nsqd.GetStats("", "", false)
+	if len(stats.Topics) != 0 {
+		t.Errorf("Expected no topics, got: %v", stats.Topics)
+	}
 }
