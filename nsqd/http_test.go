@@ -1,6 +1,7 @@
 package nsqd
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
@@ -57,6 +58,54 @@ func TestHTTPpub(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 
 	test.Equal(t, int64(1), topic.Depth())
+}
+
+func TestHTTPpubRejectChunkedWhenEnabled(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	opts.HTTPRejectChunked = true
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_http_pub_chunked" + strconv.Itoa(int(time.Now().Unix()))
+
+	conn, err := net.Dial("tcp", httpAddr.String())
+	test.Nil(t, err)
+	defer conn.Close()
+
+	req := fmt.Sprintf("POST /pub?topic=%s HTTP/1.1\r\nHost: %s\r\nTransfer-Encoding: chunked\r\nContent-Type: application/octet-stream\r\n\r\n5\r\nhello\r\n0\r\n\r\n", topicName, httpAddr.String())
+	_, err = conn.Write([]byte(req))
+	test.Nil(t, err)
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	test.Equal(t, 400, resp.StatusCode)
+}
+
+func TestHTTPmpubRejectChunkedWhenEnabled(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	opts.HTTPRejectChunked = true
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_http_mpub_chunked" + strconv.Itoa(int(time.Now().Unix()))
+
+	conn, err := net.Dial("tcp", httpAddr.String())
+	test.Nil(t, err)
+	defer conn.Close()
+
+	req := fmt.Sprintf("POST /mpub?topic=%s HTTP/1.1\r\nHost: %s\r\nTransfer-Encoding: chunked\r\nContent-Type: application/octet-stream\r\n\r\n5\r\nhello\r\n0\r\n\r\n", topicName, httpAddr.String())
+	_, err = conn.Write([]byte(req))
+	test.Nil(t, err)
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	test.Nil(t, err)
+	defer resp.Body.Close()
+	test.Equal(t, 400, resp.StatusCode)
 }
 
 func TestHTTPpubEmpty(t *testing.T) {

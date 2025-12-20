@@ -211,8 +211,20 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 }
 
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
-	// TODO: one day I'd really like to just error on chunked requests
-	// to be able to fail "too big" requests before we even read
+	// Optionally reject chunked requests
+	if s.nsqd.getOpts().HTTPRejectChunked {
+		for _, te := range req.TransferEncoding {
+			if strings.ToLower(te) == "chunked" {
+				return nil, http_api.Err{400, "CHUNKED_TRANSFER_ENCODING_NOT_SUPPORTED"}
+			}
+		}
+		// also inspect header for older clients
+		if te := req.Header.Get("Transfer-Encoding"); te != "" {
+			if strings.Contains(strings.ToLower(te), "chunked") {
+				return nil, http_api.Err{400, "CHUNKED_TRANSFER_ENCODING_NOT_SUPPORTED"}
+			}
+		}
+	}
 
 	if req.ContentLength > s.nsqd.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
@@ -264,8 +276,20 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	var msgs []*Message
 	var exit bool
 
-	// TODO: one day I'd really like to just error on chunked requests
-	// to be able to fail "too big" requests before we even read
+	// Optionally reject chunked requests
+	if s.nsqd.getOpts().HTTPRejectChunked {
+		for _, te := range req.TransferEncoding {
+			if strings.ToLower(te) == "chunked" {
+				return nil, http_api.Err{400, "CHUNKED_TRANSFER_ENCODING_NOT_SUPPORTED"}
+			}
+		}
+		// also inspect header for older clients
+		if te := req.Header.Get("Transfer-Encoding"); te != "" {
+			if strings.Contains(strings.ToLower(te), "chunked") {
+				return nil, http_api.Err{400, "CHUNKED_TRANSFER_ENCODING_NOT_SUPPORTED"}
+			}
+		}
+	}
 
 	if req.ContentLength > s.nsqd.getOpts().MaxBodySize {
 		return nil, http_api.Err{413, "BODY_TOO_BIG"}
