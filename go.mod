@@ -8,6 +8,7 @@ require (
 	github.com/bitly/timer_metrics v1.0.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
+	github.com/dlclark/regexp2 v1.11.5
 	github.com/golang/snappy v0.0.4
 	github.com/judwhite/go-svc v1.2.1
 	github.com/julienschmidt/httprouter v1.3.0

@@ -2,10 +2,10 @@ package main
 
 import (
 	"os"
-	"regexp"
 	"sync"
 	"time"
 
+	"github.com/dlclark/regexp2"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/clusterinfo"
 	"github.com/nsqio/nsq/internal/http_api"
@@ -96,7 +96,11 @@ func (t *TopicDiscoverer) isTopicAllowed(topic string) bool {
 	if t.opts.TopicPattern == "" {
 		return true
 	}
-	match, err := regexp.MatchString(t.opts.TopicPattern, topic)
+	re, err := regexp2.Compile(t.opts.TopicPattern, 0)
+	if err != nil {
+		return false
+	}
+	match, err := re.MatchString(topic)
 	if err != nil {
 		return false
 	}
