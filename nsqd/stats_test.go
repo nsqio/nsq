@@ -65,6 +65,36 @@ func TestStats(t *testing.T) {
 	test.Equal(t, 0, len(stats))
 }
 
+func TestStatsMultiTopicPubCounts(t *testing.T) {
+	// clientV2.Stats must return an entry for every topic a client published
+	// to. Before the fix a spurious break in the loop caused only the first
+	// entry to be returned.
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	tcpAddr, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Nil(t, err)
+	defer conn.Close()
+
+	client := newClientV2(0, conn, nsqd)
+	client.PublishedMessage("topic-a", 3)
+	client.PublishedMessage("topic-b", 7)
+	client.PublishedMessage("topic-a", 1) // cumulative: topic-a = 4
+
+	// Empty topicName means "all topics".
+	stats := client.Stats("").(ClientV2Stats)
+	countByTopic := make(map[string]uint64, len(stats.PubCounts))
+	for _, pc := range stats.PubCounts {
+		countByTopic[pc.Topic] += pc.Count
+	}
+
+	test.Equal(t, uint64(4), countByTopic["topic-a"])
+	test.Equal(t, uint64(7), countByTopic["topic-b"])
+}
+
 func TestClientAttributes(t *testing.T) {
 	userAgent := "Test User Agent"
 
