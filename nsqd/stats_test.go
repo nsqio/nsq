@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/test"
 )
@@ -117,6 +118,54 @@ func TestClientAttributes(t *testing.T) {
 
 	test.Equal(t, userAgent, d.Topics[0].Channels[0].Clients[0].UserAgent)
 	test.Equal(t, true, d.Topics[0].Channels[0].Clients[0].Snappy)
+}
+
+func TestClientStatsPubCounts(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	tcpAddr, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	conn, err := mustConnectNSQD(tcpAddr)
+	test.Nil(t, err)
+	defer conn.Close()
+
+	identify(t, conn, nil, frameTypeResponse)
+
+	topic1 := "test_pubcounts_1" + strconv.Itoa(int(time.Now().Unix()))
+	topic2 := "test_pubcounts_2" + strconv.Itoa(int(time.Now().Unix()))
+
+	// Publish to two topics over the same connection
+	nsq.Publish(topic1, []byte("msg1")).WriteTo(conn)
+	readValidate(t, conn, frameTypeResponse, "OK")
+	nsq.Publish(topic2, []byte("msg2")).WriteTo(conn)
+	readValidate(t, conn, frameTypeResponse, "OK")
+
+	// Use HTTP /stats?format=json to inspect producer client stats
+	var d struct {
+		Producers []struct {
+			PubCounts []struct {
+				Topic string `json:"topic"`
+				Count uint64 `json:"count"`
+			} `json:"pub_counts"`
+		} `json:"producers"`
+	}
+
+	endpoint := fmt.Sprintf("http://%s/stats?format=json", httpAddr)
+	err = http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(endpoint, &d)
+	test.Nil(t, err)
+
+	test.Equal(t, 1, len(d.Producers))
+	test.Equal(t, 2, len(d.Producers[0].PubCounts))
+
+	// Verify both topics are present
+	topicMap := make(map[string]uint64)
+	for _, pc := range d.Producers[0].PubCounts {
+		topicMap[pc.Topic] = pc.Count
+	}
+	test.Equal(t, uint64(1), topicMap[topic1])
+	test.Equal(t, uint64(1), topicMap[topic2])
 }
 
 func TestStatsChannelLocking(t *testing.T) {
