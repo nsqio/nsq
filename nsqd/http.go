@@ -3,6 +3,7 @@ package nsqd
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/snappy"
 	"github.com/julienschmidt/httprouter"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/lg"
@@ -210,6 +212,24 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 	return reqParams, s.nsqd.GetTopic(topicName), nil
 }
 
+// requestBodyReader returns a reader for the request body, transparently
+// decoding it according to the Content-Encoding request header. It also
+// returns whether the body is encoded, so that callers can attribute read
+// errors to the client. Size limits are enforced by callers on the decoded
+// stream.
+func requestBodyReader(req *http.Request) (io.Reader, bool, error) {
+	encoding := strings.ToLower(req.Header.Get("Content-Encoding"))
+	switch encoding {
+	case "", "identity":
+		return req.Body, false, nil
+	case "deflate":
+		return flate.NewReader(req.Body), true, nil
+	case "snappy":
+		return snappy.NewReader(req.Body), true, nil
+	}
+	return nil, false, fmt.Errorf("unsupported Content-Encoding %q", encoding)
+}
+
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
@@ -218,11 +238,20 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 		return nil, http_api.Err{Code: 413, Text: "MSG_TOO_BIG"}
 	}
 
+	bodyReader, encoded, err := requestBodyReader(req)
+	if err != nil {
+		return nil, http_api.Err{Code: 415, Text: "UNSUPPORTED_CONTENT_ENCODING"}
+	}
+
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
+	// the limit is enforced against the decoded body size
 	readMax := s.nsqd.getOpts().MaxMsgSize + 1
-	body, err := io.ReadAll(io.LimitReader(req.Body, readMax))
+	body, err := io.ReadAll(io.LimitReader(bodyReader, readMax))
 	if err != nil {
+		if encoded {
+			return nil, http_api.Err{Code: 400, Text: "INVALID_BODY"}
+		}
 		return nil, http_api.Err{Code: 500, Text: "INTERNAL_ERROR"}
 	}
 	if int64(len(body)) == readMax {
@@ -276,6 +305,11 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 		return nil, err
 	}
 
+	bodyReader, encoded, err := requestBodyReader(req)
+	if err != nil {
+		return nil, http_api.Err{Code: 415, Text: "UNSUPPORTED_CONTENT_ENCODING"}
+	}
+
 	// text mode is default, but unrecognized binary opt considered true
 	binaryMode := false
 	if vals, ok := reqParams["binary"]; ok {
@@ -286,7 +320,7 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	}
 	if binaryMode {
 		tmp := make([]byte, 4)
-		msgs, err = readMPUB(req.Body, tmp, topic,
+		msgs, err = readMPUB(bodyReader, tmp, topic,
 			s.nsqd.getOpts().MaxMsgSize, s.nsqd.getOpts().MaxBodySize)
 		if err != nil {
 			return nil, http_api.Err{Code: 413, Text: err.(*protocol.FatalClientErr).Code[2:]}
@@ -294,14 +328,18 @@ func (s *httpServer) doMPUB(w http.ResponseWriter, req *http.Request, ps httprou
 	} else {
 		// add 1 so that it's greater than our max when we test for it
 		// (LimitReader returns a "fake" EOF)
+		// the limit is enforced against the decoded body size
 		readMax := s.nsqd.getOpts().MaxBodySize + 1
-		rdr := bufio.NewReader(io.LimitReader(req.Body, readMax))
+		rdr := bufio.NewReader(io.LimitReader(bodyReader, readMax))
 		total := 0
 		for !exit {
 			var block []byte
 			block, err = rdr.ReadBytes('\n')
 			if err != nil {
 				if err != io.EOF {
+					if encoded {
+						return nil, http_api.Err{Code: 400, Text: "INVALID_BODY"}
+					}
 					return nil, http_api.Err{Code: 500, Text: "INTERNAL_ERROR"}
 				}
 				exit = true
