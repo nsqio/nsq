@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/nsqio/nsq/internal/clusterinfo"
@@ -169,8 +168,12 @@ func New(opts *Options) (*NSQD, error) {
 		}
 	}
 	if opts.UnixSocketPath != "" {
+		if err := checkUnixSocketSupport(); err != nil {
+			return nil, err
+		}
+		havePermission := opts.UnixSocketPermission != ""
 		var mode os.FileMode
-		if opts.UnixSocketPermission != "" {
+		if havePermission {
 			parsed, perr := strconv.ParseUint(opts.UnixSocketPermission, 8, 32)
 			if perr != nil {
 				return nil, fmt.Errorf("invalid --unix-socket-permission %q (expected octal, e.g. 0660) - %s", opts.UnixSocketPermission, perr)
@@ -191,21 +194,25 @@ func New(opts *Options) (*NSQD, error) {
 		// Narrow the umask while we bind so the socket inode is created with the
 		// intended permissions from the start, closing the race window between
 		// net.Listen and the follow-up os.Chmod.
-		if mode != 0 {
-			oldMask := syscall.Umask(int(^mode & 0777))
+		if havePermission {
+			oldMask := setUmask(int(^mode & 0777))
 			n.udsListener, err = net.Listen("unix", opts.UnixSocketPath)
-			syscall.Umask(oldMask)
+			setUmask(oldMask)
 		} else {
 			n.udsListener, err = net.Listen("unix", opts.UnixSocketPath)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.UnixSocketPath, err)
 		}
-		if mode != 0 {
+		if havePermission {
 			// Belt-and-braces: ensure the final mode matches even if the platform
 			// applied additional restrictions during Listen.
 			err = os.Chmod(opts.UnixSocketPath, mode)
 			if err != nil {
+				// Close unlinks the socket file (UnlinkOnClose defaults to true
+				// for listeners created via net.Listen).
+				n.udsListener.Close()
+				n.udsListener = nil
 				return nil, fmt.Errorf("failed to set unix socket permission - %s", err)
 			}
 		}
@@ -339,7 +346,7 @@ func (n *NSQD) Main() error {
 		// permissions on the socket path (see --unix-socket-permission).
 		udsHttpServer := newHTTPServer(n, false, false)
 		n.waitGroup.Wrap(func() {
-			exitFunc(http_api.Serve(n.udsListener, udsHttpServer, "HTTP", n.logf))
+			exitFunc(http_api.Serve(n.udsListener, udsHttpServer, "HTTP(unix)", n.logf))
 		})
 	}
 

@@ -1,3 +1,5 @@
+//go:build !windows
+
 package nsqd
 
 import (
@@ -9,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"syscall"
 	"testing"
@@ -17,12 +18,6 @@ import (
 
 	"github.com/nsqio/nsq/internal/test"
 )
-
-func skipIfNoUnixSockets(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("unix sockets not supported on windows")
-	}
-}
 
 // startNSQDWithUDS configures an NSQD with both a TCP HTTP listener (on a random
 // port) and an additional Unix-domain-socket HTTP listener. Returns the TCP HTTP
@@ -44,6 +39,9 @@ func startNSQDWithUDS(t *testing.T, opts *Options, perm string) (httpAddr net.Ad
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	if _, err := os.Stat(udsPath); err != nil {
+		t.Fatalf("unix socket %s did not appear within deadline - %v", udsPath, err)
+	}
 	return httpAddr, udsPath, nsqd
 }
 
@@ -58,10 +56,8 @@ func udsHTTPClient(sockPath string) *http.Client {
 	}
 }
 
-// (1) UDS-HTTP und TCP-HTTP koexistieren und teilen sich denselben NSQD-State.
+// (1) UDS HTTP and TCP HTTP coexist and share the same NSQD state.
 func TestUDSAndTCPHTTPCoexist(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	httpAddr, udsPath, nsqd := startNSQDWithUDS(t, opts, "")
@@ -94,10 +90,8 @@ func TestUDSAndTCPHTTPCoexist(t *testing.T) {
 	test.Equal(t, int64(2), topic.Depth())
 }
 
-// (2) Standard-HTTP-Endpunkte (/ping, /info, /stats) sind über UDS erreichbar.
+// (2) Standard HTTP endpoints (/ping, /info, /stats) are reachable over UDS.
 func TestUDSServesHTTPEndpoints(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	_, udsPath, nsqd := startNSQDWithUDS(t, opts, "")
@@ -117,10 +111,8 @@ func TestUDSServesHTTPEndpoints(t *testing.T) {
 	}
 }
 
-// (3) Explizit gesetzte Permission wird angewandt.
+// (3) An explicitly configured permission is applied to the socket file.
 func TestUDSPermissionApplied(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	_, udsPath, nsqd := startNSQDWithUDS(t, opts, "0600")
@@ -132,10 +124,21 @@ func TestUDSPermissionApplied(t *testing.T) {
 	test.Equal(t, os.FileMode(0600), info.Mode().Perm())
 }
 
-// (4) Default-Permission (leer): kein Chmod, Modus ergibt sich aus umask.
-func TestUDSPermissionDefault(t *testing.T) {
-	skipIfNoUnixSockets(t)
+// (3b) Permission "0000" is applied literally, not treated as "unset".
+func TestUDSPermissionZeroApplied(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, udsPath, nsqd := startNSQDWithUDS(t, opts, "0000")
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
 
+	info, err := os.Stat(udsPath)
+	test.Nil(t, err)
+	test.Equal(t, os.FileMode(0), info.Mode().Perm())
+}
+
+// (4) Default permission (empty): no chmod, the mode is derived from the umask.
+func TestUDSPermissionDefault(t *testing.T) {
 	oldMask := syscall.Umask(0022)
 	defer syscall.Umask(oldMask)
 
@@ -147,16 +150,14 @@ func TestUDSPermissionDefault(t *testing.T) {
 
 	info, err := os.Stat(udsPath)
 	test.Nil(t, err)
-	// Mit umask 0022 darf das gid/other-write-Bit nicht gesetzt sein.
+	// with umask 0022 the group/other write bits must not be set
 	if info.Mode().Perm()&0022 != 0 {
 		t.Fatalf("expected umask 0022 to clear group/other write bits, got %o", info.Mode().Perm())
 	}
 }
 
-// (5) Ungültiger Pfad → New(opts) liefert Fehler statt Panic.
+// (5) Invalid path: New(opts) returns an error instead of panicking.
 func TestUDSListenFailureWhenPathInvalid(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.TCPAddress = "127.0.0.1:0"
@@ -174,10 +175,8 @@ func TestUDSListenFailureWhenPathInvalid(t *testing.T) {
 	}
 }
 
-// (6) Ungültige Permission (kein Octal) → New(opts) liefert Fehler.
+// (6) Invalid permission (not octal): New(opts) returns an error.
 func TestUDSInvalidPermissionRejected(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.TCPAddress = "127.0.0.1:0"
@@ -196,10 +195,8 @@ func TestUDSInvalidPermissionRejected(t *testing.T) {
 	}
 }
 
-// (7) Socket-Datei wird beim sauberen Exit entfernt.
+// (7) The socket file is removed on clean Exit.
 func TestUDSCleanupOnExit(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	_, udsPath, nsqd := startNSQDWithUDS(t, opts, "")
@@ -215,11 +212,9 @@ func TestUDSCleanupOnExit(t *testing.T) {
 	}
 }
 
-// (8a) Existierende Datei am Socket-Pfad, die KEIN Socket ist, wird abgelehnt
-// (Schutz davor, versehentlich eine reguläre Datei zu löschen).
+// (8a) An existing file at the socket path that is NOT a socket is rejected
+// (protects against accidentally deleting a regular file).
 func TestUDSExistingRegularFileRejected(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
 	regular := filepath.Join(t.TempDir(), "not-a-socket")
 	f, err := os.Create(regular)
 	test.Nil(t, err)
@@ -240,21 +235,19 @@ func TestUDSExistingRegularFileRejected(t *testing.T) {
 		n.Exit()
 		t.Fatal("expected error when path exists and is not a socket")
 	}
-	// Die reguläre Datei darf nicht gelöscht worden sein.
+	// the regular file must not have been removed
 	if _, statErr := os.Stat(regular); statErr != nil {
 		t.Fatalf("regular file must not be removed, stat err=%v", statErr)
 	}
 }
 
-// (8b) Verwaister Socket aus einem vorigen Crash wird automatisch entfernt
-// und Listen gelingt.
+// (8b) A stale socket left behind by a previous crash is removed automatically
+// and Listen succeeds.
 func TestUDSStaleSocketAutoRemoved(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
 	udsPath := filepath.Join(t.TempDir(), "stale.sock")
 
-	// Simuliere verwaisten Socket: kurz binden, Listener leaken (kein Close),
-	// dann den File-Descriptor manuell schließen, damit nur das Inode bleibt.
+	// Simulate a stale socket: bind briefly, disable unlink-on-close, then
+	// close the listener so only the socket inode remains on disk.
 	stale, err := net.Listen("unix", udsPath)
 	test.Nil(t, err)
 	if ul, ok := stale.(*net.UnixListener); ok {
@@ -280,16 +273,14 @@ func TestUDSStaleSocketAutoRemoved(t *testing.T) {
 	}
 }
 
-// (9) TLSRequired beeinflusst den UDS-HTTP-Server nicht (lokaler Trust).
+// (9) TLSRequired does not affect the UDS HTTP server (local trust).
 func TestUDSIgnoresTLSRequired(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	opts.TLSCert = "./test/certs/server.pem"
 	opts.TLSKey = "./test/certs/server.key"
 	opts.TLSRequired = TLSRequired
-	// vermeidet, dass der HTTPS-Listener auf dem TLS-Default-Port versucht zu binden
+	// avoid binding the HTTPS listener on the TLS default port
 	opts.HTTPSAddress = "127.0.0.1:0"
 
 	_, udsPath, nsqd := startNSQDWithUDS(t, opts, "")
@@ -308,18 +299,16 @@ func TestUDSIgnoresTLSRequired(t *testing.T) {
 	test.Equal(t, "OK", string(body))
 }
 
-// (10) Defaults: Feature ist opt-in.
+// (10) Defaults: the feature is opt-in.
 func TestUDSOptionDefaults(t *testing.T) {
 	opts := NewOptions()
 	test.Equal(t, "", opts.UnixSocketPath)
 	test.Equal(t, "", opts.UnixSocketPermission)
 }
 
-// (11) RealUDSAddr liefert die tatsächlich gebundene Adresse bzw. einen Zero-Value.
+// (11) RealUDSAddr returns the bound address, or a zero value without UDS.
 func TestRealUDSAddr(t *testing.T) {
-	skipIfNoUnixSockets(t)
-
-	// ohne UDS: Zero-Value, kein Panic
+	// without UDS: zero value, no panic
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
 	_, _, nsqd := mustStartNSQD(opts)
@@ -328,7 +317,7 @@ func TestRealUDSAddr(t *testing.T) {
 	test.Equal(t, "", addr.String())
 	nsqd.Exit()
 
-	// mit UDS: Adresse == konfigurierter Pfad
+	// with UDS: address equals the configured path
 	opts2 := NewOptions()
 	opts2.Logger = test.NewTestLogger(t)
 	_, udsPath, nsqd2 := startNSQDWithUDS(t, opts2, "")
