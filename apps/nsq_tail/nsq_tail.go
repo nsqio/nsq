@@ -27,6 +27,8 @@ var (
 	topics           = app.StringArray{}
 )
 
+var appExit = os.Exit
+
 func init() {
 	flag.Var(&nsqdTCPAddrs, "nsqd-tcp-address", "nsqd TCP address (may be given multiple times)")
 	flag.Var(&lookupdHTTPAddrs, "lookupd-http-address", "lookupd HTTP address (may be given multiple times)")
@@ -62,7 +64,7 @@ func (th *TailHandler) HandleMessage(m *nsq.Message) error {
 		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err)
 	}
 	if th.totalMessages > 0 && th.messagesShown >= th.totalMessages {
-		os.Exit(0)
+		appExit(0)
 	}
 	return nil
 }
