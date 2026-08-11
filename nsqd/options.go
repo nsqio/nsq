@@ -22,6 +22,8 @@ type Options struct {
 	TCPAddress               string        `flag:"tcp-address"`
 	HTTPAddress              string        `flag:"http-address"`
 	HTTPSAddress             string        `flag:"https-address"`
+	UnixSocketPath           string        `flag:"unix-socket-path"`
+	UnixSocketPermission     string        `flag:"unix-socket-permission"`
 	BroadcastAddress         string        `flag:"broadcast-address"`
 	BroadcastTCPPort         int           `flag:"broadcast-tcp-port"`
 	BroadcastHTTPPort        int           `flag:"broadcast-http-port"`
@@ -132,6 +134,7 @@ func NewOptions() *Options {
 		TCPAddress:        "0.0.0.0:4150",
 		HTTPAddress:       "0.0.0.0:4151",
 		HTTPSAddress:      "0.0.0.0:4152",
+		UnixSocketPath:    "",
 		BroadcastAddress:  hostname,
 		BroadcastTCPPort:  0,
 		BroadcastHTTPPort: 0,

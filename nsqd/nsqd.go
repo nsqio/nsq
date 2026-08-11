@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -61,6 +62,7 @@ type NSQD struct {
 	tcpListener     net.Listener
 	httpListener    net.Listener
 	httpsListener   net.Listener
+	udsListener     net.Listener
 	tlsConfig       *tls.Config
 	clientTLSConfig *tls.Config
 
@@ -165,6 +167,56 @@ func New(opts *Options) (*NSQD, error) {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPSAddress, err)
 		}
 	}
+	if opts.UnixSocketPath != "" {
+		if err := checkUnixSocketSupport(); err != nil {
+			return nil, err
+		}
+		havePermission := opts.UnixSocketPermission != ""
+		var mode os.FileMode
+		if havePermission {
+			parsed, perr := strconv.ParseUint(opts.UnixSocketPermission, 8, 32)
+			if perr != nil {
+				return nil, fmt.Errorf("invalid --unix-socket-permission %q (expected octal, e.g. 0660) - %s", opts.UnixSocketPermission, perr)
+			}
+			mode = os.FileMode(parsed)
+		}
+		// Remove a leftover socket file from a previous crashed run so net.Listen
+		// does not fail with "address already in use". Only remove the path if it
+		// is actually a unix socket — never clobber a regular file or directory.
+		if info, statErr := os.Stat(opts.UnixSocketPath); statErr == nil {
+			if info.Mode()&os.ModeSocket == 0 {
+				return nil, fmt.Errorf("refusing to overwrite existing non-socket file at %s", opts.UnixSocketPath)
+			}
+			if rmErr := os.Remove(opts.UnixSocketPath); rmErr != nil {
+				return nil, fmt.Errorf("failed to remove stale unix socket %s - %s", opts.UnixSocketPath, rmErr)
+			}
+		}
+		// Narrow the umask while we bind so the socket inode is created with the
+		// intended permissions from the start, closing the race window between
+		// net.Listen and the follow-up os.Chmod.
+		if havePermission {
+			oldMask := setUmask(int(^mode & 0777))
+			n.udsListener, err = net.Listen("unix", opts.UnixSocketPath)
+			setUmask(oldMask)
+		} else {
+			n.udsListener, err = net.Listen("unix", opts.UnixSocketPath)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("listen (%s) failed - %s", opts.UnixSocketPath, err)
+		}
+		if havePermission {
+			// Belt-and-braces: ensure the final mode matches even if the platform
+			// applied additional restrictions during Listen.
+			err = os.Chmod(opts.UnixSocketPath, mode)
+			if err != nil {
+				// Close unlinks the socket file (UnlinkOnClose defaults to true
+				// for listeners created via net.Listen).
+				n.udsListener.Close()
+				n.udsListener = nil
+				return nil, fmt.Errorf("failed to set unix socket permission - %s", err)
+			}
+		}
+	}
 	if opts.BroadcastHTTPPort == 0 {
 		tcpAddr, ok := n.RealHTTPAddr().(*net.TCPAddr)
 		if ok {
@@ -229,6 +281,13 @@ func (n *NSQD) RealHTTPSAddr() *net.TCPAddr {
 	return n.httpsListener.Addr().(*net.TCPAddr)
 }
 
+func (n *NSQD) RealUDSAddr() net.Addr {
+	if n.udsListener == nil {
+		return &net.UnixAddr{}
+	}
+	return n.udsListener.Addr()
+}
+
 func (n *NSQD) SetHealth(err error) {
 	n.errValue.Store(errStore{err: err})
 }
@@ -279,6 +338,15 @@ func (n *NSQD) Main() error {
 		httpsServer := newHTTPServer(n, true, true)
 		n.waitGroup.Wrap(func() {
 			exitFunc(http_api.Serve(n.httpsListener, httpsServer, "HTTPS", n.logf))
+		})
+	}
+	if n.udsListener != nil {
+		// The UDS HTTP listener is intentionally served as plain HTTP and
+		// ignores TLSRequired: access control is delegated to filesystem
+		// permissions on the socket path (see --unix-socket-permission).
+		udsHttpServer := newHTTPServer(n, false, false)
+		n.waitGroup.Wrap(func() {
+			exitFunc(http_api.Serve(n.udsListener, udsHttpServer, "HTTP(unix)", n.logf))
 		})
 	}
 
@@ -465,6 +533,10 @@ func (n *NSQD) Exit() {
 
 	if n.httpsListener != nil {
 		_ = n.httpsListener.Close()
+	}
+
+	if n.udsListener != nil {
+		n.udsListener.Close()
 	}
 
 	n.Lock()

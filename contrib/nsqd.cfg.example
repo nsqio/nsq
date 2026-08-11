@@ -13,6 +13,14 @@ http_address = "0.0.0.0:4151"
 ## <addr>:<port> to listen on for HTTPS clients
 # https_address = "0.0.0.0:4152"
 
+## <path> to listen on for HTTP clients on a unix socket
+## (in addition to http_address, served without TLS)
+# unix_socket_path = "/var/run/nsqd.sock"
+
+## file permission of the unix socket as an octal number (e.g. 0660);
+## empty/unset means do not chmod (umask applies)
+# unix_socket_permission = "0660"
+
 ## address that will be registered with lookupd (defaults to the OS hostname)
 # broadcast_address = ""
 
