@@ -90,6 +90,34 @@ func (f *FileLogger) router() {
 	for {
 		select {
 		case <-f.consumer.StopChan:
+			// Drain any messages that arrived in logChan concurrently with
+			// StopChan closing. With high max-in-flight, the last handler
+			// goroutine can successfully buffer a message in logChan and
+			// return (allowing StopChan to close) in the same select cycle,
+			// causing a random pick between the two ready cases to drop it.
+		drainLogChan:
+			for {
+				select {
+				case m := <-f.logChan:
+					if f.needsRotation() {
+						f.updateFile()
+					}
+					_, err := f.Write(m.Body)
+					if err != nil {
+						f.logf(lg.FATAL, "[%s/%s] writing message to disk: %s", f.topic, f.opts.Channel, err)
+						os.Exit(1)
+					}
+					_, err = f.Write([]byte("\n"))
+					if err != nil {
+						f.logf(lg.FATAL, "[%s/%s] writing newline to disk: %s", f.topic, f.opts.Channel, err)
+						os.Exit(1)
+					}
+					output[pos] = m
+					pos++
+				default:
+					break drainLogChan
+				}
+			}
 			sync = true
 			closeFile = true
 			exit = true
