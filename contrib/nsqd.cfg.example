@@ -21,6 +21,9 @@ nsqlookupd_tcp_addresses = [
     "127.0.0.1:4160"
 ]
 
+## time to retry startup nsqlookupd sync before opening for traffic (max 300s)
+intial_grace_period = "0s"
+
 ## duration to wait before HTTP client connection timeout
 http_client_connect_timeout = "2s"
 

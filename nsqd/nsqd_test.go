@@ -421,6 +421,94 @@ func TestCluster(t *testing.T) {
 	test.Equal(t, 0, len(dd["channel:"+topicName+":ch"]))
 }
 
+func TestStartupPreCreatesTopicsAndChannelsFromLookupd(t *testing.T) {
+	lopts := nsqlookupd.NewOptions()
+	lopts.Logger = test.NewTestLogger(t)
+	lopts.BroadcastAddress = "127.0.0.1"
+	_, _, lookupd := mustStartNSQLookupd(lopts)
+	defer lookupd.Exit()
+
+	seedOpts := NewOptions()
+	seedOpts.Logger = test.NewTestLogger(t)
+	seedOpts.NSQLookupdTCPAddresses = []string{lookupd.RealTCPAddr().String()}
+	seedOpts.BroadcastAddress = "127.0.0.1"
+	_, _, seedNSQD := mustStartNSQD(seedOpts)
+	defer os.RemoveAll(seedOpts.DataPath)
+	defer seedNSQD.Exit()
+
+	topicName := "startup_lookupd_precreate_" + strconv.Itoa(int(time.Now().UnixNano()))
+	seedTopic := seedNSQD.GetTopic(topicName)
+	seedTopic.GetChannel("ch")
+
+	time.Sleep(350 * time.Millisecond)
+
+	targetOpts := NewOptions()
+	targetOpts.Logger = test.NewTestLogger(t)
+	targetOpts.NSQLookupdTCPAddresses = []string{lookupd.RealTCPAddr().String()}
+	targetOpts.BroadcastAddress = "127.0.0.1"
+	_, _, targetNSQD := mustStartNSQD(targetOpts)
+	defer os.RemoveAll(targetOpts.DataPath)
+	defer targetNSQD.Exit()
+
+	var targetTopic *Topic
+	var targetChannel *Channel
+	for i := 0; i < 100; i++ {
+		topic, err := targetNSQD.GetExistingTopic(topicName)
+		if err == nil {
+			channel, channelErr := topic.GetExistingChannel("ch")
+			if channelErr == nil {
+				targetTopic = topic
+				targetChannel = channel
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	test.NotNil(t, targetTopic)
+	test.NotNil(t, targetChannel)
+
+	body := []byte("bootstrapped")
+	msg := NewMessage(targetTopic.GenerateID(), body)
+	err := targetTopic.PutMessage(msg)
+	test.Nil(t, err)
+
+	var received *Message
+	select {
+	case received = <-targetChannel.memoryMsgChan:
+	case b := <-targetChannel.backend.ReadChan():
+		received, _ = decodeMessage(b)
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for bootstrapped channel to receive a message")
+	}
+
+	test.Equal(t, body, received.Body)
+}
+
+func TestStartupLookupdGracePeriodExpires(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	opts.NSQLookupdTCPAddresses = []string{"127.0.0.1:1"}
+	opts.InitialGracePeriod = 50 * time.Millisecond
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	var info struct {
+		TCPPort int `json:"tcp_port"`
+	}
+	url := fmt.Sprintf("http://%s/info", httpAddr)
+	for i := 0; i < 50; i++ {
+		err := http_api.NewClient(nil, ConnectTimeout, RequestTimeout).GETV1(url, &info)
+		if err == nil && info.TCPPort > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	test.Equal(t, nsqd.RealTCPAddr().Port, info.TCPPort)
+}
+
 func TestSetHealth(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)

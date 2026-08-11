@@ -116,6 +116,10 @@ func New(opts *Options) (*NSQD, error) {
 		return nil, errors.New("--node-id must be [0,1024)")
 	}
 
+	if opts.InitialGracePeriod < 0 || opts.InitialGracePeriod > 300*time.Second {
+		return nil, errors.New("--intial-grace-period must be [0,300s]")
+	}
+
 	if opts.TLSClientAuthPolicy != "" && opts.TLSRequired == TLSNotRequired {
 		opts.TLSRequired = TLSRequired
 	}
@@ -266,6 +270,12 @@ func (n *NSQD) Main() error {
 		})
 	}
 
+	lookupSyncCh := make(chan struct{})
+	n.waitGroup.Wrap(func() {
+		n.lookupLoop(lookupSyncCh)
+	})
+	<-lookupSyncCh
+
 	n.waitGroup.Wrap(func() {
 		exitFunc(protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf))
 	})
@@ -283,7 +293,6 @@ func (n *NSQD) Main() error {
 	}
 
 	n.waitGroup.Wrap(n.queueScanLoop)
-	n.waitGroup.Wrap(n.lookupLoop)
 	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(n.statsdLoop)
 	}
@@ -527,25 +536,70 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 
 	// if using lookupd, make a blocking call to get channels and immediately create them
 	// to ensure that all channels receive published messages
-	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
-	if len(lookupdHTTPAddrs) > 0 {
-		channelNames, err := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
-		if err != nil {
-			n.logf(LOG_WARN, "failed to query nsqlookupd for channels to pre-create for topic %s - %s", t.name, err)
-		}
-		for _, channelName := range channelNames {
-			if strings.HasSuffix(channelName, "#ephemeral") {
-				continue // do not create ephemeral channel with no consumer client
-			}
-			t.GetChannel(channelName)
-		}
-	} else if len(n.getOpts().NSQLookupdTCPAddresses) > 0 {
-		n.logf(LOG_ERROR, "no available nsqlookupd to query for channels to pre-create for topic %s", t.name)
+	err := n.syncLookupdTopicChannels(t, false)
+	if err != nil {
+		n.logf(LOG_WARN, "%s", err)
 	}
 
 	// now that all channels are added, start topic messagePump
 	t.Start()
 	return t
+}
+
+func (n *NSQD) syncLookupdTopicChannels(t *Topic, failOnError bool) error {
+	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
+	if len(lookupdHTTPAddrs) > 0 {
+		channelNames, err := n.ci.GetLookupdTopicChannels(t.name, lookupdHTTPAddrs)
+		if err != nil {
+			return fmt.Errorf("failed to query nsqlookupd for channels to pre-create for topic %s - %s", t.name, err)
+		}
+		for _, channelName := range channelNames {
+			if strings.HasSuffix(channelName, "#ephemeral") {
+				continue
+			}
+			t.GetChannel(channelName)
+		}
+		return nil
+	}
+
+	if failOnError && len(n.getOpts().NSQLookupdTCPAddresses) > 0 {
+		return fmt.Errorf("no available nsqlookupd to query for channels to pre-create for topic %s", t.name)
+	}
+	if len(n.getOpts().NSQLookupdTCPAddresses) > 0 {
+		return fmt.Errorf("no available nsqlookupd to query for channels to pre-create for topic %s", t.name)
+	}
+	return nil
+}
+
+func (n *NSQD) preCreateTopicsFromLookupd() error {
+	lookupdHTTPAddrs := n.lookupdHTTPAddrs()
+	if len(lookupdHTTPAddrs) == 0 {
+		if len(n.getOpts().NSQLookupdTCPAddresses) == 0 {
+			return nil
+		}
+		return errors.New("no available nsqlookupd to query for startup topic/channel pre-creation")
+	}
+
+	topicNames, err := n.ci.GetLookupdTopics(lookupdHTTPAddrs)
+	if err != nil {
+		return fmt.Errorf("failed to query nsqlookupd for topics to pre-create - %s", err)
+	}
+
+	for _, topicName := range topicNames {
+		if strings.HasSuffix(topicName, "#ephemeral") {
+			continue
+		}
+		if !protocol.IsValidTopicName(topicName) {
+			n.logf(LOG_WARN, "skipping creation of invalid topic %s", topicName)
+			continue
+		}
+		topic := n.GetTopic(topicName)
+		if err := n.syncLookupdTopicChannels(topic, true); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // GetExistingTopic gets a topic only if it exists

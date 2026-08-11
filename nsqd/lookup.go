@@ -12,6 +12,8 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
+const lookupdBootstrapRetryInterval = 100 * time.Millisecond
+
 func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 	return func(lp *lookupPeer) {
 		ci := make(map[string]interface{})
@@ -77,16 +79,74 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 	}
 }
 
-func (n *NSQD) lookupLoop() {
+func (n *NSQD) lookupLoop(startupSyncCh chan struct{}) {
 	var lookupPeers []*lookupPeer
 	var lookupAddrs []string
-	connect := true
+	connect := false
+	signalStartup := func() {
+		if startupSyncCh == nil {
+			return
+		}
+		close(startupSyncCh)
+		startupSyncCh = nil
+	}
 
 	hostname, err := os.Hostname()
 	if err != nil {
+		signalStartup()
 		n.logf(LOG_FATAL, "failed to get hostname - %s", err)
 		os.Exit(1)
 	}
+
+	if len(n.getOpts().NSQLookupdTCPAddresses) > 0 {
+		deadline := time.Now().Add(n.getOpts().InitialGracePeriod)
+		for {
+			lookupPeers = nil
+			lookupAddrs = nil
+			for _, host := range n.getOpts().NSQLookupdTCPAddresses {
+				n.logf(LOG_INFO, "LOOKUP(%s): adding peer", host)
+				lookupPeer := newLookupPeer(host, n.getOpts().MaxBodySize, n.logf,
+					connectCallback(n, hostname))
+				if _, err := lookupPeer.Command(nil); err != nil {
+					n.logf(LOG_ERROR, "LOOKUP(%s): failed to connect - %s", host, err)
+					lookupPeer.Close()
+					continue
+				}
+				lookupPeers = append(lookupPeers, lookupPeer)
+				lookupAddrs = append(lookupAddrs, host)
+			}
+
+			if len(lookupPeers) > 0 {
+				n.lookupPeers.Store(lookupPeers)
+				if err := n.preCreateTopicsFromLookupd(); err == nil {
+					break
+				} else {
+					n.logf(LOG_WARN, "startup lookupd sync failed - %s", err)
+				}
+			}
+
+			if !time.Now().Before(deadline) {
+				if len(lookupPeers) == 0 {
+					n.logf(LOG_WARN, "startup lookupd sync grace period expired; opening for traffic before connecting to nsqlookupd")
+				} else {
+					n.logf(LOG_WARN, "startup lookupd sync grace period expired; opening for traffic before topic/channel pre-creation completed")
+				}
+				connect = len(lookupPeers) == 0
+				break
+			}
+
+			select {
+			case <-time.After(lookupdBootstrapRetryInterval):
+			case <-n.exitChan:
+				signalStartup()
+				return
+			}
+		}
+		if len(lookupPeers) > 0 {
+			n.lookupPeers.Store(lookupPeers)
+		}
+	}
+	signalStartup()
 
 	// for announcements, lookupd determines the host automatically
 	ticker := time.NewTicker(15 * time.Second)

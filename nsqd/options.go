@@ -26,6 +26,7 @@ type Options struct {
 	BroadcastTCPPort         int           `flag:"broadcast-tcp-port"`
 	BroadcastHTTPPort        int           `flag:"broadcast-http-port"`
 	NSQLookupdTCPAddresses   []string      `flag:"lookupd-tcp-address" cfg:"nsqlookupd_tcp_addresses"`
+	InitialGracePeriod       time.Duration `flag:"intial-grace-period" cfg:"intial_grace_period"`
 	AuthHTTPAddresses        []string      `flag:"auth-http-address" cfg:"auth_http_addresses"`
 	AuthHTTPRequestMethod    string        `flag:"auth-http-request-method" cfg:"auth_http_request_method"`
 	HTTPClientConnectTimeout time.Duration `flag:"http-client-connect-timeout" cfg:"http_client_connect_timeout"`
@@ -137,6 +138,7 @@ func NewOptions() *Options {
 		BroadcastHTTPPort: 0,
 
 		NSQLookupdTCPAddresses: make([]string, 0),
+		InitialGracePeriod:     0,
 		AuthHTTPAddresses:      make([]string, 0),
 		AuthHTTPRequestMethod:  "get",
 
