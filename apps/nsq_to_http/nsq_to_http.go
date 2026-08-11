@@ -186,7 +186,7 @@ func main() {
 		var err error
 		validCustomHeaders, err = parseCustomHeaders(customHeaders)
 		if err != nil {
-			log.Fatal("--header value format should be 'key=value'")
+			log.Fatal("--header value format should be 'key: value'")
 		}
 	}
 
