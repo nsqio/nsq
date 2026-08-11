@@ -91,6 +91,9 @@ type Options struct {
 
 	// experimental features
 	Experiments []string `flag:"enable-experiment" cfg:"enable_experiment"`
+
+	// HTTP behavior
+	HTTPRejectChunked bool `flag:"http-reject-chunked" cfg:"http_reject_chunked"`
 }
 
 type Experiment string
@@ -181,6 +184,7 @@ func NewOptions() *Options {
 		MaxDeflateLevel: 6,
 		SnappyEnabled:   true,
 
-		TLSMinVersion: tls.VersionTLS10,
+		TLSMinVersion:     tls.VersionTLS10,
+		HTTPRejectChunked: false,
 	}
 }
