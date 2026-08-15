@@ -4,6 +4,7 @@ package nsqd
 
 import (
 	"bytes"
+	"compress/flate"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/snappy"
 	"github.com/nsqio/go-nsq"
 	"github.com/nsqio/nsq/internal/http_api"
 	"github.com/nsqio/nsq/internal/test"
@@ -937,4 +939,159 @@ func BenchmarkHTTPpub(b *testing.B) {
 
 	b.StopTimer()
 	nsqd.Exit()
+}
+
+func TestHTTPpubContentEncoding(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_http_pub_encoding" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
+
+	var snappyBuf bytes.Buffer
+	sw := snappy.NewBufferedWriter(&snappyBuf)
+	_, err := sw.Write([]byte("test message snappy"))
+	test.Nil(t, err)
+	test.Nil(t, sw.Close())
+
+	req, err := http.NewRequest("POST", url, &snappyBuf)
+	test.Nil(t, err)
+	req.Header.Set("Content-Encoding", "snappy")
+	resp, err := http.DefaultClient.Do(req)
+	test.Nil(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, "OK", string(body))
+
+	var deflateBuf bytes.Buffer
+	fw, err := flate.NewWriter(&deflateBuf, flate.DefaultCompression)
+	test.Nil(t, err)
+	_, err = fw.Write([]byte("test message deflate"))
+	test.Nil(t, err)
+	test.Nil(t, fw.Close())
+
+	req, err = http.NewRequest("POST", url, &deflateBuf)
+	test.Nil(t, err)
+	req.Header.Set("Content-Encoding", "deflate")
+	resp, err = http.DefaultClient.Do(req)
+	test.Nil(t, err)
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, "OK", string(body))
+
+	time.Sleep(5 * time.Millisecond)
+
+	test.Equal(t, int64(2), topic.Depth())
+}
+
+func TestHTTPpubContentEncodingUnsupported(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_http_pub_encoding_bad" + strconv.Itoa(int(time.Now().Unix()))
+	nsqd.GetTopic(topicName)
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBufferString("test message"))
+	test.Nil(t, err)
+	req.Header.Set("Content-Encoding", "br")
+	resp, err := http.DefaultClient.Do(req)
+	test.Nil(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, 415, resp.StatusCode)
+	test.Equal(t, `{"message":"UNSUPPORTED_CONTENT_ENCODING"}`, string(body))
+}
+
+func TestHTTPpubContentEncodingCorrupt(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_http_pub_encoding_corrupt" + strconv.Itoa(int(time.Now().Unix()))
+	nsqd.GetTopic(topicName)
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte{0x01, 0x02, 0x03}))
+	test.Nil(t, err)
+	req.Header.Set("Content-Encoding", "deflate")
+	resp, err := http.DefaultClient.Do(req)
+	test.Nil(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, 400, resp.StatusCode)
+	test.Equal(t, `{"message":"INVALID_BODY"}`, string(body))
+}
+
+func TestHTTPpubContentEncodingTooBig(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	opts.MaxMsgSize = 100
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_http_pub_encoding_big" + strconv.Itoa(int(time.Now().Unix()))
+	nsqd.GetTopic(topicName)
+
+	// a payload that is small compressed but exceeds MaxMsgSize decoded,
+	// proving the limit is enforced against the decoded size
+	var buf bytes.Buffer
+	sw := snappy.NewBufferedWriter(&buf)
+	_, err := sw.Write(bytes.Repeat([]byte("a"), 1000))
+	test.Nil(t, err)
+	test.Nil(t, sw.Close())
+	test.Equal(t, true, int64(buf.Len()) < opts.MaxMsgSize)
+
+	url := fmt.Sprintf("http://%s/pub?topic=%s", httpAddr, topicName)
+	req, err := http.NewRequest("POST", url, &buf)
+	test.Nil(t, err)
+	req.Header.Set("Content-Encoding", "snappy")
+	resp, err := http.DefaultClient.Do(req)
+	test.Nil(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, 413, resp.StatusCode)
+	test.Equal(t, `{"message":"MSG_TOO_BIG"}`, string(body))
+}
+
+func TestHTTPmpubContentEncoding(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	_, httpAddr, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topicName := "test_http_mpub_encoding" + strconv.Itoa(int(time.Now().Unix()))
+	topic := nsqd.GetTopic(topicName)
+
+	var buf bytes.Buffer
+	fw, err := flate.NewWriter(&buf, flate.DefaultCompression)
+	test.Nil(t, err)
+	_, err = fw.Write([]byte("one\ntwo\nthree"))
+	test.Nil(t, err)
+	test.Nil(t, fw.Close())
+
+	url := fmt.Sprintf("http://%s/mpub?topic=%s", httpAddr, topicName)
+	req, err := http.NewRequest("POST", url, &buf)
+	test.Nil(t, err)
+	req.Header.Set("Content-Encoding", "deflate")
+	resp, err := http.DefaultClient.Do(req)
+	test.Nil(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	test.Equal(t, "OK", string(body))
+
+	time.Sleep(5 * time.Millisecond)
+
+	test.Equal(t, int64(3), topic.Depth())
 }
