@@ -1,6 +1,9 @@
 ## log verbosity level: debug, info, warn, error, or fatal
 log_level = "info"
 
+## log as JSON, one object per message
+# log_json = false
+
 ## log message prefix (default "[nsqadmin] ")
 # log_prefix = ""
 

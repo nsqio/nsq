@@ -11,6 +11,7 @@ import (
 type Options struct {
 	LogLevel  lg.LogLevel `flag:"log-level"`
 	LogPrefix string      `flag:"log-prefix"`
+	LogJSON   bool        `flag:"log-json"`
 	Logger    Logger
 
 	TCPAddress       string `flag:"tcp-address"`

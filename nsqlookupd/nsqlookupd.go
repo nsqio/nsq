@@ -2,12 +2,12 @@ package nsqlookupd
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"sync"
 
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/protocol"
 	"github.com/nsqio/nsq/internal/util"
 	"github.com/nsqio/nsq/internal/version"
@@ -27,7 +27,7 @@ func New(opts *Options) (*NSQLookupd, error) {
 	var err error
 
 	if opts.Logger == nil {
-		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
+		opts.Logger = lg.NewLogger(os.Stderr, opts.LogPrefix, opts.LogJSON)
 	}
 	l := &NSQLookupd{
 		opts: opts,

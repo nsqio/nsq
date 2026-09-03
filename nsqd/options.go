@@ -17,6 +17,7 @@ type Options struct {
 	ID        int64       `flag:"node-id" cfg:"id"`
 	LogLevel  lg.LogLevel `flag:"log-level"`
 	LogPrefix string      `flag:"log-prefix"`
+	LogJSON   bool        `flag:"log-json"`
 	Logger    Logger
 
 	TCPAddress               string        `flag:"tcp-address"`

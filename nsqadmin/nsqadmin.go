@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,6 +16,7 @@ import (
 	"sync/atomic"
 
 	"github.com/nsqio/nsq/internal/http_api"
+	"github.com/nsqio/nsq/internal/lg"
 	"github.com/nsqio/nsq/internal/util"
 	"github.com/nsqio/nsq/internal/version"
 )
@@ -33,7 +33,7 @@ type NSQAdmin struct {
 
 func New(opts *Options) (*NSQAdmin, error) {
 	if opts.Logger == nil {
-		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
+		opts.Logger = lg.NewLogger(os.Stderr, opts.LogPrefix, opts.LogJSON)
 	}
 
 	n := &NSQAdmin{
