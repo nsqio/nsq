@@ -37,6 +37,7 @@ func TestConfigFlagParsing(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 	cfg["log_level"] = "debug"
+	cfg["log_json"] = true
 	cfg.Validate()
 
 	options.Resolve(opts, flagSet, cfg)
@@ -50,5 +51,8 @@ func TestConfigFlagParsing(t *testing.T) {
 	}
 	if opts.LogLevel != lg.DEBUG {
 		t.Fatalf("log level: want debug, got %s", opts.LogLevel.String())
+	}
+	if !opts.LogJSON {
+		t.Fatalf("log json: want true, got %v", opts.LogJSON)
 	}
 }

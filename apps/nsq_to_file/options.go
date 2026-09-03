@@ -17,6 +17,7 @@ type Options struct {
 
 	LogPrefix      string        `flag:"log-prefix"`
 	LogLevel       string        `flag:"log-level"`
+	LogJSON        bool          `flag:"log-json"`
 	OutputDir      string        `flag:"output-dir"`
 	WorkDir        string        `flag:"work-dir"`
 	DatetimeFormat string        `flag:"datetime-format"`

@@ -25,6 +25,7 @@ func nsqlookupdFlagSet(opts *nsqlookupd.Options) *flag.FlagSet {
 	logLevel := opts.LogLevel
 	flagSet.Var(&logLevel, "log-level", "set log verbosity: debug, info, warn, error, or fatal")
 	flagSet.String("log-prefix", "[nsqlookupd] ", "log message prefix")
+	flagSet.Bool("log-json", false, "log as JSON, one object per message")
 	flagSet.Bool("verbose", false, "[deprecated] has no effect, use --log-level")
 
 	flagSet.String("tcp-address", opts.TCPAddress, "<addr>:<port> to listen on for TCP clients")

@@ -3,6 +3,7 @@ package lg
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -20,6 +21,15 @@ type AppLogFunc func(lvl LogLevel, f string, args ...interface{})
 
 type Logger interface {
 	Output(maxdepth int, s string) error
+}
+
+// NewLogger returns the default Logger, writing plain text or, when asJSON is
+// set, one JSON object per message.
+func NewLogger(w io.Writer, prefix string, asJSON bool) Logger {
+	if asJSON {
+		return NewJSONLogger(w, prefix)
+	}
+	return log.New(w, prefix, log.Ldate|log.Ltime|log.Lmicroseconds)
 }
 
 type NilLogger struct{}

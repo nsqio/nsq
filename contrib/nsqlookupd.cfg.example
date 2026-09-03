@@ -1,6 +1,9 @@
 ## log verbosity level: debug, info, warn, error, or fatal
 log_level = "info"
 
+## log as JSON, one object per message
+# log_json = false
+
 ## <addr>:<port> to listen on for TCP clients
 tcp_address = "0.0.0.0:4160"
 

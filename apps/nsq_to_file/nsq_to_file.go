@@ -24,6 +24,7 @@ func flagSet() *flag.FlagSet {
 	fs.Bool("version", false, "print version string")
 	fs.String("log-level", "info", "set log verbosity: debug, info, warn, error, or fatal")
 	fs.String("log-prefix", "[nsq_to_file] ", "log message prefix")
+	fs.Bool("log-json", false, "log as JSON, one object per message")
 
 	fs.String("channel", "nsq_to_file", "nsq channel")
 	fs.Int("max-in-flight", 200, "max number of messages to allow in flight")
@@ -71,7 +72,7 @@ func main() {
 	opts := NewOptions()
 	options.Resolve(opts, fs, nil)
 
-	logger := log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
+	logger := lg.NewLogger(os.Stderr, opts.LogPrefix, opts.LogJSON)
 	logLevel, err := lg.ParseLogLevel(opts.LogLevel)
 	if err != nil {
 		log.Fatal("--log-level is invalid")
