@@ -3,6 +3,7 @@ package nsqd
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"sync"
@@ -160,4 +161,37 @@ func TestStatsChannelLocking(t *testing.T) {
 	test.Equal(t, 1, len(stats))
 	test.Equal(t, 1, len(stats[0].Channels))
 	test.Equal(t, 25, stats[0].Channels[0].InFlightCount)
+}
+
+
+// TestClientV2StatsPubCounts verifies that producer stats include every
+// published topic when no topic filter is specified, and only the requested
+// topic when a filter is provided.
+func TestClientV2StatsPubCounts(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	client := &clientV2{
+		Conn: serverConn,
+		pubCounts: map[string]uint64{
+			"topic-a": 3,
+			"topic-b": 7,
+		},
+	}
+
+	allStats := client.Stats("").(ClientV2Stats)
+	test.Equal(t, 2, len(allStats.PubCounts))
+
+	found := make(map[string]uint64, len(allStats.PubCounts))
+	for _, count := range allStats.PubCounts {
+		found[count.Topic] = count.Count
+	}
+	test.Equal(t, uint64(3), found["topic-a"])
+	test.Equal(t, uint64(7), found["topic-b"])
+
+	filteredStats := client.Stats("topic-a").(ClientV2Stats)
+	test.Equal(t, 1, len(filteredStats.PubCounts))
+	test.Equal(t, "topic-a", filteredStats.PubCounts[0].Topic)
+	test.Equal(t, uint64(3), filteredStats.PubCounts[0].Count)
 }
