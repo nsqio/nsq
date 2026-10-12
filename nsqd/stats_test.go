@@ -163,7 +163,6 @@ func TestStatsChannelLocking(t *testing.T) {
 	test.Equal(t, 25, stats[0].Channels[0].InFlightCount)
 }
 
-
 // TestClientV2StatsPubCounts verifies that producer stats include every
 // published topic when no topic filter is specified, and only the requested
 // topic when a filter is provided.
