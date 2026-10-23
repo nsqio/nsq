@@ -659,7 +659,11 @@ func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 
 	// This retry-loop is a work-around for a race condition, where the
 	// last client can leave the channel between GetChannel() and AddClient().
-	// Avoid adding a client to an ephemeral channel / topic which has started exiting.
+	// Avoid adding a client to a channel / topic which has started exiting,
+	// durable or ephemeral: GetTopic/GetChannel can still hand back a
+	// reference to a topic/channel that DeleteExistingTopic (or a plain
+	// shutdown) is already tearing down, since that teardown doesn't hold
+	// nsqd's lock and only removes the map entry at the very end.
 	var channel *Channel
 	for i := 1; ; i++ {
 		topic := p.nsqd.GetTopic(topicName)
@@ -668,7 +672,7 @@ func (p *protocolV2) SUB(client *clientV2, params [][]byte) ([]byte, error) {
 			return nil, protocol.NewFatalClientErr(err, "E_SUB_FAILED", "SUB failed "+err.Error())
 		}
 
-		if (channel.ephemeral && channel.Exiting()) || (topic.ephemeral && topic.Exiting()) {
+		if channel.Exiting() || topic.Exiting() {
 			channel.RemoveClient(client.ID)
 			if i < 2 {
 				time.Sleep(100 * time.Millisecond)
