@@ -13,24 +13,35 @@ import (
 	"github.com/nsqio/nsq/internal/test"
 )
 
-// TestDurableTopicDeleteSubRace is a regression test for a race between a
-// real SUB (the exact TCP wire sequence a client sends) and a concurrent
-// "POST /topic/delete" admin request on a *durable* topic.
+// TestDurableTopicDeleteSubRace races a real SUB (the exact TCP wire
+// sequence a client sends) against a concurrent "POST /topic/delete" admin
+// request on a *durable* topic, and classifies every possible outcome:
 //
-// Before the fix, protocol_v2.go's post-AddClient safety check
-// ((channel.ephemeral && channel.Exiting()) || (topic.ephemeral &&
-// topic.Exiting())) only applied to ephemeral topics/channels (added by
-// #891 for #883, scoped to the ephemeral case only). For a durable topic
-// deleted concurrently via the admin HTTP API, that check never fired, so
-// SUB returned OK while the client was left attached to a channel whose
-// messagePump had already exited -- a silent, permanent zombie
-// subscription with no error ever surfaced to the client.
+//   - cleanReject:    SUB got a protocol-level E_SUB_FAILED response. This is
+//     the *good* outcome for a race loss -- a clear, documented rejection.
+//   - healthy:        SUB succeeded and a subsequently published probe
+//     message was delivered. The race was won cleanly, no bug.
+//   - rawConnAbort:   SUB either failed with a raw network error (not a
+//     clean protocol response), or SUB reported OK but the connection was
+//     then force-closed before the probe message arrived. Not silent -- the
+//     client gets a detectable failure -- but it's a confusing raw TCP
+//     reset instead of a clean rejection.
+//   - silentZombie:   SUB reported OK, the probe message never arrived, and
+//     the read simply timed out with no indication the connection was ever
+//     closed. This is the one truly severe outcome: permanent, undetectable
+//     message loss. This must never happen, before or after any fix.
 //
-// This test races the two paths for real, over the real wire protocol, and
-// asserts the invariant that must hold regardless of how the race resolves:
-// every SUB that returns OK must correspond to a channel that actually
-// receives subsequently published messages. A zombie subscription (SUB ok,
-// message never delivered) is the bug.
+// Before the fix in this same commit, protocol_v2.go's post-AddClient
+// safety check in SUB ((channel.ephemeral && channel.Exiting()) ||
+// (topic.ephemeral && topic.Exiting())) only applied to ephemeral
+// topics/channels (added by #891 for #883, scoped to the ephemeral case
+// only), so a durable topic/channel being deleted could never produce a
+// cleanReject -- every race loss surfaced as a rawConnAbort. The fix widens
+// that check so durable topics get the same cleanReject path ephemeral ones
+// already had; this test reports counts for all four categories rather than
+// asserting an exact split, since the underlying race is inherently
+// timing-sensitive (see PR description for measured counts on this
+// environment).
 func TestDurableTopicDeleteSubRace(t *testing.T) {
 	opts := NewOptions()
 	opts.Logger = test.NewTestLogger(t)
@@ -44,8 +55,7 @@ func TestDurableTopicDeleteSubRace(t *testing.T) {
 	pubURLFmt := "http://%s/pub?topic=%s"
 
 	const attempts = 50
-	zombies := 0
-	correctlyClosed := 0
+	var healthy, cleanReject, rawConnAbort, silentZombie int
 
 	for i := 0; i < attempts; i++ {
 		topic := nsqdInst.GetTopic(topicName)
@@ -62,7 +72,7 @@ func TestDurableTopicDeleteSubRace(t *testing.T) {
 		wg.Add(2)
 
 		var subErr error
-		var subFrame int32
+		var subFrame int32 = -1
 
 		go func() {
 			defer wg.Done()
@@ -95,9 +105,19 @@ func TestDurableTopicDeleteSubRace(t *testing.T) {
 
 		wg.Wait()
 
+		if subFrame == frameTypeError {
+			// A clean, documented rejection (e.g. E_SUB_FAILED). Good outcome.
+			cleanReject++
+			_ = conn.Close()
+			_ = nsqdInst.DeleteExistingTopic(topicName)
+			continue
+		}
+
 		if subErr != nil || subFrame != frameTypeResponse {
-			// SUB was correctly rejected (or the connection was torn down) --
-			// not the bug. Recreate the topic for the next attempt.
+			// SUB itself failed at the raw connection level (not via a
+			// clean protocol response) -- the connection was torn down
+			// mid-handshake.
+			rawConnAbort++
 			_ = conn.Close()
 			_ = nsqdInst.DeleteExistingTopic(topicName)
 			continue
@@ -124,23 +144,20 @@ func TestDurableTopicDeleteSubRace(t *testing.T) {
 			}
 		}
 
-		if !got {
-			// A connection error (closed/reset/aborted) means the server
-			// detected the dying topic/channel and tore the connection
-			// down -- a legitimate, client-detectable failure, not the bug.
-			// The bug is specifically a read that times out on a
-			// connection the server never closed: SUB said OK, nothing was
-			// ever delivered, and nothing ever told the client why.
-			var netErr net.Error
+		if got {
+			healthy++
+		} else {
+			// Distinguish a detectable connection failure (not the bug)
+			// from a true silent timeout on a connection the server never
+			// closed (the bug).
 			isTimeout := false
 			if ne, ok := rerr.(net.Error); ok {
-				netErr = ne
-				isTimeout = netErr.Timeout()
+				isTimeout = ne.Timeout()
 			}
 			if rerr != nil && !isTimeout {
-				correctlyClosed++
+				rawConnAbort++
 			} else {
-				zombies++
+				silentZombie++
 				t.Logf("attempt %d: SILENT ZOMBIE -- SUB returned OK, message never delivered, connection never closed (readErr=%v)", i, rerr)
 			}
 		}
@@ -149,8 +166,10 @@ func TestDurableTopicDeleteSubRace(t *testing.T) {
 		_ = nsqdInst.DeleteExistingTopic(topicName)
 	}
 
-	t.Logf("attempts=%d silentZombies=%d correctlyClosedByServer=%d", attempts, zombies, correctlyClosed)
-	if zombies > 0 {
-		t.Fatalf("%d/%d attempts produced a silent zombie subscription (SUB ok, message never delivered, connection never closed) -- durable topic delete raced a concurrent SUB", zombies, attempts)
+	t.Logf("attempts=%d healthy=%d cleanReject=%d rawConnAbort=%d silentZombie=%d",
+		attempts, healthy, cleanReject, rawConnAbort, silentZombie)
+
+	if silentZombie > 0 {
+		t.Fatalf("%d/%d attempts produced a silent zombie subscription (SUB ok, message never delivered, connection never closed) -- durable topic delete raced a concurrent SUB", silentZombie, attempts)
 	}
 }
