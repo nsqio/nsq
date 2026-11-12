@@ -45,8 +45,8 @@ func TestConfigFlagParsing(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	if opts.TLSMinVersion != tls.VersionTLS10 {
-		t.Errorf("min %#v not expected %#v", opts.TLSMinVersion, tls.VersionTLS10)
+	if opts.TLSMinVersion != tls.VersionTLS12 {
+		t.Errorf("min %#v not expected %#v", opts.TLSMinVersion, tls.VersionTLS12)
 	}
 	if opts.LogLevel != lg.DEBUG {
 		t.Fatalf("log level: want debug, got %s", opts.LogLevel.String())
