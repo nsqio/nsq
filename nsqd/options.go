@@ -181,6 +181,6 @@ func NewOptions() *Options {
 		MaxDeflateLevel: 6,
 		SnappyEnabled:   true,
 
-		TLSMinVersion: tls.VersionTLS10,
+		TLSMinVersion: tls.VersionTLS12,
 	}
 }
