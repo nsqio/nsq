@@ -40,7 +40,6 @@ NOTE: master is our *development* branch and may not be stable at all times.
 
 <a href="https://www.energyhub.com/"><img src="https://nsq.io/static/img/energyhub_logo.png" width="99" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://project-fifo.net/"><img src="https://nsq.io/static/img/project_fifo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="https://trendrr.com/"><img src="https://nsq.io/static/img/trendrr_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://reonomy.com/"><img src="https://nsq.io/static/img/reonomy_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://hw-ops.com/"><img src="https://nsq.io/static/img/heavy_water.png" width="50" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://www.getlytics.com/"><img src="https://nsq.io/static/img/lytics.png" width="100" align="middle"/></a><br/>
