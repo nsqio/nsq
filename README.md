@@ -92,5 +92,4 @@ Logo created by Wolasi Konu ([@kisalow][wolasi_twitter]).
 [features_guarantees]: https://nsq.io/overview/features_and_guarantees.html
 [contributors]: https://github.com/nsqio/nsq/graphs/contributors
 [client_libraries]: https://nsq.io/clients/client_libraries.html
-[wolasi_twitter]: https://twitter.com/kisalow
 [pierce_github]: https://github.com/ploxiln
