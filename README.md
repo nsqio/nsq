@@ -34,7 +34,6 @@ NOTE: master is our *development* branch and may not be stable at all times.
 
 <a href="https://bitly.com/"><img src="https://nsq.io/static/img/bitly_logo.png" width="84" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://www.life360.com/"><img src="https://nsq.io/static/img/life360_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
-<a href="https://www.simplereach.com/"><img src="https://nsq.io/static/img/simplereach_logo.png" width="136" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://moz.com/"><img src="https://nsq.io/static/img/moz_logo.png" width="108" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://segment.com/"><img src="https://nsq.io/static/img/segment_logo.png" width="70" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://eventful.com/events"><img src="https://nsq.io/static/img/eventful_logo.png" width="95" align="middle"/></a><br/>
