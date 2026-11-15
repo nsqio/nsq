@@ -34,14 +34,12 @@ NOTE: master is our *development* branch and may not be stable at all times.
 
 <a href="https://bitly.com/"><img src="https://nsq.io/static/img/bitly_logo.png" width="84" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://www.life360.com/"><img src="https://nsq.io/static/img/life360_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
-<a href="https://www.simplereach.com/"><img src="https://nsq.io/static/img/simplereach_logo.png" width="136" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://moz.com/"><img src="https://nsq.io/static/img/moz_logo.png" width="108" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://segment.com/"><img src="https://nsq.io/static/img/segment_logo.png" width="70" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://eventful.com/events"><img src="https://nsq.io/static/img/eventful_logo.png" width="95" align="middle"/></a><br/>
 
 <a href="https://www.energyhub.com/"><img src="https://nsq.io/static/img/energyhub_logo.png" width="99" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://project-fifo.net/"><img src="https://nsq.io/static/img/project_fifo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
-<a href="https://trendrr.com/"><img src="https://nsq.io/static/img/trendrr_logo.png" width="97" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://reonomy.com/"><img src="https://nsq.io/static/img/reonomy_logo.png" width="100" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://hw-ops.com/"><img src="https://nsq.io/static/img/heavy_water.png" width="50" align="middle"/></a>&nbsp;&nbsp;
 <a href="https://www.getlytics.com/"><img src="https://nsq.io/static/img/lytics.png" width="100" align="middle"/></a><br/>
@@ -94,5 +92,4 @@ Logo created by Wolasi Konu ([@kisalow][wolasi_twitter]).
 [features_guarantees]: https://nsq.io/overview/features_and_guarantees.html
 [contributors]: https://github.com/nsqio/nsq/graphs/contributors
 [client_libraries]: https://nsq.io/clients/client_libraries.html
-[wolasi_twitter]: https://twitter.com/kisalow
 [pierce_github]: https://github.com/ploxiln
